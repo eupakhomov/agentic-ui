@@ -43,3 +43,6 @@ application-local.yaml
 
 ### Claude Code local settings ###
 .claude/settings.local.json*
+
+### Log files ###
+/log/

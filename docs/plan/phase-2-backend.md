@@ -27,6 +27,12 @@ WS /ws/**     ─┼─ SessionService ──────┼─ SidecarProcessMa
 
 ## Database schema — `V2__core_schema.sql`
 
+> Implementation notes (as built): list/map fields use **JSONB** rather than TEXT[]
+> for uniform handling; a `session_queue` table backs message queueing; the session
+> also stores `capabilities` (from `ready`) and `kickoff_prompt`. The STARTING→IDLE
+> transition happens on the adapter's `ready` event — `system_init` only arrives with
+> the first turn in streaming-input mode and merely records `provider_session_id`.
+
 ```sql
 CREATE TABLE session (
   id                UUID PRIMARY KEY,

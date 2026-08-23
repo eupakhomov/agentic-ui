@@ -7,7 +7,7 @@ spring:
     password: ${CLAUDE_UI_DB_PASSWORD:claude_ui}
 
 server:
-  address: 0.0.0.0
+  address: 127.0.0.1   # LAN use: set a real address AND claude-ui.auth-token (enforced at startup)
   port: 8080
 
 management:
