@@ -63,18 +63,51 @@ docker compose up -d          # if WSL integration is enabled
   applied at startup). No manual DDL, no generated schema. Boot 4 note: Flyway needs
   `spring-boot-starter-flyway`; plain `flyway-core` silently does nothing.
 
-## Run the backend
+## Run the project
 
 ```bash
-./mvnw spring-boot:run                        # or:
-java -jar target/claude.ui-0.0.1-SNAPSHOT.jar
-curl -s localhost:8080/actuator/health        # expect "status":"UP" with db UP
+# 1. Postgres must be up (see Database section), then build the jar.
+#    IMPORTANT: stop a running backend first — a live JVM holds the jar and the
+#    spring-boot repackage fails half-written.
+./mvnw package -DskipTests -Dskip.installnodenpm -Dskip.npm   # fast: reuses frontend/dist
+./mvnw package -DskipTests                                    # full: rebuilds frontend too
+# (run `cd frontend && npm run build` first if frontend sources changed and you use the fast form)
+
+# 2. Generate a token, start in background, print the token for the browser login:
+TOKEN=$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)
+echo "$TOKEN" > /tmp/claude-ui.token
+CLAUDE_UI_TOKEN="$TOKEN" nohup java -jar target/claude.ui-0.0.1-SNAPSHOT.jar \
+  --server.address=0.0.0.0 > /tmp/claude-ui.log 2>&1 &
+echo $! > /tmp/claude-ui.pid
+until curl -sf localhost:8080/actuator/health >/dev/null; do sleep 1; done
+echo "UI: http://localhost:8080  token: $(cat /tmp/claude-ui.token)"
 ```
 
-Config lives in `application.yaml` under `claude-ui.*` (repo path, worktree root,
-ecosystem root, skills root, max sessions, auth token, provider launch commands),
-bound by `de.pamir.claude.ui.config.AppProperties` and logged at startup (token masked).
-Local secrets belong in gitignored `application-local.yaml` or env vars — never commit them.
+- **WSL gotcha**: bind `0.0.0.0`, not `127.0.0.1` — the Windows→WSL localhost relay
+  only forwards wildcard binds, so a loopback-bound server is invisible to the
+  Windows browser (ERR_CONNECTION_REFUSED). The startup guard therefore requires a
+  token (`CLAUDE_UI_TOKEN`); tokenless is only allowed on `127.0.0.1`.
+- Logs: `tail -f /tmp/claude-ui.log`. Token again: `cat /tmp/claude-ui.token`.
+
+### Stop / kill
+
+```bash
+kill "$(cat /tmp/claude-ui.pid)"          # graceful: @PreDestroy shuts sidecars down
+# fallback when the pid file is stale — kill whatever listens on 8080:
+kill "$(ss -tlnp | grep 8080 | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)"
+# orphaned sidecars, if any survive:
+pkill -f "dist/index[.]js --cwd"
+```
+
+Note the `[.]` in the pkill pattern: `pkill -f` matches its own shell's command line,
+so an unescaped pattern kills the shell that runs it (learned the hard way).
+
+Config lives in `application.yaml` under `claude-ui.*` (default repo path, worktree
+root, ecosystem root, skills root, max sessions, auth token, provider launch
+commands), bound by `de.pamir.claude.ui.config.AppProperties` and logged at startup
+(token masked). Service repo and ecosystem path are selectable **per session** in the
+create dialog; the config values are only defaults. Local secrets belong in gitignored
+`application-local.yaml` or env vars — never commit them.
 
 ## Sidecar (Phase 1+)
 
