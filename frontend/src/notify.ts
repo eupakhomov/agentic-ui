@@ -7,10 +7,7 @@ export function notificationsEnabled(): boolean {
 }
 
 export async function toggleNotifications(): Promise<boolean> {
-  if (!('Notification' in window)) {
-    console.warn('[notify] Notification API unavailable (insecure context? use localhost or https)');
-    return false;
-  }
+  if (!('Notification' in window)) return false;
   if (notificationsEnabled()) {
     localStorage.setItem(PREF_KEY, 'off');
     return false;
@@ -18,29 +15,22 @@ export async function toggleNotifications(): Promise<boolean> {
   const permission = await Notification.requestPermission();
   if (permission === 'granted') {
     localStorage.setItem(PREF_KEY, 'on');
-    // immediate test notification, bypassing the focus check: if this one does not
-    // appear, the browser/OS layer (e.g. Windows Focus Assist) is eating them
-    show('claude-ui notifications enabled', 'If you can read this, delivery works. Session events notify only while this window is unfocused.');
     return true;
   }
-  console.warn('[notify] permission not granted:', permission);
   return false;
 }
 
-/** Notify only when the dashboard isn't being watched. */
+/**
+ * Notify only when the dashboard isn't being watched. The tab-title badge fires
+ * regardless of the desktop-notification setting — it survives OS do-not-disturb
+ * (e.g. Windows Focus Assist during full-screen video).
+ */
 export function notify(title: string, body: string): void {
-  if (document.hasFocus()) {
-    console.debug('[notify] suppressed (dashboard window is focused):', title);
-    return;
-  }
-  // tab-title badge always (survives OS do-not-disturb, e.g. Focus Assist during
-  // full-screen video); desktop notification only when enabled
+  if (document.hasFocus()) return;
   bumpTitleBadge();
-  if (!notificationsEnabled()) {
-    console.debug('[notify] desktop notification skipped (disabled or no permission):', title);
-    return;
+  if (notificationsEnabled()) {
+    show(title, body);
   }
-  show(title, body);
 }
 
 let pendingCount = 0;
