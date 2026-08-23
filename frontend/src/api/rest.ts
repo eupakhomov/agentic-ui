@@ -32,6 +32,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
+  raw: <T>(method: string, path: string, body?: unknown) => request<T>(method, path, body),
   listSessions: () => request<SessionSummary[]>('GET', '/api/sessions'),
   sessionDetail: (id: string) => request<SessionDetail>('GET', `/api/sessions/${id}`),
   createSession: (body: unknown) => request<SessionEntity>('POST', '/api/sessions', body),

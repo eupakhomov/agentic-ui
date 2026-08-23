@@ -95,6 +95,15 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: 12.5p
 .skills-list { display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
 .error-text { color: var(--red); font-size: 13px; white-space: pre-wrap; }
 
+.git-panel { border-bottom: 1px solid var(--border); background: var(--panel2); padding: 8px 10px; max-height: 45%; overflow-y: auto; font-size: 12.5px; }
+.git-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.git-section { margin-top: 8px; }
+.git-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.git-files { margin: 0 0 6px; background: var(--panel); border-radius: 6px; padding: 6px 8px; max-height: 100px; overflow: auto; }
+.git-diff { margin: 6px 0 0; background: var(--panel); border-radius: 6px; padding: 6px 8px; max-height: 240px; overflow: auto; white-space: pre; }
+.git-log-line { padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-panel a { color: var(--accent); }
+
 .gate { display: flex; align-items: center; justify-content: center; height: 100vh; }
 .gate .modal { width: 360px; }
 

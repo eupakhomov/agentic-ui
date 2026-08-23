@@ -39,7 +39,11 @@ export class WsSession {
     };
     ws.onmessage = (msg) => {
       const envelope = JSON.parse(msg.data as string) as Envelope;
-      if (envelope.type !== 'replay_complete' && envelope.seq > this.lastSeq) {
+      if (envelope.type === 'replay_complete') {
+        this.onEvent(envelope); // marker for consumers (e.g. notification gating); not seq-tracked
+        return;
+      }
+      if (envelope.seq > this.lastSeq) {
         this.lastSeq = envelope.seq;
         this.onEvent(envelope);
       }

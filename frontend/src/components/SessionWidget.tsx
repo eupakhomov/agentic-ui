@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import { WsSession } from '../api/ws';
-import type { PermissionMode, SessionEntity } from '../protocol';
+import type { Envelope, PermissionMode, SessionEntity } from '../protocol';
 import { useStore } from '../store/store';
+import { notify } from '../notify';
 import Transcript from './Transcript';
 import CloseDialog from './CloseDialog';
+import GitPanel from './GitPanel';
 
 const MODE_CYCLE: PermissionMode[] = ['default', 'acceptEdits', 'plan'];
 const MODE_LABEL: Record<PermissionMode, string> = {
@@ -22,8 +24,11 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
   const [entity, setEntity] = useState<SessionEntity | null>(null);
   const [input, setInput] = useState('');
   const [closing, setClosing] = useState(false);
+  const [showGit, setShowGit] = useState(false);
   const [actionError, setActionError] = useState('');
   const wsRef = useRef<WsSession | null>(null);
+  const nameRef = useRef<string>('');
+  const liveRef = useRef(false);
 
   useEffect(() => {
     api.sessionDetail(sessionId).then((d) => {
@@ -37,7 +42,26 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
         costBudgetUsd: v.costBudgetUsd ?? d.session.costBudgetUsd,
       }));
     }).catch(() => setEntity(null));
-    const ws = new WsSession(sessionId, (e) => apply(sessionId, e), (s) => setWsStatus(sessionId, s));
+    const onEvent = (e: Envelope) => {
+      apply(sessionId, e);
+      // desktop notifications only for live events (not replay) on an unwatched tab
+      if (!liveRef.current) {
+        if (e.type === 'replay_complete' || e.seq === 0) liveRef.current = true;
+        return;
+      }
+      const who = nameRef.current || 'session';
+      if (e.type === 'permission_request') {
+        notify(`${who} needs your input`, `${e.payload['toolName']} permission requested`);
+      } else if (e.type === 'turn_complete') {
+        notify(`${who} finished`, 'the agent completed its turn');
+      } else if (e.type === 'state_changed' && e.payload['state'] === 'CRASHED') {
+        notify(`${who} crashed`, 'the session needs a resume');
+      }
+    };
+    const ws = new WsSession(sessionId, onEvent, (s) => {
+      setWsStatus(sessionId, s);
+      if (s !== 'open') liveRef.current = false;
+    });
     wsRef.current = ws;
     return () => ws.stop();
   }, [sessionId, apply, setWsStatus, seed]);
@@ -71,6 +95,7 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
   const state = view?.state ?? 'CREATING';
   const running = state === 'RUNNING' || state === 'WAITING_INPUT';
   const budget = view?.costBudgetUsd ?? entity?.costBudgetUsd ?? null;
+  nameRef.current = view?.name ?? entity?.name ?? '';
   const widgetClass = useMemo(() => {
     if (state === 'WAITING_INPUT') return 'widget waiting';
     if (state === 'CRASHED' || state === 'FAILED') return 'widget crashed';
@@ -129,6 +154,11 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
         )}
         <button
           onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => setShowGit((v) => !v)}
+          title="git panel"
+        >⎇</button>
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={() => setClosing(true)}
           title="close session"
         >✕</button>
@@ -137,6 +167,7 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
         {view.wsStatus !== 'open' && state !== 'CLOSED' && (
           <div className="overlay">disconnected — reconnecting…</div>
         )}
+        {showGit && <GitPanel sessionId={sessionId} onClose={() => setShowGit(false)} />}
         <Transcript items={view.transcript} onPermission={(requestId, response) => send({ type: 'permission_response', requestId, ...response })} />
         <div className="inputbar">
           {actionError && <div className="error-text">{actionError}</div>}

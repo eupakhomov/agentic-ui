@@ -6,9 +6,22 @@ import SessionWidget from './SessionWidget';
 import CreateSessionDialog from './CreateSessionDialog';
 import TemplateManager from './TemplateManager';
 import { useStore } from '../store/store';
+import { notificationsEnabled, toggleNotifications } from '../notify';
 
 const LAYOUT_KEY = 'claude-ui.layout';
 const COLS = 12;
+
+function NotifyToggle() {
+  const [on, setOn] = useState(notificationsEnabled());
+  return (
+    <button
+      title={on ? 'desktop notifications on (finished / needs input / crashed)' : 'enable desktop notifications'}
+      onClick={() => void toggleNotifications().then(setOn)}
+    >
+      {on ? '🔔' : '🔕'}
+    </button>
+  );
+}
 
 function loadLayout(): Layout[] {
   try {
@@ -76,6 +89,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     <>
       <div className="topbar">
         <h1>claude-ui</h1>
+        <NotifyToggle />
         <button onClick={() => void refresh()}>Refresh</button>
         <button onClick={() => setShowTemplates(true)}>Templates</button>
         <button className="primary" onClick={() => setShowCreate(true)}>+ New Session</button>

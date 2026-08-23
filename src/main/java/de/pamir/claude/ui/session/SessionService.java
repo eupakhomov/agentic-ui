@@ -391,7 +391,7 @@ public class SessionService {
 					exclude = worktree.resolve(result.stdout());
 				}
 				Files.createDirectories(exclude.getParent());
-				Files.writeString(exclude, "\n.claude/skills/\n.claude/agents/\n",
+				Files.writeString(exclude, "\n.claude/skills/\n.claude/agents/\n.claude-ui.pid\n",
 						java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
 			}
 		} catch (IOException e) {

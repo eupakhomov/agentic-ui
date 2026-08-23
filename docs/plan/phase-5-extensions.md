@@ -3,13 +3,13 @@
 Not a single phase but a prioritized backlog; each item is independently shippable
 after Phase 4 and carries its own mini-DoD. Order below is the suggested order.
 
-## 5.1 Git panel per widget
+## 5.1 Git panel per widget — ✅ shipped 2026-08-24
 Status/diff/log view for the session's worktree; commit + push from the UI.
 - Backend: `GET /api/sessions/{id}/git/status|diff|log`, `POST …/git/commit`, `…/push`.
 - **DoD:** edit → see diff → commit → push round-trip from a widget; refuses to touch
   a RUNNING session's worktree mid-tool-execution.
 
-## 5.2 PR creation
+## 5.2 PR creation — ✅ shipped 2026-08-24 (needs `gh auth login` once)
 "Open PR" button: pushes branch and creates a PR via `gh pr create` (uses the user's
 existing `gh` auth), with title/body prefilled from session summary.
 - **DoD:** one click yields a real PR URL shown in the widget.
@@ -84,7 +84,7 @@ proves the backend/UI are genuinely provider-agnostic.
   the same dashboard; unsupported controls (e.g. plan mode) simply don't render;
   Claude sessions are entirely unaffected side by side.
 
-## 5.14 Notifications
+## 5.14 Notifications — ✅ shipped 2026-08-24 (browser desktop notifications: finished / needs input / crashed, unfocused tab only)
 Browser notifications (or ntfy/webhook) when a session hits WAITING_INPUT or
 CRASHED while unwatched — the whole point of parallel sessions is not staring at them.
 - **DoD:** permission request in a background tab raises a desktop notification;
