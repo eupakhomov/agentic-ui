@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: claude_ui
+      POSTGRES_USER: claude_ui
+      POSTGRES_PASSWORD: ${CLAUDE_UI_DB_PASSWORD:-claude_ui}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claude_ui -d claude_ui"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  pgdata:

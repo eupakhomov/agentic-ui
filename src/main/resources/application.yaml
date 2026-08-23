@@ -1,3 +1,31 @@
 spring:
   application:
     name: claude.ui
+  datasource:
+    url: jdbc:postgresql://localhost:5432/claude_ui
+    username: claude_ui
+    password: ${CLAUDE_UI_DB_PASSWORD:claude_ui}
+
+server:
+  address: 0.0.0.0
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-components: always
+
+claude-ui:
+  repo-path: ${CLAUDE_UI_REPO:/mnt/d/projects/claude-ui}
+  worktree-root: ${HOME}/claude-worktrees
+  ecosystem-root: /mnt/d/projects
+  skills-root: ${HOME}/claude-skills
+  max-sessions: 4
+  auth-token: ${CLAUDE_UI_TOKEN:}
+  providers:
+    claude:
+      command: ["node", "sidecar/dist/index.js"]

@@ -52,7 +52,8 @@ volumes:
   - `spring-boot-starter-websocket`
   - `spring-boot-starter-data-jdbc`
   - `org.postgresql:postgresql` (runtime)
-  - `org.flywaydb:flyway-core` + `flyway-database-postgresql`
+  - `spring-boot-starter-flyway` + `org.flywaydb:flyway-database-postgresql`
+    (Boot 4 modularization: plain `flyway-core` does NOT autoconfigure — the starter is required)
 - `application.yaml`:
 
 ```yaml
@@ -60,7 +61,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/claude_ui
     username: claude_ui
-    password: ${DB_PASSWORD:claude_ui}
+    password: ${CLAUDE_UI_DB_PASSWORD:claude_ui}
 server:
   address: 0.0.0.0          # LAN deployment; auth added in Phase 2
   port: 8080
