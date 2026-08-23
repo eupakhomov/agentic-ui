@@ -25,8 +25,8 @@ import java.util.UUID;
 @RequestMapping("/api/sessions")
 public class SessionController {
 
-	public record CreateSessionRequest(String name, String branch, String baseBranch, UUID templateId,
-									   JsonNode overrides, Map<String, String> kickoffValues) {
+	public record CreateSessionRequest(String name, String branch, String baseBranch, String repoPath,
+									   UUID templateId, JsonNode overrides, Map<String, String> kickoffValues) {
 	}
 
 	public record SessionSummary(UUID id, String name, String provider, String branch, String model,
@@ -49,7 +49,7 @@ public class SessionController {
 		if (request.name() == null || request.branch() == null || request.baseBranch() == null) {
 			throw new IllegalArgumentException("name, branch and baseBranch are required");
 		}
-		return service.create(request.name(), request.branch(), request.baseBranch(),
+		return service.create(request.name(), request.branch(), request.baseBranch(), request.repoPath(),
 				request.templateId(), request.overrides(), request.kickoffValues());
 	}
 

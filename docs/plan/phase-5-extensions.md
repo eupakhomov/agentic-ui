@@ -42,10 +42,10 @@ SDK supports changing model between turns; expose a model picker in the widget h
 Single-column stacked widgets, sticky input bar; PWA manifest so it installs on a phone.
 - **DoD:** run a session end-to-end (incl. approving a permission) from a phone browser.
 
-## 5.7 Multi-repo support
-Widen `repo-path` from a single configured value to a registered list
-(`repo` table; schema already stores `repo_path` per session).
-- **DoD:** two sessions on two different repos running concurrently.
+## 5.7 Multi-repo support — ✅ largely shipped early (Phase 3)
+Per-session service picker (git repos discovered under `ecosystem-root`) and editable
+per-session ecosystem path landed with Phase 3. Remaining ideas for later: multiple
+ecosystem roots, repos outside the ecosystem folder, per-service default templates.
 
 ## 5.8 Per-session hooks / settings injection
 Materialize a `.claude/settings.json` into the worktree from template config (e.g.

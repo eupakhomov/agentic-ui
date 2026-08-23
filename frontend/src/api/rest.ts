@@ -1,4 +1,4 @@
-import type { SessionDetail, SessionEntity, SessionSummary, SkillInfo, Template } from '../protocol';
+import type { ServicesResponse, SessionDetail, SessionEntity, SessionSummary, SkillInfo, Template } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -39,7 +39,9 @@ export const api = {
   closeSession: (id: string, dirty: string, commitMessage?: string) =>
     request<null>('DELETE', `/api/sessions/${id}?dirty=${dirty}${commitMessage ? `&commitMessage=${encodeURIComponent(commitMessage)}` : ''}`),
   deleteQueued: (id: string, pos: number) => request<null>('DELETE', `/api/sessions/${id}/queue/${pos}`),
-  branches: () => request<string[]>('GET', '/api/repo/branches'),
+  services: () => request<ServicesResponse>('GET', '/api/repo/services'),
+  branches: (repo?: string) =>
+    request<string[]>('GET', `/api/repo/branches${repo ? `?repo=${encodeURIComponent(repo)}` : ''}`),
   skills: () => request<SkillInfo[]>('GET', '/api/skills'),
   listTemplates: () => request<Template[]>('GET', '/api/templates'),
   createTemplate: (body: unknown) => request<Template>('POST', '/api/templates', body),

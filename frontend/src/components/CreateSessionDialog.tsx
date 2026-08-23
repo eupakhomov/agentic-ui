@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { placeholdersOf, type SkillInfo, type Template } from '../protocol';
+import { placeholdersOf, type ServicesResponse, type SkillInfo, type Template } from '../protocol';
 
 export default function CreateSessionDialog({
   onCreated,
@@ -9,6 +9,7 @@ export default function CreateSessionDialog({
   onCreated: (id: string) => void;
   onCancel: () => void;
 }) {
+  const [servicesInfo, setServicesInfo] = useState<ServicesResponse | null>(null);
   const [branches, setBranches] = useState<string[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
@@ -16,6 +17,7 @@ export default function CreateSessionDialog({
   const [busy, setBusy] = useState(false);
 
   const [name, setName] = useState('');
+  const [repoPath, setRepoPath] = useState('');
   const [branch, setBranch] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
   const [templateId, setTemplateId] = useState('');
@@ -24,17 +26,32 @@ export default function CreateSessionDialog({
   const [thinking, setThinking] = useState('');
   const [effort, setEffort] = useState('');
   const [instructions, setInstructions] = useState('');
-  const [ecosystemOn, setEcosystemOn] = useState(true);
+  const [ecosystemPath, setEcosystemPath] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
   const [extraSkill, setExtraSkill] = useState('');
   const [kickoffValues, setKickoffValues] = useState<Record<string, string>>({});
   const [advanced, setAdvanced] = useState('');
 
   useEffect(() => {
-    api.branches().then(setBranches).catch(() => setBranches([]));
+    api.services().then((info) => {
+      setServicesInfo(info);
+      setRepoPath(info.defaultRepoPath);
+      setEcosystemPath(info.ecosystemRoot);
+    }).catch(() => setServicesInfo(null));
     api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
     api.skills().then(setSkills).catch(() => setSkills([]));
   }, []);
+
+  useEffect(() => {
+    if (!repoPath) return;
+    api.branches(repoPath).then((list) => {
+      setBranches(list);
+      if (list.length > 0 && !list.includes(baseBranch)) {
+        setBaseBranch(list.includes('main') ? 'main' : list[0]!);
+      }
+    }).catch(() => setBranches([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoPath]);
 
   const template = templates.find((t) => t.id === templateId);
   const kickoffPrompt = typeof template?.config['kickoffPrompt'] === 'string'
@@ -50,7 +67,7 @@ export default function CreateSessionDialog({
       if (thinking) overrides['thinking'] = thinking;
       if (effort) overrides['effort'] = effort;
       if (instructions.trim()) overrides['instructions'] = instructions.trim();
-      if (!ecosystemOn) overrides['ecosystemPath'] = null;
+      overrides['ecosystemPath'] = ecosystemPath.trim() || null;
       const skillSources = [
         ...[...selectedSkills].map((path) => ({ type: 'dir', ref: path })),
         ...(extraSkill.trim()
@@ -66,6 +83,7 @@ export default function CreateSessionDialog({
         name: name.trim() || branch.trim(),
         branch: branch.trim(),
         baseBranch,
+        repoPath,
         templateId: templateId || null,
         overrides,
         kickoffValues,
@@ -83,6 +101,13 @@ export default function CreateSessionDialog({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>New Session</h2>
         <div className="form-grid">
+          <label>Service</label>
+          <select value={repoPath} onChange={(e) => setRepoPath(e.target.value)}>
+            {(servicesInfo?.services ?? []).map((s) => (
+              <option key={s.path} value={s.path}>{s.name}</option>
+            ))}
+          </select>
+
           <label>Name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="defaults to branch name" />
 
@@ -130,10 +155,12 @@ export default function CreateSessionDialog({
           </select>
 
           <label>Ecosystem</label>
-          <label style={{ color: 'var(--text)' }}>
-            <input type="checkbox" checked={ecosystemOn} onChange={(e) => setEcosystemOn(e.target.checked)} />
-            {' '}attach sibling services folder (read-only context)
-          </label>
+          <input
+            value={ecosystemPath}
+            onChange={(e) => setEcosystemPath(e.target.value)}
+            placeholder="read-only context folder; empty = no wider context"
+            title="parent folder attached read-only so Claude can read sibling services"
+          />
 
           {skills.length > 0 && (
             <>

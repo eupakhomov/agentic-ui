@@ -32,6 +32,7 @@ export interface SessionEntity {
   id: string;
   name: string;
   provider: string;
+  repoPath: string;
   branch: string;
   baseBranch: string;
   worktreePath: string;
@@ -81,6 +82,17 @@ export interface SkillInfo {
   name: string;
   description: string;
   path: string;
+}
+
+export interface ServiceInfo {
+  name: string;
+  path: string;
+}
+
+export interface ServicesResponse {
+  ecosystemRoot: string;
+  defaultRepoPath: string;
+  services: ServiceInfo[];
 }
 
 export const LIVE_STATES: SessionState[] = ['STARTING', 'IDLE', 'RUNNING', 'WAITING_INPUT'];

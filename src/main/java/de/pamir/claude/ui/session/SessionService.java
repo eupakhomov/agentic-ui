@@ -59,9 +59,13 @@ public class SessionService {
 
 	// ------------------------------------------------------------------ creation
 
-	public SessionEntity create(String name, String branch, String baseBranch, UUID templateId,
+	public SessionEntity create(String name, String branch, String baseBranch, String repoPath, UUID templateId,
 								JsonNode overrides, Map<String, String> kickoffValues) {
 		enforceSessionLimit();
+		String repo = repoPath == null || repoPath.isBlank() ? props.repoPath() : repoPath;
+		if (!Files.exists(Path.of(repo).resolve(".git"))) {
+			throw new IllegalArgumentException("not a git repository: " + repo);
+		}
 		ObjectNode config = mergedConfig(templateId, overrides);
 		UUID id = UUID.randomUUID();
 		Path worktree = Path.of(props.worktreeRoot()).resolve(id.toString());
@@ -70,7 +74,7 @@ public class SessionService {
 				id, name,
 				text(config, "provider", "claude"),
 				config.get("providerConfig"),
-				props.repoPath(),
+				repo,
 				config.has("ecosystemPath") ? nullableText(config, "ecosystemPath") : props.ecosystemRoot(),
 				stringList(config, "contextDirs"),
 				branch, baseBranch, worktree.toString(),

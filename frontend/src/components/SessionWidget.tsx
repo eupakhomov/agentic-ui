@@ -81,7 +81,12 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
       <div className="widget-header">
         <span className={`dot ${state}`} title={state} />
         <span className="name" title={entity?.name}>{entity?.name ?? sessionId.slice(0, 8)}</span>
-        <span className="chip">{entity?.branch}</span>
+        {entity?.repoPath && (
+          <span className="chip" title={entity.repoPath}>
+            {entity.repoPath.split('/').pop()}
+          </span>
+        )}
+        <span className="chip" title="branch">{entity?.branch}</span>
         {(view.model ?? entity?.model) && <span className="chip">{view.model ?? entity?.model}</span>}
         {entity?.ecosystemPath && <span className="chip" title={`context: ${entity.ecosystemPath}`}>🌐</span>}
         <span className="spacer" />

@@ -33,9 +33,40 @@ public class MetaController {
 		this.worktrees = worktrees;
 	}
 
+	public record ServiceInfo(String name, String path) {
+	}
+
+	public record ServicesResponse(String ecosystemRoot, String defaultRepoPath, List<ServiceInfo> services) {
+	}
+
+	/** Git repos directly under the ecosystem root — the per-session service choices. */
+	@GetMapping("/repo/services")
+	public ServicesResponse services() {
+		List<ServiceInfo> services = new ArrayList<>();
+		Path root = Path.of(props.ecosystemRoot());
+		if (Files.isDirectory(root)) {
+			try (Stream<Path> children = Files.list(root)) {
+				children.filter(c -> Files.exists(c.resolve(".git"))).sorted()
+						.forEach(c -> services.add(new ServiceInfo(c.getFileName().toString(), c.toString())));
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		}
+		Path configured = Path.of(props.repoPath());
+		if (services.stream().noneMatch(s -> s.path().equals(configured.toString()))
+				&& Files.exists(configured.resolve(".git"))) {
+			services.add(0, new ServiceInfo(configured.getFileName().toString(), configured.toString()));
+		}
+		return new ServicesResponse(props.ecosystemRoot(), props.repoPath(), services);
+	}
+
 	@GetMapping("/repo/branches")
-	public List<String> branches() {
-		return worktrees.localBranches(Path.of(props.repoPath()));
+	public List<String> branches(@org.springframework.web.bind.annotation.RequestParam(required = false) String repo) {
+		Path path = Path.of(repo == null || repo.isBlank() ? props.repoPath() : repo);
+		if (!Files.exists(path.resolve(".git"))) {
+			throw new IllegalArgumentException("not a git repository: " + path);
+		}
+		return worktrees.localBranches(path);
 	}
 
 	/** Skills found in the configured skills-root library (dirs containing SKILL.md). */
