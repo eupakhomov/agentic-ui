@@ -29,16 +29,32 @@ export async function toggleNotifications(): Promise<boolean> {
 
 /** Notify only when the dashboard isn't being watched. */
 export function notify(title: string, body: string): void {
-  if (!notificationsEnabled()) {
-    console.debug('[notify] suppressed (disabled or no permission):', title);
-    return;
-  }
   if (document.hasFocus()) {
     console.debug('[notify] suppressed (dashboard window is focused):', title);
     return;
   }
+  // tab-title badge always (survives OS do-not-disturb, e.g. Focus Assist during
+  // full-screen video); desktop notification only when enabled
+  bumpTitleBadge();
+  if (!notificationsEnabled()) {
+    console.debug('[notify] desktop notification skipped (disabled or no permission):', title);
+    return;
+  }
   show(title, body);
 }
+
+let pendingCount = 0;
+const BASE_TITLE = 'claude-ui';
+
+function bumpTitleBadge(): void {
+  pendingCount++;
+  document.title = `(${pendingCount}) ${BASE_TITLE}`;
+}
+
+window.addEventListener('focus', () => {
+  pendingCount = 0;
+  document.title = BASE_TITLE;
+});
 
 function show(title: string, body: string): void {
   const n = new Notification(title, { body, tag: title, requireInteraction: false });
