@@ -34,6 +34,15 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  const views = useStore((s) => s.views);
+  useEffect(() => {
+    const anyRunning = Object.values(views).some((v) => v.state === 'RUNNING' || v.state === 'WAITING_INPUT');
+    if (!anyRunning) return;
+    const guard = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', guard);
+    return () => window.removeEventListener('beforeunload', guard);
+  }, [views]);
+
   const fullLayout = useMemo(() => {
     const known = new Map(layout.map((l) => [l.i, l]));
     return sessionIds.map((id, index) => {

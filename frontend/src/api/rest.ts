@@ -39,6 +39,8 @@ export const api = {
   closeSession: (id: string, dirty: string, commitMessage?: string) =>
     request<null>('DELETE', `/api/sessions/${id}?dirty=${dirty}${commitMessage ? `&commitMessage=${encodeURIComponent(commitMessage)}` : ''}`),
   deleteQueued: (id: string, pos: number) => request<null>('DELETE', `/api/sessions/${id}/queue/${pos}`),
+  patchSession: (id: string, body: { costBudgetUsd?: number; name?: string }) =>
+    request<SessionEntity>('PATCH', `/api/sessions/${id}`, body),
   services: () => request<ServicesResponse>('GET', '/api/repo/services'),
   branches: (repo?: string) =>
     request<string[]>('GET', `/api/repo/branches${repo ? `?repo=${encodeURIComponent(repo)}` : ''}`),

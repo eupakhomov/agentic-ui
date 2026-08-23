@@ -83,6 +83,20 @@ public class SessionController {
 		return service.resume(id);
 	}
 
+	public record PatchSessionRequest(BigDecimal costBudgetUsd, String name) {
+	}
+
+	@org.springframework.web.bind.annotation.PatchMapping("/{id}")
+	public SessionEntity patch(@PathVariable UUID id, @RequestBody PatchSessionRequest request) {
+		if (request.costBudgetUsd() != null) {
+			service.updateCostBudget(id, request.costBudgetUsd());
+		}
+		if (request.name() != null && !request.name().isBlank()) {
+			service.rename(id, request.name().strip());
+		}
+		return sessions.get(id);
+	}
+
 	@DeleteMapping("/{id}")
 	public ResponseEntity<Void> close(@PathVariable UUID id,
 									  @RequestParam(defaultValue = "fail") String dirty,

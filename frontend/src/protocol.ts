@@ -4,7 +4,7 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermiss
 
 export type SessionState =
   | 'CREATING' | 'PROVISIONING' | 'STARTING' | 'IDLE' | 'RUNNING'
-  | 'WAITING_INPUT' | 'CRASHED' | 'CLOSING' | 'CLOSED' | 'FAILED';
+  | 'WAITING_INPUT' | 'PARKED' | 'CRASHED' | 'CLOSING' | 'CLOSED' | 'FAILED';
 
 export interface Capabilities {
   permissionModes: PermissionMode[];
@@ -44,6 +44,7 @@ export interface SessionEntity {
   contextDirs: string[];
   thinking: string | null;
   effort: string | null;
+  costBudgetUsd: number | null;
   state: SessionState;
   kickoffPrompt: string | null;
 }

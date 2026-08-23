@@ -276,8 +276,18 @@ export async function runSession(config: SidecarConfig): Promise<never> {
             numTurns: message.num_turns,
           });
           break;
-        case 'rate_limit_event' as never:
-          break; // informational; backend rate-limit surfacing arrives in Phase 4
+        case 'rate_limit_event' as never: {
+          // surface only non-nominal rate-limit statuses so the UI shows trouble, not noise
+          const rl = (message as unknown as { rate_limit?: { status?: string } }).rate_limit;
+          if (rl?.status && rl.status !== 'allowed') {
+            writeEvent({
+              type: 'error',
+              message: `provider rate limit: ${JSON.stringify(rl).slice(0, 300)}`,
+              fatal: false,
+            });
+          }
+          break;
+        }
         default:
           log('unhandled SDK message type:', (message as { type: string }).type);
       }

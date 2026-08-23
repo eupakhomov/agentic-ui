@@ -56,17 +56,41 @@ public class SidecarManager {
 		}
 		try {
 			Process process = builder.start();
-			SidecarHandle handle = new SidecarHandle(session.id(), process, mapper, onEvent, (h, code) -> {
+			Path stderrLog = Path.of(props.logDir(), "sidecar", session.id() + ".log");
+			SidecarHandle handle = new SidecarHandle(session.id(), process, mapper, stderrLog, onEvent, (h, code) -> {
 				handles.remove(session.id(), h);
+				deletePidFile(session);
 				onExit.accept(h, code);
 			});
 			handles.put(session.id(), handle);
+			writePidFile(session, handle.pid());
 			log.info("session {}: sidecar pid {} spawned ({})", session.id(), handle.pid(), String.join(" ", command));
 			return handle;
 		} catch (IOException e) {
 			throw new IllegalStateException("failed to start sidecar: " + e.getMessage()
 					+ " (is node on the backend's PATH?)", e);
 		}
+	}
+
+	/** PID file inside the worktree lets a restarted backend kill orphans from a kill -9'd predecessor. */
+	private void writePidFile(SessionEntity session, long pid) {
+		try {
+			Files.writeString(pidFile(session), Long.toString(pid));
+		} catch (IOException e) {
+			log.warn("session {}: cannot write pid file: {}", session.id(), e.getMessage());
+		}
+	}
+
+	private void deletePidFile(SessionEntity session) {
+		try {
+			Files.deleteIfExists(pidFile(session));
+		} catch (IOException ignored) {
+			// worktree may already be gone
+		}
+	}
+
+	public static Path pidFile(SessionEntity session) {
+		return Path.of(session.worktreePath(), ".claude-ui.pid");
 	}
 
 	public SidecarHandle handle(UUID sessionId) {

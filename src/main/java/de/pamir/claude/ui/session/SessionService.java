@@ -145,7 +145,13 @@ public class SessionService {
 			SessionEntity session = sessions.get(id);
 			SessionState state = session.state();
 			if (state == SessionState.IDLE && sidecars.hasLiveHandle(id)) {
+				requireBudget(session);
 				dispatch(id, text);
+			} else if (state == SessionState.PARKED) {
+				requireBudget(session);
+				sessions.enqueue(id, text);
+				recordQueue(id);
+				wake(session);
 			} else if (state == SessionState.CREATING || state == SessionState.PROVISIONING
 					|| state == SessionState.STARTING || state == SessionState.RUNNING
 					|| state == SessionState.WAITING_INPUT) {
@@ -155,6 +161,19 @@ public class SessionService {
 				throw new IllegalStateException("session is " + state + " and does not accept messages");
 			}
 		}
+	}
+
+	public void updateCostBudget(UUID id, java.math.BigDecimal budget) {
+		sessions.get(id);
+		sessions.updateCostBudget(id, budget);
+		record(id, "budget_updated", mapper.createObjectNode()
+				.put("costBudgetUsd", budget == null ? null : budget.toPlainString()));
+	}
+
+	public void rename(UUID id, String name) {
+		sessions.get(id);
+		sessions.updateName(id, name);
+		record(id, "session_renamed", mapper.createObjectNode().put("name", name).put("auto", false));
 	}
 
 	public void respondPermission(UUID id, JsonNode command) {
@@ -233,6 +252,8 @@ public class SessionService {
 			case "permission_request" -> transition(id, SessionState.WAITING_INPUT);
 			case "permission_mode_changed" -> sessions.updatePermissionMode(id, event.path("mode").asText());
 			case "turn_complete" -> {
+				journal.deleteDeltasBefore(id, journal.lastSeq(id));
+				maybeAutoTitle(id);
 				synchronized (lock(id)) {
 					becomeIdleAndDrainQueue(id);
 				}
@@ -280,10 +301,36 @@ public class SessionService {
 
 	private void becomeIdleAndDrainQueue(UUID id) {
 		transition(id, SessionState.IDLE);
+		SessionEntity session = sessions.get(id);
+		if (budgetExhausted(session)) {
+			if (!sessions.queued(id).isEmpty()) {
+				record(id, "budget_exhausted", budgetPayload(session));
+			}
+			return; // queued messages stay queued until the budget is raised
+		}
 		sessions.pollQueue(id).ifPresent(next -> {
 			recordQueue(id);
 			dispatch(id, next.text());
 		});
+	}
+
+	private boolean budgetExhausted(SessionEntity session) {
+		return session.costBudgetUsd() != null
+				&& journal.costToDate(session.id()).compareTo(session.costBudgetUsd()) >= 0;
+	}
+
+	private void requireBudget(SessionEntity session) {
+		if (budgetExhausted(session)) {
+			record(session.id(), "budget_exhausted", budgetPayload(session));
+			throw new IllegalStateException("cost budget exhausted ($" + session.costBudgetUsd()
+					+ "); raise the budget to continue");
+		}
+	}
+
+	private ObjectNode budgetPayload(SessionEntity session) {
+		return mapper.createObjectNode()
+				.put("costBudgetUsd", session.costBudgetUsd().toPlainString())
+				.put("costToDate", journal.costToDate(session.id()).toPlainString());
 	}
 
 	private void transition(UUID id, SessionState state) {
@@ -395,15 +442,113 @@ public class SessionService {
 		return node.hasNonNull(field) && node.get(field).isArray() ? node.get(field) : mapper.createArrayNode();
 	}
 
+	// ------------------------------------------------------------------ parking
+
+	/** IDLE sessions whose sidecar has been quiet past the timeout are parked. */
+	@org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60_000)
+	void parkIdleSessions() {
+		var cutoff = java.time.Instant.now().minus(java.time.Duration.ofMinutes(props.idleParkMinutes()));
+		for (SessionEntity session : sessions.findByStates(List.of(SessionState.IDLE))) {
+			if (session.updatedAt() != null && session.updatedAt().isBefore(cutoff)
+					&& session.providerSessionId() != null && sidecars.hasLiveHandle(session.id())) {
+				synchronized (lock(session.id())) {
+					if (sessions.get(session.id()).state() != SessionState.IDLE) {
+						continue;
+					}
+					log.info("parking idle session {}", session.id());
+					transition(session.id(), SessionState.PARKED);
+					sidecars.terminate(session.id());
+				}
+			}
+		}
+	}
+
+	private void wake(SessionEntity session) {
+		log.info("waking parked session {}", session.id());
+		transition(session.id(), SessionState.STARTING);
+		try {
+			spawn(session, true);
+		} catch (RuntimeException e) {
+			record(session.id(), "error", mapper.createObjectNode()
+					.put("message", "wake failed: " + e.getMessage()).put("fatal", true));
+			transition(session.id(), SessionState.CRASHED);
+			throw e;
+		}
+	}
+
+	// ------------------------------------------------------------------ auto-titling
+
+	/** After the first turn, name sessions still carrying their default (= branch) name. */
+	private void maybeAutoTitle(UUID id) {
+		SessionEntity session = sessions.find(id).orElse(null);
+		if (session == null || !session.name().equals(session.branch())) {
+			return;
+		}
+		var events = journal.readAfter(id, 0);
+		long turns = events.stream().filter(e -> e.type().equals("turn_complete")).count();
+		if (turns != 1) {
+			return;
+		}
+		String userText = events.stream().filter(e -> e.type().equals("user_message")).findFirst()
+				.map(e -> e.payload().path("text").asText()).orElse("");
+		if (userText.isBlank()) {
+			return;
+		}
+		Thread.ofVirtual().name("auto-title-" + id).start(() -> {
+			try {
+				Process p = new ProcessBuilder("claude", "-p", "--model", "haiku",
+						"Generate a short title (max 6 words) for a coding session that starts with this request. "
+								+ "Output ONLY the title, no quotes:\n\n" + userText.substring(0, Math.min(500, userText.length())))
+						.redirectErrorStream(false).start();
+				String title = new String(p.getInputStream().readAllBytes()).strip();
+				if (p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0
+						&& !title.isBlank() && title.length() <= 80) {
+					SessionEntity current = sessions.find(id).orElse(null);
+					if (current != null && current.name().equals(current.branch())) {
+						sessions.updateName(id, title);
+						record(id, "session_renamed", mapper.createObjectNode().put("name", title).put("auto", true));
+					}
+				} else {
+					p.destroyForcibly();
+				}
+			} catch (Exception e) {
+				log.debug("auto-title failed for {}: {}", id, e.getMessage());
+			}
+		});
+	}
+
 	// ------------------------------------------------------------------ startup sweep
 
 	@EventListener(ApplicationReadyEvent.class)
 	void markOrphanedSessionsCrashed() {
 		for (SessionEntity session : sessions.findByStates(List.copyOf(SessionState.LIVE))) {
+			killOrphanSidecar(session);
 			log.info("startup sweep: session {} was {} -> CRASHED", session.id(), session.state());
 			record(session.id(), "error", mapper.createObjectNode()
 					.put("message", "backend restarted while session was live").put("fatal", true));
 			transition(session.id(), SessionState.CRASHED);
+		}
+	}
+
+	/** A kill -9'd backend leaves sidecars running; their PID files let us reap them. */
+	private void killOrphanSidecar(SessionEntity session) {
+		Path pidFile = de.pamir.claude.ui.process.SidecarManager.pidFile(session);
+		try {
+			if (!Files.exists(pidFile)) {
+				return;
+			}
+			long pid = Long.parseLong(Files.readString(pidFile).strip());
+			ProcessHandle.of(pid).ifPresent(handle -> {
+				String cmd = handle.info().commandLine().orElse("");
+				if (cmd.contains("dist/index.js")) {
+					log.info("killing orphan sidecar pid {} for session {}", pid, session.id());
+					handle.descendants().forEach(ProcessHandle::destroyForcibly);
+					handle.destroyForcibly();
+				}
+			});
+			Files.deleteIfExists(pidFile);
+		} catch (IOException | NumberFormatException e) {
+			log.warn("orphan check for {} failed: {}", session.id(), e.getMessage());
 		}
 	}
 }

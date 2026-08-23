@@ -87,7 +87,12 @@ echo "UI: http://localhost:8080  token: $(cat /tmp/claude-ui.token)"
   only forwards wildcard binds, so a loopback-bound server is invisible to the
   Windows browser (ERR_CONNECTION_REFUSED). The startup guard therefore requires a
   token (`CLAUDE_UI_TOKEN`); tokenless is only allowed on `127.0.0.1`.
-- Logs: `tail -f /tmp/claude-ui.log`. Token again: `cat /tmp/claude-ui.token`.
+- Logs: `tail -f /tmp/claude-ui.log` for raw stdout; structured logs land in `logs/`
+  (override dir with env `CLAUDE_UI_LOG_DIR`):
+  - `logs/claude-ui.log` — everything INFO+, rolled daily/10MB, 14 days kept
+  - `logs/error.log` — ERROR only with full stack traces, 30 days kept
+  - `logs/sidecar/<sessionId>.log` — each session's sidecar stderr (timestamped)
+- Token again: `cat /tmp/claude-ui.token`.
 
 ### Stop / kill
 

@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,8 @@ public record AppProperties(
 		String skillsRoot,
 		int maxSessions,
 		String authToken,
+		@DefaultValue("logs") String logDir,
+		@DefaultValue("30") int idleParkMinutes,
 		Map<String, Provider> providers
 ) {
 

@@ -44,11 +44,13 @@ public class EventJournal {
 		flusher.scheduleWithFixedDelay(this::flushAll, FLUSH_INTERVAL_MS, FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
 	}
 
+	private static final int PAYLOAD_CAP_BYTES = 64 * 1024;
+
 	/** Assigns the next seq, journals the event (possibly buffered), returns the envelope. */
 	public JournalEvent append(UUID sessionId, String type, JsonNode payload) {
 		PerSession ps = sessions.computeIfAbsent(sessionId, this::load);
 		synchronized (ps) {
-			JournalEvent event = new JournalEvent(++ps.lastSeq, Instant.now(), type, payload);
+			JournalEvent event = new JournalEvent(++ps.lastSeq, Instant.now(), type, cap(payload));
 			ps.buffer.add(event);
 			if (!"stream_delta".equals(type) || ps.buffer.size() >= FLUSH_THRESHOLD) {
 				flush(sessionId, ps);
@@ -84,6 +86,29 @@ public class EventJournal {
 						rs.getString("type"),
 						readNode(rs.getString("payload"))))
 				.list();
+	}
+
+	/**
+	 * Coalescing: once a turn is complete, its stream_delta rows are redundant with the
+	 * journaled assistant_message events — drop them so long sessions stay bounded.
+	 */
+	public int deleteDeltasBefore(UUID sessionId, long beforeSeq) {
+		flush(sessionId);
+		return jdbc.sql("DELETE FROM session_event WHERE session_id = ? AND type = 'stream_delta' AND seq < ?")
+				.params(sessionId, beforeSeq).update();
+	}
+
+	/** Defense in depth: no single journal row grows beyond the cap. */
+	private JsonNode cap(JsonNode payload) {
+		String serialized = write(payload);
+		if (serialized.length() <= PAYLOAD_CAP_BYTES) {
+			return payload;
+		}
+		var trimmed = mapper.createObjectNode();
+		trimmed.put("truncated", true);
+		trimmed.put("originalBytes", serialized.length());
+		trimmed.put("preview", serialized.substring(0, 4096));
+		return trimmed;
 	}
 
 	/** Sum of turn_complete costUsd for the session (0 if none). */

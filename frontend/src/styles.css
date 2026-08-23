@@ -38,6 +38,7 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: 12.5p
 .dot.WAITING_INPUT { background: var(--amber); animation: pulse 1.2s infinite; }
 .dot.CRASHED, .dot.FAILED { background: var(--red); }
 .dot.CLOSED, .dot.CLOSING { background: var(--muted); }
+.dot.PARKED { background: var(--muted); border: 2px solid var(--green); box-sizing: border-box; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 .chip { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
 .chip.mode-acceptEdits { border-color: var(--amber); color: var(--amber); }

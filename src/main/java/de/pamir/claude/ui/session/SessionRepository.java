@@ -86,6 +86,15 @@ public class SessionRepository {
 				.params(mode, id).update();
 	}
 
+	public void updateName(UUID id, String name) {
+		jdbc.sql("UPDATE session SET name = ?, updated_at = now() WHERE id = ?").params(name, id).update();
+	}
+
+	public void updateCostBudget(UUID id, BigDecimal budget) {
+		jdbc.sql("UPDATE session SET cost_budget_usd = ?, updated_at = now() WHERE id = ?")
+				.params(budget, id).update();
+	}
+
 	public long countByStates(List<SessionState> states) {
 		return jdbc.sql("SELECT count(*) FROM session WHERE state = ANY(?::text[])")
 				.params((Object) states.stream().map(Enum::name).toArray(String[]::new))

@@ -33,6 +33,8 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
         permissionMode: d.session.permissionMode,
         capabilities: v.capabilities ?? d.session.capabilities,
         model: v.model ?? d.session.model,
+        name: v.name ?? d.session.name,
+        costBudgetUsd: v.costBudgetUsd ?? d.session.costBudgetUsd,
       }));
     }).catch(() => setEntity(null));
     const ws = new WsSession(sessionId, (e) => apply(sessionId, e), (s) => setWsStatus(sessionId, s));
@@ -68,6 +70,7 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
 
   const state = view?.state ?? 'CREATING';
   const running = state === 'RUNNING' || state === 'WAITING_INPUT';
+  const budget = view?.costBudgetUsd ?? entity?.costBudgetUsd ?? null;
   const widgetClass = useMemo(() => {
     if (state === 'WAITING_INPUT') return 'widget waiting';
     if (state === 'CRASHED' || state === 'FAILED') return 'widget crashed';
@@ -80,7 +83,16 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
     <div className={widgetClass}>
       <div className="widget-header">
         <span className={`dot ${state}`} title={state} />
-        <span className="name" title={entity?.name}>{entity?.name ?? sessionId.slice(0, 8)}</span>
+        <span
+          className="name"
+          title={`${view.name ?? entity?.name ?? ''} — double-click to rename`}
+          onDoubleClick={() => {
+            const next = prompt('Session name:', view.name ?? entity?.name ?? '');
+            if (next?.trim()) void api.patchSession(sessionId, { name: next.trim() });
+          }}
+        >
+          {view.name ?? entity?.name ?? sessionId.slice(0, 8)}
+        </span>
         {entity?.repoPath && (
           <span className="chip" title={entity.repoPath}>
             {entity.repoPath.split('/').pop()}
@@ -98,7 +110,20 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
         >
           {MODE_LABEL[view.permissionMode]}
         </span>
-        <span className="chip" title="session cost to date">${view.costToDate.toFixed(3)}</span>
+        <span
+          className={`chip${budget !== null ? ' clickable' : ''}`}
+          title={budget !== null
+            ? `$${view.costToDate.toFixed(3)} of $${budget} budget — click to change`
+            : 'session cost to date'}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => {
+            if (budget === null) return;
+            const next = prompt('Cost budget (USD):', String(budget));
+            if (next && !Number.isNaN(Number(next))) void api.patchSession(sessionId, { costBudgetUsd: Number(next) });
+          }}
+        >
+          ${view.costToDate.toFixed(3)}{budget !== null ? ` / $${budget}` : ''}
+        </span>
         {state === 'CRASHED' && (
           <button onMouseDown={(e) => e.stopPropagation()} onClick={() => void resume()}>Resume</button>
         )}
@@ -127,7 +152,7 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
           )}
           <div className="row">
             <textarea
-              placeholder={running ? 'type to queue a message…' : 'message…'}
+              placeholder={state === 'PARKED' ? 'parked — sending wakes the session…' : running ? 'type to queue a message…' : 'message…'}
               value={input}
               rows={Math.min(5, input.split('\n').length)}
               onChange={(e) => setInput(e.target.value)}

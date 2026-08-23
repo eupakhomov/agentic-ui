@@ -11,6 +11,10 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -33,11 +37,13 @@ public class SidecarHandle {
 	private final Deque<String> stderrTail = new ArrayDeque<>();
 	private volatile boolean shutdownRequested;
 
-	SidecarHandle(UUID sessionId, Process process, ObjectMapper mapper,
+	SidecarHandle(UUID sessionId, Process process, ObjectMapper mapper, Path stderrLogFile,
 				  Consumer<JsonNode> onEvent, BiConsumer<SidecarHandle, Integer> onExit) {
 		this.sessionId = sessionId;
 		this.process = process;
 		this.stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
+
+		BufferedWriter stderrLog = openStderrLog(stderrLogFile);
 
 		Thread.ofVirtual().name("sidecar-out-" + sessionId).start(() -> {
 			try (BufferedReader reader = new BufferedReader(
@@ -69,13 +75,43 @@ public class SidecarHandle {
 							stderrTail.removeFirst();
 						}
 					}
+					if (stderrLog != null) {
+						try {
+							stderrLog.write(LocalDateTime.now() + " " + line);
+							stderrLog.newLine();
+							stderrLog.flush();
+						} catch (IOException ignored) {
+							// keep draining even if the log file dies
+						}
+					}
 				}
 			} catch (IOException ignored) {
 				// stream closed with the process
+			} finally {
+				if (stderrLog != null) {
+					try {
+						stderrLog.close();
+					} catch (IOException ignored) {
+					}
+				}
 			}
 		});
 
 		process.onExit().thenAccept(p -> onExit.accept(this, p.exitValue()));
+	}
+
+	private static BufferedWriter openStderrLog(Path file) {
+		if (file == null) {
+			return null;
+		}
+		try {
+			Files.createDirectories(file.getParent());
+			return Files.newBufferedWriter(file, StandardCharsets.UTF_8,
+					StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+		} catch (IOException e) {
+			log.warn("cannot open sidecar stderr log {}: {}", file, e.getMessage());
+			return null;
+		}
 	}
 
 	public synchronized void send(String jsonLine) {

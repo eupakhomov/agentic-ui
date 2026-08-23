@@ -10,6 +10,8 @@ public enum SessionState {
 	IDLE,
 	RUNNING,
 	WAITING_INPUT,
+	/** Sidecar shut down after idle timeout; transparently resumed on the next message. */
+	PARKED,
 	CRASHED,
 	CLOSING,
 	CLOSED,

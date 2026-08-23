@@ -1,5 +1,13 @@
 # Phase 4 — Lifecycle Safety & Hardening
 
+> Implementation notes (as built): file logging added beyond plan — Logback rolling
+> `logs/claude-ui.log` + `logs/error.log` (stack traces) + per-session sidecar stderr
+> at `logs/sidecar/<id>.log`. Auto-title runs a one-shot `claude -p --model haiku`
+> (user's CLI login, no API key needed) and only ever renames a session still carrying
+> its default (= branch) name. Parking clears the worktree PID file on process exit.
+> Not exercised live (code-reviewed only): PID-orphan reap after a `kill -9`'d
+> backend, and real provider rate-limit surfacing (cannot be triggered on demand).
+
 **Goal:** make the system boringly reliable: clean shutdown paths, orphan cleanup,
 resource limits, error surfacing, and journal hygiene. Mostly backend work with small
 UI touches. This phase turns the demo into a daily-driver.

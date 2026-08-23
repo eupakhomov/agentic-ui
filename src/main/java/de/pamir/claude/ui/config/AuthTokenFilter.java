@@ -23,7 +23,11 @@ public class AuthTokenFilter extends OncePerRequestFilter {
 
 	@Override
 	protected boolean shouldNotFilter(HttpServletRequest request) {
-		return !request.getRequestURI().startsWith("/api/");
+		String uri = request.getRequestURI();
+		if (uri.startsWith("/actuator/")) {
+			return uri.startsWith("/actuator/health"); // health stays open; the rest needs the token
+		}
+		return !uri.startsWith("/api/");
 	}
 
 	@Override

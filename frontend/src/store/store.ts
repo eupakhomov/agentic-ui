@@ -20,6 +20,8 @@ export interface SessionView {
   permissionMode: PermissionMode;
   capabilities: Capabilities | null;
   model: string | null;
+  name: string | null;
+  costBudgetUsd: number | null;
   transcript: TranscriptItem[];
   queued: QueuedMessage[];
   costToDate: number;
@@ -32,6 +34,8 @@ const emptyView = (): SessionView => ({
   permissionMode: 'default',
   capabilities: null,
   model: null,
+  name: null,
+  costBudgetUsd: null,
   transcript: [],
   queued: [],
   costToDate: 0,
@@ -87,13 +91,15 @@ function reduce(view: SessionView, e: Envelope): SessionView {
       break;
     }
     case 'assistant_message': {
-      // close the streamed text block; recover text if deltas were absent (edge cases)
+      // close the streamed text block; recover content when deltas were coalesced away
       const tail = last(t);
       if (tail?.kind === 'text' && !tail.done) t[t.length - 1] = { ...tail, done: true };
       else {
-        const blocks = (p['content'] as { type: string; text?: string }[] | undefined) ?? [];
+        const blocks = (p['content'] as { type: string; text?: string; thinking?: string }[] | undefined) ?? [];
+        const thinkingText = blocks.filter((b) => b.type === 'thinking' && b.thinking).map((b) => b.thinking).join('');
+        if (thinkingText) t.push({ kind: 'thinking', text: thinkingText, estimatedTokens: 0, done: true });
         const text = blocks.filter((b) => b.type === 'text' && b.text).map((b) => b.text).join('');
-        if (text && tail?.kind !== 'text') t.push({ kind: 'text', text, done: true });
+        if (text) t.push({ kind: 'text', text, done: true });
       }
       markThinkingDone(t);
       break;
@@ -156,6 +162,18 @@ function reduce(view: SessionView, e: Envelope): SessionView {
       break;
     case 'interrupt':
       t.push({ kind: 'note', level: 'info', text: 'interrupted by user' });
+      break;
+    case 'session_renamed':
+      v.name = p['name'] as string;
+      break;
+    case 'budget_updated':
+      v.costBudgetUsd = p['costBudgetUsd'] == null ? null : Number(p['costBudgetUsd']);
+      break;
+    case 'budget_exhausted':
+      t.push({
+        kind: 'note', level: 'warn',
+        text: `cost budget exhausted ($${p['costToDate']} of $${p['costBudgetUsd']}) — raise the budget to continue`,
+      });
       break;
     default:
       break; // exiting, command echoes, future types

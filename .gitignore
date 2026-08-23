@@ -45,4 +45,4 @@ application-local.yaml
 .claude/settings.local.json*
 
 ### Log files ###
-/log/
+/logs/
