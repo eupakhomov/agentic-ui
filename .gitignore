@@ -40,3 +40,6 @@ frontend/dist/
 ### Local secrets/config ###
 application-local.yaml
 .env
+
+### Claude Code local settings ###
+.claude/settings.local.json*

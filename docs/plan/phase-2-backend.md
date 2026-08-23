@@ -49,7 +49,8 @@ CREATE TABLE session (
   skill_sources     JSONB NOT NULL DEFAULT '[]',   -- [{type: dir|file|index|repo, ref}, …]; resolved+materialized at provisioning
   agent_sources     JSONB NOT NULL DEFAULT '[]',   -- same shapes; materialized into .claude/agents/
   instructions      TEXT,                  -- extra system prompt (--append-system-prompt)
-  max_thinking_tokens INT,                -- null = SDK default; 0 = thinking off
+  thinking          TEXT,                  -- 'off' | 'adaptive' | '<budgetTokens>'; null = provider default
+  effort            TEXT,                  -- low|medium|high|xhigh|max; null = provider default
   max_turns         INT,                   -- cap agentic turns per user message
   fallback_model    TEXT,
   cost_budget_usd   NUMERIC,               -- null = unlimited; enforced in Phase 4

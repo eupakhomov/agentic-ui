@@ -47,12 +47,15 @@ node dist/index.js \
   [--mcp-config <path.json>] \
   [--append-system-prompt <text>] \
   [--context-dir <path>]... \
-  [--max-thinking-tokens <n>] \
+  [--thinking off|adaptive|<budgetTokens>] \
+  [--effort low|medium|high|xhigh|max] \
   [--max-turns <n>] \
   [--fallback-model <model>]
 ```
 
-`--max-thinking-tokens` maps to SDK `maxThinkingTokens` (0 = thinking off);
+`--thinking` maps to the SDK `thinking` config (disabled / adaptive / enabled+budget)
+and `--effort` to the SDK reasoning-effort level — together these are the "thinking
+preset" (the SDK's `maxThinkingTokens` is deprecated);
 `--max-turns` caps agentic turns per user message (runaway protection, SDK `maxTurns`);
 `--fallback-model` is used by the SDK when the primary model is overloaded.
 

@@ -1,0 +1,19 @@
+{
+  "name": "claude-ui-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider adapter (Claude reference implementation) for claude-ui sessions. NDJSON over stdio.",
+  "scripts": {
+    "build": "tsc",
+    "drive": "npm run build && node dist/drive.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
