@@ -94,7 +94,12 @@ cd frontend && npm install && npm run dev     # Vite on :5173, proxies /api and 
 ```
 
 Production build is wired into `mvn package` (frontend-maven-plugin → `static/`), so
-the backend jar serves everything.
+the backend jar serves everything at http://localhost:8080/.
+
+**Build speed**: the FIRST `mvn package` downloads a Node distro into `target/` and
+runs `npm install` — slow on /mnt/d (DrvFS), expect ~10+ min. Later builds are fast.
+To skip the frontend rebuild entirely (reuses `frontend/dist`):
+`./mvnw package -DskipTests -Dskip.installnodenpm -Dskip.npm`
 
 ## Conventions
 
