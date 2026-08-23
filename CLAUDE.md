@@ -14,7 +14,9 @@ Agent SDK). Single user, LAN deployment, PostgreSQL persistence.
 ├─ docker-compose.yaml     # PostgreSQL 17 (pgvector image)
 ├─ docs/
 │  ├─ plan/                # Phase plans; README.md holds the AUTHORITATIVE decision log
-│  └─ PROTOCOL.md          # Sidecar/WS message contracts (written during Phases 1–2)
+│  ├─ PROTOCOL.md          # Sidecar/WS message contracts
+│  ├─ ARCHITECTURE.md      # As-built architecture + backlog implementation sketches
+│  └─ DEPLOY.md            # Deploying on another machine (macOS) — prereqs, run, update
 └─ CLAUDE.md               # this file
 ```
 
