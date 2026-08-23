@@ -38,21 +38,23 @@ public class SessionWebSocketHandler extends TextWebSocketHandler implements Sub
 
 	private static final Logger log = LoggerFactory.getLogger(SessionWebSocketHandler.class);
 	private static final int SEND_TIME_LIMIT_MS = 10_000;
-	private static final int SEND_BUFFER_LIMIT = 1024 * 1024;
 
 	private final SessionService service;
 	private final SessionRepository sessions;
 	private final EventJournal journal;
 	private final SessionEventBus bus;
 	private final ObjectMapper mapper;
+	private final int sendBufferLimit;
 
-	public SessionWebSocketHandler(SessionService service, SessionRepository sessions,
-								   EventJournal journal, SessionEventBus bus, ObjectMapper mapper) {
+	public SessionWebSocketHandler(SessionService service, SessionRepository sessions, EventJournal journal,
+								   SessionEventBus bus, ObjectMapper mapper,
+								   de.pamir.claude.ui.config.AppProperties props) {
 		this.service = service;
 		this.sessions = sessions;
 		this.journal = journal;
 		this.bus = bus;
 		this.mapper = mapper;
+		this.sendBufferLimit = props.wsSendBufferBytes();
 	}
 
 	@Override
@@ -68,7 +70,7 @@ public class SessionWebSocketHandler extends TextWebSocketHandler implements Sub
 			return;
 		}
 		long afterSeq = afterSeqOf(rawSession.getUri());
-		var ws = new ConcurrentWebSocketSessionDecorator(rawSession, SEND_TIME_LIMIT_MS, SEND_BUFFER_LIMIT);
+		var ws = new ConcurrentWebSocketSessionDecorator(rawSession, SEND_TIME_LIMIT_MS, sendBufferLimit);
 
 		Subscriber subscriber = new Subscriber(ws);
 		rawSession.getAttributes().put("sessionId", sessionId);

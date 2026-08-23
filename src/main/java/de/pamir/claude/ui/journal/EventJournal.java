@@ -34,17 +34,17 @@ public class EventJournal {
 
 	private final JdbcClient jdbc;
 	private final ObjectMapper mapper;
+	private final int payloadCapBytes;
 	private final Map<UUID, PerSession> sessions = new ConcurrentHashMap<>();
 	private final ScheduledExecutorService flusher =
 			Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual().name("journal-flusher").factory());
 
-	public EventJournal(JdbcClient jdbc, ObjectMapper mapper) {
+	public EventJournal(JdbcClient jdbc, ObjectMapper mapper, de.pamir.claude.ui.config.AppProperties props) {
 		this.jdbc = jdbc;
 		this.mapper = mapper;
+		this.payloadCapBytes = props.journalPayloadCapBytes();
 		flusher.scheduleWithFixedDelay(this::flushAll, FLUSH_INTERVAL_MS, FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
 	}
-
-	private static final int PAYLOAD_CAP_BYTES = 64 * 1024;
 
 	/** Assigns the next seq, journals the event (possibly buffered), returns the envelope. */
 	public JournalEvent append(UUID sessionId, String type, JsonNode payload) {
@@ -101,7 +101,7 @@ public class EventJournal {
 	/** Defense in depth: no single journal row grows beyond the cap. */
 	private JsonNode cap(JsonNode payload) {
 		String serialized = write(payload);
-		if (serialized.length() <= PAYLOAD_CAP_BYTES) {
+		if (serialized.length() <= payloadCapBytes) {
 			return payload;
 		}
 		var trimmed = mapper.createObjectNode();

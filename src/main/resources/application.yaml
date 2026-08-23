@@ -21,10 +21,14 @@ management:
 
 claude-ui:
   repo-path: ${CLAUDE_UI_REPO:/mnt/d/projects/claude-ui}
-  worktree-root: ${HOME}/claude-worktrees
-  ecosystem-root: /mnt/d/projects
-  skills-root: ${HOME}/claude-skills
-  max-sessions: 4
+  worktree-root: ${CLAUDE_UI_WORKTREE_ROOT:${HOME}/claude-worktrees}
+  ecosystem-root: ${CLAUDE_UI_ECOSYSTEM_ROOT:/mnt/d/projects}
+  skills-root: ${CLAUDE_UI_SKILLS_ROOT:${HOME}/claude-skills}
+  max-sessions: ${CLAUDE_UI_MAX_SESSIONS:4}
+  idle-park-minutes: ${CLAUDE_UI_IDLE_PARK_MINUTES:30}
+  log-dir: ${CLAUDE_UI_LOG_DIR:logs}
+  journal-payload-cap-bytes: ${CLAUDE_UI_JOURNAL_PAYLOAD_CAP:65536}
+  ws-send-buffer-bytes: ${CLAUDE_UI_WS_BUFFER_LIMIT:1048576}
   auth-token: ${CLAUDE_UI_TOKEN:}
   providers:
     claude:

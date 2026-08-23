@@ -36,7 +36,7 @@ function thinkingConfig(
   return { type: 'enabled', budgetTokens: setting, display: 'summarized' };
 }
 
-const TOOL_OUTPUT_LIMIT = 16 * 1024;
+const TOOL_OUTPUT_LIMIT = Number(process.env['CLAUDE_UI_TOOL_OUTPUT_LIMIT'] ?? 16 * 1024);
 
 /** Unbounded async FIFO bridging stdin commands to the SDK's streaming input. */
 class AsyncQueue<T> {

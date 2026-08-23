@@ -139,6 +139,36 @@ runs `npm install` — slow on /mnt/d (DrvFS), expect ~10+ min. Later builds are
 To skip the frontend rebuild entirely (reuses `frontend/dist`):
 `./mvnw package -DskipTests -Dskip.installnodenpm -Dskip.npm`
 
+## Limits & caps
+
+All operational limits are env-tunable (read at backend startup; the sidecar inherits
+the backend's environment):
+
+| Env var | Default | What it caps |
+|---|---|---|
+| `CLAUDE_UI_MAX_SESSIONS` | `4` | Concurrent live sidecar processes; create/resume beyond it → 409. PARKED sessions don't count |
+| `CLAUDE_UI_IDLE_PARK_MINUTES` | `30` | Minutes a session may sit IDLE before its sidecar is shut down (PARKED); next message transparently wakes it |
+| `CLAUDE_UI_TOOL_OUTPUT_LIMIT` | `16384` | Bytes of tool output kept per result (sidecar truncates, `truncated` flag set) |
+| `CLAUDE_UI_JOURNAL_PAYLOAD_CAP` | `65536` | Max bytes for one journal event payload; larger payloads stored as a truncated preview |
+| `CLAUDE_UI_WS_BUFFER_LIMIT` | `1048576` | Per-client WS outbound buffer; a slow consumer overflowing it is disconnected (reconnects + replays losslessly) |
+| `CLAUDE_UI_LOG_DIR` | `logs` | Log directory (backend rolling logs + per-session sidecar stderr) |
+| `CLAUDE_UI_TOKEN` | — | Dashboard/API auth token (required for non-loopback binds) |
+| `CLAUDE_UI_REPO` | `/mnt/d/projects/claude-ui` | Default service repo (per-session selectable in the UI) |
+| `CLAUDE_UI_WORKTREE_ROOT` | `~/claude-worktrees` | Where session worktrees live |
+| `CLAUDE_UI_ECOSYSTEM_ROOT` | `/mnt/d/projects` | Default read-only context folder + service discovery root |
+| `CLAUDE_UI_SKILLS_ROOT` | `~/claude-skills` | Skills library scanned for the create-dialog picker |
+
+**Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
+`costBudgetUsd` (turns are refused once cumulative cost reaches it; in-flight turns
+finish; raise via the widget's cost chip), `maxTurns` (agentic turns per prompt),
+`thinking` budget and `effort` level.
+
+**Fixed internals** (code constants, for awareness): stream_delta journal batching
+50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100
+lines; WS send timeout 10 s; git command timeout 60 s; sidecar shutdown grace 5 s + 2 s
+before force-kill; auto-title ≤6 words / 60 s timeout; log rotation 10 MB daily,
+14 days app / 30 days errors (200 MB / 100 MB total caps).
+
 ## Conventions
 
 - Ports: backend 8080, Vite 5173, Postgres 5432.

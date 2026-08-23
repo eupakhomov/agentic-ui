@@ -16,6 +16,8 @@ public record AppProperties(
 		String authToken,
 		@DefaultValue("logs") String logDir,
 		@DefaultValue("30") int idleParkMinutes,
+		@DefaultValue("65536") int journalPayloadCapBytes,
+		@DefaultValue("1048576") int wsSendBufferBytes,
 		Map<String, Provider> providers
 ) {
 
