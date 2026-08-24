@@ -18,16 +18,32 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (authToken) headers['authorization'] = `Bearer ${authToken}`;
-  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  console.debug('[claude-ui] api request', method, path, body ?? '');
+  let res: Response;
+  try {
+    res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal });
+  } catch (e) {
+    // network failure, CORS, or abort — never an ApiError since there's no HTTP response to read
+    console.error('[claude-ui] api request failed (network/abort)', method, path, e);
+    throw e;
+  }
   const text = await res.text();
-  const parsed = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+  let parsed: Record<string, unknown> | null;
+  try {
+    parsed = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+  } catch (e) {
+    console.error('[claude-ui] api response was not valid JSON', method, path, res.status, text.slice(0, 500));
+    throw e;
+  }
   if (!res.ok) {
     const detail = parsed && typeof parsed['detail'] === 'string' ? (parsed['detail'] as string) : res.statusText;
+    console.error('[claude-ui] api error', method, path, res.status, detail, parsed);
     throw new ApiError(res.status, detail, parsed);
   }
+  console.debug('[claude-ui] api response', method, path, res.status);
   return parsed as T;
 }
 
@@ -51,6 +67,6 @@ export const api = {
   updateTemplate: (id: string, body: unknown) => request<Template>('PUT', `/api/templates/${id}`, body),
   deleteTemplate: (id: string) => request<null>('DELETE', `/api/templates/${id}`),
   ticketImportEnabled: () => request<{ enabled: boolean }>('GET', '/api/tickets/import/enabled'),
-  importTicket: (ticketRef: string) =>
-    request<{ branchName: string; prompt: string }>('POST', '/api/tickets/import', { ticketRef }),
+  importTicket: (ticketRef: string, signal?: AbortSignal) =>
+    request<{ branchName: string; prompt: string }>('POST', '/api/tickets/import', { ticketRef }, signal),
 };

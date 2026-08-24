@@ -107,14 +107,19 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         <button onClick={() => void refresh()}>Refresh</button>
         <button onClick={() => setShowTemplates(true)}>Templates</button>
         <button
-          title={showSystem ? 'hide system sessions' : 'show system sessions (backend-initiated tasks)'}
+          disabled={systemSessionIds.length === 0}
+          title={
+            systemSessionIds.length === 0
+              ? 'no system sessions yet (created by backend tasks like ticket import)'
+              : showSystem ? 'hide system sessions' : `show ${systemSessionIds.length} system session(s) (backend-initiated tasks)`
+          }
           onClick={() => setShowSystem((v) => {
             const next = !v;
             localStorage.setItem('claude-ui.showSystem', next ? '1' : '0');
             return next;
           })}
         >
-          🛠{systemSessionIds.length > 0 ? ` ${systemSessionIds.length}` : ''}
+          🤖{systemSessionIds.length > 0 ? ` ${systemSessionIds.length}` : ''}
         </button>
         <button title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
         <button className="primary" onClick={() => setShowCreate(true)}>+ New Session</button>

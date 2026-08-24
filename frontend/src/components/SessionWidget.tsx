@@ -129,7 +129,7 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
         >
           {view.name ?? entity?.name ?? sessionId.slice(0, 8)}
         </span>
-        {entity?.kind === 'system' && <span className="chip" title="backend-initiated system session">🛠 system</span>}
+        {entity?.kind === 'system' && <span className="chip" title="backend-initiated system session">🤖 system</span>}
         {entity?.kind !== 'system' && entity?.repoPath && (
           <span className="chip" title={entity.repoPath}>
             {entity.repoPath.split('/').pop()}

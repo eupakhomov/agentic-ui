@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import { placeholdersOf, type ServicesResponse, type SkillInfo, type Template } from '../protocol';
 
@@ -36,6 +36,7 @@ export default function CreateSessionDialog({
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState('');
+  const importAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     api.services().then((info) => {
@@ -51,13 +52,32 @@ export default function CreateSessionDialog({
   const importTicket = async () => {
     setImportError('');
     setImportBusy(true);
+    const controller = new AbortController();
+    importAbortRef.current = controller;
+    // backend already bounds the underlying system-session turn to 45s (see
+    // SessionService.runSystemTurn / TicketImportService) and always resolves with a
+    // real error by then; this is a client-side safety net so the button can never
+    // get stuck forever even if that assumption turns out wrong in some environment
+    const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
+    console.log('[claude-ui] ticket import: fetching', ticketRef.trim());
+    const started = performance.now();
     try {
-      const result = await api.importTicket(ticketRef.trim());
+      const result = await api.importTicket(ticketRef.trim(), controller.signal);
+      console.log('[claude-ui] ticket import: succeeded in', Math.round(performance.now() - started), 'ms', result);
       setBranch(result.branchName);
       setInitialPrompt(result.prompt);
     } catch (e) {
-      setImportError(e instanceof ApiError ? e.message : String(e));
+      const elapsed = Math.round(performance.now() - started);
+      if (controller.signal.aborted) {
+        console.error('[claude-ui] ticket import: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
+        setImportError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (50s)');
+      } else {
+        console.error('[claude-ui] ticket import: failed after', elapsed, 'ms', e);
+        setImportError(e instanceof ApiError ? e.message : String(e));
+      }
     } finally {
+      clearTimeout(safetyNet);
+      importAbortRef.current = null;
       setImportBusy(false);
     }
   };
@@ -118,7 +138,7 @@ export default function CreateSessionDialog({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div className="modal-backdrop" onClick={() => { if (!busy && !importBusy) onCancel(); }}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>New Session</h2>
         <div className="form-grid">
@@ -145,11 +165,19 @@ export default function CreateSessionDialog({
                   value={ticketRef}
                   onChange={(e) => setTicketRef(e.target.value)}
                   placeholder="Linear ticket, e.g. ENG-123 or a ticket URL"
+                  disabled={importBusy}
                 />
-                <button disabled={importBusy || !ticketRef.trim()} onClick={() => void importTicket()}>
-                  {importBusy ? '…' : 'Fetch'}
-                </button>
+                {importBusy ? (
+                  <button onClick={() => importAbortRef.current?.abort('user')}>Cancel</button>
+                ) : (
+                  <button disabled={!ticketRef.trim()} onClick={() => void importTicket()}>Fetch</button>
+                )}
               </div>
+              {importBusy && (
+                <div className="full" style={{ gridColumn: '2 / -1', color: 'var(--muted)', fontSize: 12.5 }}>
+                  fetching from Linear — can take up to 45s on the first call (spinning up the system session)…
+                </div>
+              )}
               {importError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{importError}</div>}
             </>
           )}
@@ -168,7 +196,7 @@ export default function CreateSessionDialog({
           <label>Initial prompt</label>
           <textarea
             style={{ gridColumn: '2 / -1' }}
-            rows={3}
+            rows={2}
             value={initialPrompt}
             onChange={(e) => setInitialPrompt(e.target.value)}
             placeholder="optional — overrides the template's kickoff prompt; filled in automatically by ticket import"

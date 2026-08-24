@@ -134,11 +134,23 @@ your org requires SSO login, so authorize once interactively instead:
    through the app): `claude mcp add --transport http linear https://mcp.linear.app/mcp`
 2. Complete the browser OAuth flow through your org's SSO login screen.
 3. Set `CLAUDE_UI_LINEAR_OAUTH=true` (leave `CLAUDE_UI_LINEAR_API_KEY` unset — an
-   explicit key always takes priority over OAuth if both are set) and restart the
-   backend.
+   explicit key always takes priority over OAuth if both are set) and **restart the
+   backend** — this env var is the only thing that "enables" the feature in
+   claude-ui; there is no in-app toggle (a deliberate choice — see
+   `docs/plan/phase-5-extensions.md` 5.15).
 4. Try an import from the create-session dialog — the backend reuses the `claude`
    CLI's own cached OAuth credential for `mcp.linear.app` (same `~/.claude` identity
    sidecars already authenticate with), no token stored in claude-ui itself.
+
+**The `--scope` flag in step 1 doesn't matter and can be left at its default.**
+claude-ui never inherits your `claude mcp add`/`~/.claude` MCP server *declarations*
+at any scope — every sidecar process (including the system session) is spawned with
+`settingSources: ['project']` (`sidecar/src/session.ts`), which deliberately excludes
+user- and local-scope settings/MCP config. Step 1 exists **only** to get the
+interactive OAuth consent recorded once; claude-ui builds and passes its own
+`--mcp-config` for the Linear server independently once `CLAUDE_UI_LINEAR_OAUTH=true`,
+and that's what actually attaches Linear's tools to the system session — the OAuth
+*token cache* for `mcp.linear.app` is what's being reused, not the server declaration.
 
 If step 4 still reports "needs auth", the CLI's OAuth cache is scoped more narrowly
 than assumed (e.g. per-project rather than per-user) — the fallback is a first-party

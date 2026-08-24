@@ -68,6 +68,13 @@
 :root[data-font-size="large"] { --font-scale: 1.25; }
 
 * { box-sizing: border-box; }
+/* thin, theme-aware scrollbars — macOS's default "always visible" classic bars look
+   chunky otherwise, especially in the create-session dialog's long form */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background-color: var(--border); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background-color: var(--muted); background-clip: padding-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font-size: calc(14px * var(--font-scale)); }
 button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: calc(13px * var(--font-scale)); }
 button:hover:not(:disabled) { border-color: var(--accent); }
@@ -146,7 +153,7 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: min(680px, 92vw); max-height: 88vh; overflow-y: auto; }
 .modal h2 { margin: 0 0 14px; font-size: calc(16px * var(--font-scale)); }
-.form-grid { display: grid; grid-template-columns: 130px 1fr; gap: 10px 12px; align-items: center; }
+.form-grid { display: grid; grid-template-columns: 130px 1fr; gap: 7px 12px; align-items: center; }
 .form-grid label { color: var(--muted); font-size: calc(13px * var(--font-scale)); }
 .form-grid .full { grid-column: 1 / -1; }
 .modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }

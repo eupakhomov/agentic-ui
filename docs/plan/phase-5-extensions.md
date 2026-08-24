@@ -120,10 +120,10 @@ tags them, giving each task a real transcript instead of an opaque subprocess ca
   `{branchName, prompt}` as JSON; `CreateSessionDialog` prefills the branch field and a
   new freeform "Initial prompt" textarea (a literal `kickoffPrompt` override, additive
   to the existing template+placeholder mechanism, not a replacement for it).
-- Dashboard hides `kind='system'` sessions by default; a topbar toggle (🛠, with a
+- Dashboard hides `kind='system'` sessions by default; a topbar toggle (🤖, with a
   live count) reveals them in the same widget grid via the existing `SessionWidget`
   (Git panel button hidden for them — no real repo underneath).
 - **DoD:** with `CLAUDE_UI_LINEAR_API_KEY` set, importing a ticket prefills branch +
   prompt in the create dialog; a second import reuses the same system session (no
-  second row created); the session is invisible by default and appears under the 🛠
+  second row created); the session is invisible by default and appears under the 🤖
   toggle with a full transcript of every import call.
