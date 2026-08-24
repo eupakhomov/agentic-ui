@@ -35,21 +35,28 @@ public class SessionRepository {
 							context_dirs, branch, base_branch, worktree_path, model, permission_mode,
 							allowed_tools, disallowed_tools, mcp_config, env_vars, skill_sources, agent_sources,
 							instructions, thinking, effort, max_turns, fallback_model, cost_budget_usd,
-							kickoff_prompt, state)
+							kickoff_prompt, state, kind)
 						VALUES (?, ?, ?, ?::jsonb, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb,
-							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?)
+							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(s.id(), s.name(), s.provider(), json(s.providerConfig()), s.repoPath(), s.ecosystemPath(),
 						json(s.contextDirs()), s.branch(), s.baseBranch(), s.worktreePath(), s.model(),
 						s.permissionMode(), json(s.allowedTools()), json(s.disallowedTools()), json(s.mcpConfig()),
 						json(s.envVars()), json(s.skillSources()), json(s.agentSources()), s.instructions(),
 						s.thinking(), s.effort(), s.maxTurns(), s.fallbackModel(), s.costBudgetUsd(),
-						s.kickoffPrompt(), s.state().name())
+						s.kickoffPrompt(), s.state().name(), s.kind())
 				.update();
 	}
 
 	public Optional<SessionEntity> find(UUID id) {
 		return jdbc.sql("SELECT * FROM session WHERE id = ?").params(id).query(rowMapper).optional();
+	}
+
+	/** The one live (not CLOSED/FAILED) system session, if any — see SessionService.getOrCreateSystemSession. */
+	public Optional<SessionEntity> findSystemSession() {
+		return jdbc.sql("SELECT * FROM session WHERE kind = 'system' AND state NOT IN ('CLOSED', 'FAILED') "
+						+ "ORDER BY created_at DESC LIMIT 1")
+				.query(rowMapper).optional();
 	}
 
 	public SessionEntity get(UUID id) {
@@ -84,6 +91,11 @@ public class SessionRepository {
 	public void updatePermissionMode(UUID id, String mode) {
 		jdbc.sql("UPDATE session SET permission_mode = ?, updated_at = now() WHERE id = ?")
 				.params(mode, id).update();
+	}
+
+	public void updateModel(UUID id, String model) {
+		jdbc.sql("UPDATE session SET model = ?, updated_at = now() WHERE id = ?")
+				.params(model, id).update();
 	}
 
 	public void updateName(UUID id, String name) {
@@ -196,6 +208,7 @@ public class SessionRepository {
 				rs.getBigDecimal("cost_budget_usd"),
 				rs.getString("kickoff_prompt"),
 				SessionState.valueOf(rs.getString("state")),
+				rs.getString("kind"),
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("updated_at").toInstant());
 	}

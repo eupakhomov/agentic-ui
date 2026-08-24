@@ -31,6 +31,11 @@ export default function CreateSessionDialog({
   const [extraSkill, setExtraSkill] = useState('');
   const [kickoffValues, setKickoffValues] = useState<Record<string, string>>({});
   const [advanced, setAdvanced] = useState('');
+  const [initialPrompt, setInitialPrompt] = useState('');
+  const [ticketRef, setTicketRef] = useState('');
+  const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState('');
 
   useEffect(() => {
     api.services().then((info) => {
@@ -40,7 +45,22 @@ export default function CreateSessionDialog({
     }).catch(() => setServicesInfo(null));
     api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
     api.skills().then(setSkills).catch(() => setSkills([]));
+    api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
   }, []);
+
+  const importTicket = async () => {
+    setImportError('');
+    setImportBusy(true);
+    try {
+      const result = await api.importTicket(ticketRef.trim());
+      setBranch(result.branchName);
+      setInitialPrompt(result.prompt);
+    } catch (e) {
+      setImportError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setImportBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!repoPath) return;
@@ -77,6 +97,7 @@ export default function CreateSessionDialog({
           : []),
       ];
       if (skillSources.length > 0) overrides['skillSources'] = skillSources;
+      if (initialPrompt.trim()) overrides['kickoffPrompt'] = initialPrompt.trim();
       if (advanced.trim()) Object.assign(overrides, JSON.parse(advanced) as Record<string, unknown>);
 
       const created = await api.createSession({
@@ -115,6 +136,24 @@ export default function CreateSessionDialog({
           <input value={branch} onChange={(e) => setBranch(e.target.value)} list="branches" placeholder="feat/my-feature" autoFocus />
           <datalist id="branches">{branches.map((b) => <option key={b} value={b} />)}</datalist>
 
+          {ticketImportEnabled && (
+            <>
+              <label>Import ticket</label>
+              <div className="row" style={{ display: 'flex', gap: 6 }}>
+                <input
+                  style={{ flex: 1 }}
+                  value={ticketRef}
+                  onChange={(e) => setTicketRef(e.target.value)}
+                  placeholder="Linear ticket, e.g. ENG-123 or a ticket URL"
+                />
+                <button disabled={importBusy || !ticketRef.trim()} onClick={() => void importTicket()}>
+                  {importBusy ? '…' : 'Fetch'}
+                </button>
+              </div>
+              {importError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{importError}</div>}
+            </>
+          )}
+
           <label>Base branch</label>
           <select value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)}>
             {(branches.length ? branches : ['main']).map((b) => <option key={b} value={b}>{b}</option>)}
@@ -125,6 +164,15 @@ export default function CreateSessionDialog({
             <option value="">— none —</option>
             {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
+
+          <label>Initial prompt</label>
+          <textarea
+            style={{ gridColumn: '2 / -1' }}
+            rows={3}
+            value={initialPrompt}
+            onChange={(e) => setInitialPrompt(e.target.value)}
+            placeholder="optional — overrides the template's kickoff prompt; filled in automatically by ticket import"
+          />
 
           <label>Model</label>
           <select value={model} onChange={(e) => setModel(e.target.value)}>

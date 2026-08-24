@@ -38,6 +38,7 @@ Bash is not path-policed — it flows through the normal approval path.
 | `permission_response` | `requestId`, `behavior: allow\|deny`, `updatedInput?`, `message?` | settle a `permission_request`; `updatedInput` replaces the tool input on allow (e.g. an edited Bash command); `message` is the denial reason shown to the model |
 | `interrupt` | — | abort the in-flight turn; outstanding permission requests are denied internally; the session stays alive |
 | `set_permission_mode` | `mode` | switch permission mode mid-session; acknowledged by `permission_mode_changed` |
+| `set_model` | `model` | switch model mid-session; takes effect starting the next assistant response; acknowledged by `model_changed` |
 | `shutdown` | — | finish current work, then exit 0 with `exiting` |
 
 ## Events (adapter → backend)
@@ -53,7 +54,8 @@ Bash is not path-policed — it flows through the normal approval path.
 | `permission_request` | `requestId`, `toolName`, `input`, `suggestions[]` | user approval needed; adapter blocks that tool until the matching `permission_response` (no timeout — waiting is the UI's job) |
 | `thinking_progress` | `estimatedTokens`, `estimatedTokensDelta` | running token estimate while the model thinks (drive spinners/pills; not billed usage) |
 | `permission_mode_changed` | `mode` | confirms `set_permission_mode` |
-| `turn_complete` | `stopReason`, `usage`, `costUsd`, `durationMs`, `numTurns` | end of an agentic turn |
+| `model_changed` | `model` | confirms `set_model` |
+| `turn_complete` | `stopReason`, `usage`, `costUsd`, `durationMs`, `numTurns`, `model` | end of an agentic turn; `model` is the model that produced it (tracked from the preceding `system_init`, which fires at the start of every turn) |
 | `error` | `message`, `fatal` | non-fatal: guard denials, malformed input, transient provider errors; fatal: precedes exit 1 |
 | `exiting` | `reason: shutdown\|fatal\|stdin_closed` | last event before exit |
 
@@ -67,7 +69,7 @@ this, never from the provider name:
   "permissionModes": ["default", "acceptEdits", "plan", "bypassPermissions"],
   "thinking": true, "effort": true, "planMode": true, "resume": true, "skills": true,
   "agents": true, "mcp": true, "interrupt": true, "fallbackModel": true,
-  "updatedInput": true
+  "updatedInput": true, "modelSwitch": true
 }
 ```
 
@@ -112,7 +114,7 @@ this, never from the provider name:
   `{seq, type: "replay_complete", payload:{lastSeq}}`, then live events follow —
   no gaps, no duplicates (seq strictly increases).
 - **Inbound** commands: `user_message` (queued FIFO if a turn is running),
-  `permission_response`, `interrupt`, `set_permission_mode`. Invalid input returns a
-  non-journaled `{type: "command_error", payload:{message}}` frame.
+  `permission_response`, `interrupt`, `set_permission_mode`, `set_model`. Invalid input
+  returns a non-journaled `{type: "command_error", payload:{message}}` frame.
 - Slow consumers are disconnected (close code 1013); reconnect with the last seen
   `afterSeq` to catch up losslessly from the journal.

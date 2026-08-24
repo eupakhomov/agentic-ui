@@ -30,7 +30,7 @@ public class SessionController {
 	}
 
 	public record SessionSummary(UUID id, String name, String provider, String branch, String model,
-								 String permissionMode, String state, BigDecimal costToDate) {
+								 String permissionMode, String state, String kind, BigDecimal costToDate) {
 	}
 
 	private final SessionService service;
@@ -57,7 +57,7 @@ public class SessionController {
 	public List<SessionSummary> list() {
 		return sessions.findAll().stream()
 				.map(s -> new SessionSummary(s.id(), s.name(), s.provider(), s.branch(), s.model(),
-						s.permissionMode(), s.state().name(), journal.costToDate(s.id())))
+						s.permissionMode(), s.state().name(), s.kind(), journal.costToDate(s.id())))
 				.toList();
 	}
 

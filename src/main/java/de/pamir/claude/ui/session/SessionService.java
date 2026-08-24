@@ -20,10 +20,16 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Service
 public class SessionService {
@@ -41,6 +47,12 @@ public class SessionService {
 	private final SessionEventBus bus;
 	private final ObjectMapper mapper;
 	private final Map<UUID, Object> locks = new ConcurrentHashMap<>();
+
+	// system session: exactly one live at a time, guarded by this lock (see "system sessions" section below)
+	private final Object systemSessionLock = new Object();
+	private volatile UUID pendingSystemTurnSessionId;
+	private volatile CompletableFuture<String> pendingSystemTurn;
+	private final StringBuilder pendingSystemText = new StringBuilder();
 
 	public SessionService(AppProperties props, SessionRepository sessions, TemplateRepository templates,
 						  GitWorktreeService worktrees, GitCommandRunner git, AssetProvisioningService assets,
@@ -94,7 +106,7 @@ public class SessionService {
 				nullableText(config, "fallbackModel"),
 				config.hasNonNull("costBudgetUsd") ? new BigDecimal(config.get("costBudgetUsd").asText()) : null,
 				fillPlaceholders(nullableText(config, "kickoffPrompt"), kickoffValues),
-				SessionState.CREATING, null, null);
+				SessionState.CREATING, "user", null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 
@@ -128,9 +140,8 @@ public class SessionService {
 			if (session.state() != SessionState.CRASHED) {
 				throw new IllegalStateException("session is " + session.state() + ", only CRASHED sessions can be resumed");
 			}
-			if (session.providerSessionId() == null) {
-				throw new IllegalStateException("session has no provider session id to resume from");
-			}
+			// no providerSessionId means the sidecar crashed before its first turn (no conversation
+			// to resume yet) — buildArgs omits --resume in that case and spawns fresh, which is correct
 			enforceSessionLimit();
 			transition(id, SessionState.STARTING);
 			spawn(session, true);
@@ -196,6 +207,11 @@ public class SessionService {
 				.put("type", "set_permission_mode").put("mode", mode).toString());
 	}
 
+	public void setModel(UUID id, String model) {
+		sidecars.handle(id).send(mapper.createObjectNode()
+				.put("type", "set_model").put("model", model).toString());
+	}
+
 	public boolean deleteQueued(UUID id, long pos) {
 		boolean removed = sessions.deleteQueued(id, pos);
 		if (removed) {
@@ -210,6 +226,13 @@ public class SessionService {
 		synchronized (lock(id)) {
 			SessionEntity session = sessions.get(id);
 			if (session.state() == SessionState.CLOSED || session.state() == SessionState.CLOSING) {
+				return;
+			}
+			if ("system".equals(session.kind())) {
+				transition(id, SessionState.CLOSING);
+				sidecars.terminate(id);
+				deleteRecursively(Path.of(session.worktreePath()));
+				transition(id, SessionState.CLOSED);
 				return;
 			}
 			Path worktree = Path.of(session.worktreePath());
@@ -233,6 +256,120 @@ public class SessionService {
 		}
 	}
 
+	// ------------------------------------------------------------------ system sessions
+
+	/**
+	 * Runs one backend-initiated turn (e.g. ticket import) on the singleton system session and
+	 * returns the assistant's final text. Serialized end-to-end by systemSessionLock: at most one
+	 * system turn is ever in flight, so concurrent callers simply queue behind each other rather
+	 * than racing to create a second system session or mixing up whose turn_complete is whose.
+	 */
+	public String runSystemTurn(String prompt, Duration timeout) {
+		synchronized (systemSessionLock) {
+			SessionEntity session = getOrCreateSystemSession();
+			pendingSystemText.setLength(0);
+			CompletableFuture<String> future = new CompletableFuture<>();
+			pendingSystemTurn = future;
+			pendingSystemTurnSessionId = session.id();
+			try {
+				sendUserMessage(session.id(), prompt);
+				return future.get(timeout.toSeconds(), TimeUnit.SECONDS);
+			} catch (TimeoutException e) {
+				throw new IllegalStateException("system task timed out after " + timeout.toSeconds() + "s");
+			} catch (ExecutionException e) {
+				throw new IllegalStateException("system task failed: "
+						+ (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new IllegalStateException("interrupted while waiting for system task");
+			} finally {
+				pendingSystemTurn = null;
+				pendingSystemTurnSessionId = null;
+			}
+		}
+	}
+
+	/** Find-or-create the one system session; caller must hold systemSessionLock. */
+	private SessionEntity getOrCreateSystemSession() {
+		return sessions.findSystemSession().map(s -> {
+			return switch (s.state()) {
+				case PARKED -> {
+					wake(s);
+					yield sessions.get(s.id());
+				}
+				case CRASHED -> resume(s.id());
+				default -> s;
+			};
+		}).orElseGet(this::createSystemSession);
+	}
+
+	private SessionEntity createSystemSession() {
+		enforceSessionLimit();
+		UUID id = UUID.randomUUID();
+		Path scratch = Path.of(props.worktreeRoot(), "_system", id.toString());
+		try {
+			Files.createDirectories(scratch);
+		} catch (IOException e) {
+			throw new IllegalStateException("failed to create system session scratch dir: " + e.getMessage(), e);
+		}
+		SessionEntity entity = new SessionEntity(
+				id, "system", "claude", null,
+				"(system)", null, List.of(),
+				"(system)", "(system)", scratch.toString(),
+				null, null, "haiku", "default",
+				List.of(), List.of(), systemMcpConfig(), null, mapper.createArrayNode(), mapper.createArrayNode(),
+				null, null, null, null, null, null, null,
+				SessionState.CREATING, "system", null, null);
+		sessions.insert(entity);
+		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
+		try {
+			transition(id, SessionState.PROVISIONING);
+			writeMcpConfig(entity);
+			transition(id, SessionState.STARTING);
+			spawn(sessions.get(id), false);
+		} catch (RuntimeException e) {
+			record(id, "error", mapper.createObjectNode().put("message", e.getMessage()).put("fatal", true));
+			transition(id, SessionState.FAILED);
+			throw e;
+		}
+		return sessions.get(id);
+	}
+
+	/** Global integrations available to the system session; null (no MCP) if none are configured. */
+	private JsonNode systemMcpConfig() {
+		boolean apiKey = props.linearApiKey() != null && !props.linearApiKey().isBlank();
+		if (!apiKey && !props.linearOAuth()) {
+			return null;
+		}
+		ObjectNode servers = mapper.createObjectNode();
+		ObjectNode linear = servers.putObject("linear");
+		linear.put("type", "http").put("url", "https://mcp.linear.app/mcp");
+		if (apiKey) {
+			// explicit key wins even if linearOAuth is also set
+			linear.putObject("headers").put("Authorization", "Bearer " + props.linearApiKey());
+		}
+		// else: no headers — relies on the ambient `claude` CLI's own cached OAuth credential for
+		// this server URL (set up once via `claude mcp add` on the backend host, e.g. Google-SSO Linear)
+		return servers;
+	}
+
+	private static void deleteRecursively(Path dir) {
+		if (!Files.exists(dir)) {
+			return;
+		}
+		try (var stream = Files.walk(dir)) {
+			stream.sorted(Comparator.reverseOrder()).forEach(p -> {
+				try {
+					Files.deleteIfExists(p);
+				} catch (IOException ignored) {
+					// best-effort cleanup
+				}
+			});
+		} catch (IOException e) {
+			log.warn("could not clean up scratch dir {}: {}", dir, e.getMessage());
+		}
+	}
+
 	// ------------------------------------------------------------------ sidecar event handling
 
 	private void onSidecarEvent(UUID id, JsonNode event) {
@@ -248,17 +385,63 @@ public class SessionService {
 					}
 				}
 			}
-			case "system_init" -> sessions.updateProviderSessionId(id, event.path("providerSessionId").asText());
+			case "system_init" -> {
+				sessions.updateProviderSessionId(id, event.path("providerSessionId").asText());
+				sessions.updateModel(id, event.path("model").asText());
+			}
 			case "permission_request" -> transition(id, SessionState.WAITING_INPUT);
 			case "permission_mode_changed" -> sessions.updatePermissionMode(id, event.path("mode").asText());
+			case "model_changed" -> sessions.updateModel(id, event.path("model").asText());
+			case "assistant_message" -> {
+				if (id.equals(pendingSystemTurnSessionId)) {
+					String text = extractText(event.get("content"));
+					if (!text.isBlank()) {
+						pendingSystemText.setLength(0);
+						pendingSystemText.append(text);
+					}
+				}
+			}
 			case "turn_complete" -> {
 				journal.deleteDeltasBefore(id, journal.lastSeq(id));
 				maybeAutoTitle(id);
 				synchronized (lock(id)) {
 					becomeIdleAndDrainQueue(id);
 				}
+				completePendingSystemTurn(id, pendingSystemText.toString(), null);
+			}
+			case "error" -> {
+				if (event.path("fatal").asBoolean(false)) {
+					completePendingSystemTurn(id, null,
+							new IllegalStateException(event.path("message").asText("system session error")));
+				}
 			}
 			default -> { /* journaled above; no state effect */ }
+		}
+	}
+
+	/** Text of the last assistant_message in a turn (there may be several around a tool call). */
+	private static String extractText(JsonNode content) {
+		if (content == null || !content.isArray()) {
+			return "";
+		}
+		StringBuilder sb = new StringBuilder();
+		for (JsonNode block : content) {
+			if ("text".equals(block.path("type").asText()) && block.hasNonNull("text")) {
+				sb.append(block.get("text").asText());
+			}
+		}
+		return sb.toString();
+	}
+
+	private void completePendingSystemTurn(UUID id, String result, Throwable error) {
+		CompletableFuture<String> waiter = pendingSystemTurn;
+		if (waiter == null || !id.equals(pendingSystemTurnSessionId)) {
+			return;
+		}
+		if (error != null) {
+			waiter.completeExceptionally(error);
+		} else {
+			waiter.complete(result);
 		}
 	}
 
@@ -281,6 +464,7 @@ public class SessionService {
 			payload.set("stderrTail", mapper.valueToTree(stderrTail));
 			record(id, "error", payload);
 			transition(id, SessionState.CRASHED);
+			completePendingSystemTurn(id, null, new IllegalStateException("system session crashed (exit " + code + ")"));
 		}
 	}
 

@@ -7,6 +7,8 @@ interface GitStatus {
   upstream: string | null;
   ahead: number;
   behind: number;
+  /** commits on this branch not on baseBranch; -1 if unknown (e.g. baseBranch was deleted) */
+  aheadOfBase: number;
 }
 
 interface LogEntry {
@@ -40,6 +42,9 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
   }, [sessionId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // fail open when unknown (-1, e.g. baseBranch was deleted): don't block a legitimate action
+  const noChanges = status !== null && status.dirty.length === 0 && status.aheadOfBase === 0;
 
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label);
@@ -104,11 +109,16 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
 
       <div className="git-section">
         <div className="row" style={{ display: 'flex', gap: 6 }}>
-          <button disabled={busy !== ''} onClick={() => void run('push', async () => { await gitApi(sessionId, 'push', 'POST', {}); await refresh(); })}>
+          <button
+            disabled={busy !== '' || noChanges}
+            title={noChanges ? 'nothing to push' : undefined}
+            onClick={() => void run('push', async () => { await gitApi(sessionId, 'push', 'POST', {}); await refresh(); })}
+          >
             {busy === 'push' ? '…' : 'Push'}
           </button>
           <button
-            disabled={busy !== ''}
+            disabled={busy !== '' || noChanges}
+            title={noChanges ? 'no changes to open a PR for' : undefined}
             onClick={() => {
               const title = prompt('PR title:');
               if (!title) return;

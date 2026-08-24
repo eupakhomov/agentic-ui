@@ -18,6 +18,7 @@ export interface Capabilities {
   interrupt: boolean;
   fallbackModel: boolean;
   updatedInput: boolean;
+  modelSwitch: boolean;
 }
 
 /** Journal envelope arriving over the WebSocket. */
@@ -47,6 +48,8 @@ export interface SessionEntity {
   costBudgetUsd: number | null;
   state: SessionState;
   kickoffPrompt: string | null;
+  /** 'user' (default) or 'system' — backend-initiated tasks, hidden by default in the dashboard */
+  kind: 'user' | 'system';
 }
 
 export interface SessionSummary {
@@ -57,6 +60,7 @@ export interface SessionSummary {
   model: string | null;
   permissionMode: PermissionMode;
   state: SessionState;
+  kind: 'user' | 'system';
   costToDate: number;
 }
 

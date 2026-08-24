@@ -37,6 +37,8 @@ public record SessionEntity(
 		BigDecimal costBudgetUsd,
 		String kickoffPrompt,
 		SessionState state,
+		/** 'user' (default) or 'system' — backend-initiated tasks (ticket import, ...), hidden by default in the UI */
+		String kind,
 		Instant createdAt,
 		Instant updatedAt
 ) {

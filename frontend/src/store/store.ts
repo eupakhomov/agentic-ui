@@ -12,7 +12,7 @@ export type TranscriptItem =
   | { kind: 'text'; text: string; done: boolean }
   | { kind: 'tool'; toolUseId: string; name: string; input: unknown; output?: string; isError?: boolean; truncated?: boolean }
   | { kind: 'permission'; requestId: string; toolName: string; input: Record<string, unknown>; plan: string | null; decision: 'allow' | 'deny' | null }
-  | { kind: 'turn_footer'; stopReason: string; costUsd: number; durationMs: number }
+  | { kind: 'turn_footer'; stopReason: string; costUsd: number; durationMs: number; model: string | null }
   | { kind: 'note'; level: 'info' | 'warn' | 'error'; text: string };
 
 export interface SessionView {
@@ -142,12 +142,21 @@ function reduce(view: SessionView, e: Envelope): SessionView {
     case 'permission_mode_changed':
       v.permissionMode = p['mode'] as PermissionMode;
       break;
+    case 'model_changed':
+      v.model = p['model'] as string;
+      break;
     case 'turn_complete': {
       markThinkingDone(t);
       const tail = last(t);
       if (tail?.kind === 'text' && !tail.done) t[t.length - 1] = { ...tail, done: true };
       const cost = (p['costUsd'] as number) ?? 0;
-      t.push({ kind: 'turn_footer', stopReason: p['stopReason'] as string, costUsd: cost, durationMs: p['durationMs'] as number });
+      t.push({
+        kind: 'turn_footer',
+        stopReason: p['stopReason'] as string,
+        costUsd: cost,
+        durationMs: p['durationMs'] as number,
+        model: (p['model'] as string) ?? null,
+      });
       v.costToDate = view.costToDate + cost;
       break;
     }

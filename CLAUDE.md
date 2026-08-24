@@ -159,6 +159,8 @@ the backend's environment):
 | `CLAUDE_UI_WORKTREE_ROOT` | `~/claude-worktrees` | Where session worktrees live |
 | `CLAUDE_UI_ECOSYSTEM_ROOT` | `/mnt/d/projects` | Default read-only context folder + service discovery root |
 | `CLAUDE_UI_SKILLS_ROOT` | `~/claude-skills` | Skills library scanned for the create-dialog picker |
+| `CLAUDE_UI_LINEAR_API_KEY` | — | Linear personal API key; enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku) |
+| `CLAUDE_UI_LINEAR_OAUTH` | `false` | Alternative to `CLAUDE_UI_LINEAR_API_KEY` for SSO-gated Linear accounts (e.g. Google identity): omits the Authorization header, relying on the ambient `claude` CLI's own cached OAuth credential for `mcp.linear.app` — run `claude mcp add --transport http linear https://mcp.linear.app/mcp` once, interactively, on the backend host first. Ignored if `CLAUDE_UI_LINEAR_API_KEY` is also set |
 
 **Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
 `costBudgetUsd` (turns are refused once cumulative cost reaches it; in-flight turns

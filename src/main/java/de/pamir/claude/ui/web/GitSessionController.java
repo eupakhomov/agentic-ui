@@ -37,7 +37,7 @@ public class GitSessionController {
 
 	@GetMapping("/status")
 	public GitOpsService.GitStatus status(@PathVariable UUID id) {
-		return gitOps.status(worktree(id, false));
+		return gitOps.status(worktree(id, false), sessions.get(id).baseBranch());
 	}
 
 	@GetMapping("/diff")
@@ -57,7 +57,7 @@ public class GitSessionController {
 		}
 		Path worktree = worktree(id, true);
 		gitOps.commitAll(worktree, request.message().strip());
-		return gitOps.status(worktree);
+		return gitOps.status(worktree, sessions.get(id).baseBranch());
 	}
 
 	@PostMapping("/push")

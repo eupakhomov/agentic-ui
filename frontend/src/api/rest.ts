@@ -50,4 +50,7 @@ export const api = {
   createTemplate: (body: unknown) => request<Template>('POST', '/api/templates', body),
   updateTemplate: (id: string, body: unknown) => request<Template>('PUT', `/api/templates/${id}`, body),
   deleteTemplate: (id: string) => request<null>('DELETE', `/api/templates/${id}`),
+  ticketImportEnabled: () => request<{ enabled: boolean }>('GET', '/api/tickets/import/enabled'),
+  importTicket: (ticketRef: string) =>
+    request<{ branchName: string; prompt: string }>('POST', '/api/tickets/import', { ticketRef }),
 };

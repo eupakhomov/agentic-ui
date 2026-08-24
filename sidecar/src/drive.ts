@@ -9,6 +9,7 @@
  *   :allow <id> [json]    -> permission_response allow (json = updatedInput)
  *   :deny <id> [reason]   -> permission_response deny
  *   :mode <mode>          -> set_permission_mode
+ *   :model <model>        -> set_model
  *   :int                  -> interrupt
  *   :quit                 -> shutdown
  */
@@ -90,9 +91,12 @@ function handleEvent(line: string): void {
     case 'permission_mode_changed':
       console.log(yellow(`mode -> ${e['mode']}`));
       break;
+    case 'model_changed':
+      console.log(yellow(`model -> ${e['model']}`));
+      break;
     case 'turn_complete':
       endStream();
-      console.log(dim(`turn_complete ${e['stopReason']} cost=$${Number(e['costUsd']).toFixed(4)} turns=${e['numTurns']} ${e['durationMs']}ms`));
+      console.log(dim(`turn_complete ${e['stopReason']} model=${e['model']} cost=$${Number(e['costUsd']).toFixed(4)} turns=${e['numTurns']} ${e['durationMs']}ms`));
       break;
     case 'error':
       endStream();
@@ -130,6 +134,7 @@ rl.on('line', (raw) => {
         break;
       }
       case 'mode': send({ type: 'set_permission_mode', mode: rest[0] }); break;
+      case 'model': send({ type: 'set_model', model: rest[0] }); break;
       case 'int': send({ type: 'interrupt' }); break;
       case 'quit': send({ type: 'shutdown' }); break;
       default: console.log(red(`unknown command :${word}`));

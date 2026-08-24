@@ -102,6 +102,7 @@ public class SessionWebSocketHandler extends TextWebSocketHandler implements Sub
 				case "permission_response" -> service.respondPermission(sessionId, command);
 				case "interrupt" -> service.interrupt(sessionId);
 				case "set_permission_mode" -> service.setPermissionMode(sessionId, command.path("mode").asText());
+				case "set_model" -> service.setModel(sessionId, command.path("model").asText());
 				default -> sendError(ws, "unknown command type: " + command.path("type").asText());
 			}
 		} catch (Exception e) {

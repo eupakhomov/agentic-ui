@@ -135,6 +135,8 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   };
 
   const q = query({ prompt: userMessages(), options });
+  // updated from system_init (which reports the concrete resolved id, even for an alias like "sonnet")
+  let currentModel = '';
 
   const handleCommand = (line: string): void => {
     let cmd: Command;
@@ -168,6 +170,17 @@ export async function runSession(config: SidecarConfig): Promise<never> {
           .then(() => writeEvent({ type: 'permission_mode_changed', mode: cmd.mode }))
           .catch((e: unknown) =>
             writeEvent({ type: 'error', message: `set_permission_mode failed: ${String(e)}`, fatal: false }),
+          );
+        break;
+      case 'set_model':
+        void q
+          .setModel(cmd.model)
+          .then(() => {
+            currentModel = cmd.model;
+            writeEvent({ type: 'model_changed', model: cmd.model });
+          })
+          .catch((e: unknown) =>
+            writeEvent({ type: 'error', message: `set_model failed: ${String(e)}`, fatal: false }),
           );
         break;
       case 'shutdown':
@@ -204,6 +217,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
               estimatedTokensDelta: m.estimated_tokens_delta,
             });
           } else if (message.subtype === 'init') {
+            currentModel = message.model;
             writeEvent({
               type: 'system_init',
               providerSessionId: message.session_id,
@@ -274,6 +288,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
             costUsd: message.total_cost_usd,
             durationMs: message.duration_ms,
             numTurns: message.num_turns,
+            model: currentModel,
           });
           break;
         case 'rate_limit_event' as never: {

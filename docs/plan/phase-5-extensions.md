@@ -34,8 +34,15 @@ MCP server bundles, and a "duplicate session" action.
 - **DoD:** create a session from a template with MCP servers attached and verify the
   servers appear in `system_init`.
 
-## 5.5 Model switching mid-session
+## 5.5 Model switching mid-session — ✅ shipped 2026-08-24
 SDK supports changing model between turns; expose a model picker in the widget header.
+- New `set_model` sidecar command / `model_changed` event (mirrors `set_permission_mode`),
+  gated by a new `modelSwitch` capability. `turn_complete` now also carries `model`
+  (tracked sidecar-side from the preceding `system_init`, which fires every turn).
+  `session.model` is kept current from both `system_init` and `model_changed` so a
+  later resume/respawn relaunches with the last active model, not the create-time one.
+  Widget header model chip is now click-to-cycle (sonnet → opus → haiku), same
+  interaction pattern as the permission-mode chip.
 - **DoD:** switch sonnet→haiku mid-conversation; next `turn_complete` shows new model + cheaper cost.
 
 ## 5.6 Mobile / small-screen layout
@@ -89,3 +96,34 @@ Browser notifications (or ntfy/webhook) when a session hits WAITING_INPUT or
 CRASHED while unwatched — the whole point of parallel sessions is not staring at them.
 - **DoD:** permission request in a background tab raises a desktop notification;
   clicking it focuses the widget.
+
+## 5.15 System sessions + Linear ticket import — ✅ shipped 2026-08-24
+Backend-initiated tasks (ticket import today; PR-comment generation etc. later) reuse
+the normal session/sidecar machinery — a new `session.kind` column (`user` | `system`)
+tags them, giving each task a real transcript instead of an opaque subprocess call.
+- **Exactly one system session** at a time: `SessionService.getOrCreateSystemSession()`
+  (find a non-CLOSED/FAILED `kind='system'` row, wake/resume it, or create fresh) and
+  `runSystemTurn(prompt, timeout)` are both serialized by a single lock, so concurrent
+  callers queue behind each other rather than racing to create a second one or mixing
+  up whose `turn_complete` is whose. The conversation is deliberately never reset
+  between unrelated tasks — it doubles as an audit log — with Close-from-the-widget as
+  the manual reset valve if context grows stale.
+- No git worktree: a system session's `--cwd` is a plain scratch directory
+  (`<worktree-root>/_system/<id>/`), `repo_path`/`branch`/`base_branch` are sentinel
+  values, and `close()` skips the dirty-check/worktree-removal path for it.
+- Global integration config is env-var only (`CLAUDE_UI_LINEAR_API_KEY`, no DB/UI
+  storage — matches the app's existing "secrets live in env vars" convention): when
+  set, the system session is spawned with Linear's remote MCP server
+  (`https://mcp.linear.app/mcp`, static Bearer-token auth, no OAuth flow) attached.
+- `POST /api/tickets/import {ticketRef}` runs one Haiku turn on the system session
+  instructing it to fetch the ticket via Linear's MCP tools and return
+  `{branchName, prompt}` as JSON; `CreateSessionDialog` prefills the branch field and a
+  new freeform "Initial prompt" textarea (a literal `kickoffPrompt` override, additive
+  to the existing template+placeholder mechanism, not a replacement for it).
+- Dashboard hides `kind='system'` sessions by default; a topbar toggle (🛠, with a
+  live count) reveals them in the same widget grid via the existing `SessionWidget`
+  (Git panel button hidden for them — no real repo underneath).
+- **DoD:** with `CLAUDE_UI_LINEAR_API_KEY` set, importing a ticket prefills branch +
+  prompt in the create dialog; a second import reuses the same system session (no
+  second row created); the session is invisible by default and appears under the 🛠
+  toggle with a full transcript of every import call.

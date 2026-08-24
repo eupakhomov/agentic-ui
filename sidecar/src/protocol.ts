@@ -39,6 +39,11 @@ export interface SetPermissionModeCommand {
   mode: PermissionMode;
 }
 
+export interface SetModelCommand {
+  type: 'set_model';
+  model: string;
+}
+
 export interface ShutdownCommand {
   type: 'shutdown';
 }
@@ -48,6 +53,7 @@ export type Command =
   | PermissionResponseCommand
   | InterruptCommand
   | SetPermissionModeCommand
+  | SetModelCommand
   | ShutdownCommand;
 
 // ---------------------------------------------------------------------------
@@ -73,6 +79,8 @@ export interface Capabilities {
   fallbackModel: boolean;
   /** permission responses may carry updatedInput */
   updatedInput: boolean;
+  /** supports set_model mid-session */
+  modelSwitch: boolean;
 }
 
 export interface ReadyEvent {
@@ -145,6 +153,11 @@ export interface PermissionModeChangedEvent {
   mode: PermissionMode;
 }
 
+export interface ModelChangedEvent {
+  type: 'model_changed';
+  model: string;
+}
+
 export interface TurnCompleteEvent {
   type: 'turn_complete';
   stopReason: string;
@@ -152,6 +165,8 @@ export interface TurnCompleteEvent {
   costUsd: number;
   durationMs: number;
   numTurns: number;
+  /** model that produced this turn (last-seen system_init.model at completion time) */
+  model: string;
 }
 
 export interface ErrorEvent {
@@ -175,6 +190,7 @@ export type Event =
   | PermissionRequestEvent
   | ThinkingProgressEvent
   | PermissionModeChangedEvent
+  | ModelChangedEvent
   | TurnCompleteEvent
   | ErrorEvent
   | ExitingEvent;
@@ -191,4 +207,5 @@ export const CLAUDE_CAPABILITIES: Capabilities = {
   interrupt: true,
   fallbackModel: true,
   updatedInput: true,
+  modelSwitch: true,
 };

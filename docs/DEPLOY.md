@@ -115,7 +115,36 @@ without it — just restarts cleanly once the DB is there).
 4. The **⎇** button per widget: status/diff/commit/push/PR.
    PR button needs `gh auth login` done once.
 
-## 8. Updating
+## 8. Optional: Linear ticket import
+
+Lets the "New Session" dialog fetch a Linear ticket and prefill the branch name +
+initial prompt (via a cheap Haiku call on a hidden system session — see CLAUDE.md /
+`docs/plan/phase-5-extensions.md` 5.15). Pick one of two auth modes:
+
+**Personal API key** (simplest — works unless your Linear account is SSO-only):
+
+```bash
+export CLAUDE_UI_LINEAR_API_KEY="lin_api_..."   # Linear → Settings → Security & Access
+```
+
+**SSO-gated Linear account (e.g. Google identity)** — the API key path won't work if
+your org requires SSO login, so authorize once interactively instead:
+
+1. On the machine running this backend, run interactively (a real terminal, not
+   through the app): `claude mcp add --transport http linear https://mcp.linear.app/mcp`
+2. Complete the browser OAuth flow through your org's SSO login screen.
+3. Set `CLAUDE_UI_LINEAR_OAUTH=true` (leave `CLAUDE_UI_LINEAR_API_KEY` unset — an
+   explicit key always takes priority over OAuth if both are set) and restart the
+   backend.
+4. Try an import from the create-session dialog — the backend reuses the `claude`
+   CLI's own cached OAuth credential for `mcp.linear.app` (same `~/.claude` identity
+   sidecars already authenticate with), no token stored in claude-ui itself.
+
+If step 4 still reports "needs auth", the CLI's OAuth cache is scoped more narrowly
+than assumed (e.g. per-project rather than per-user) — the fallback is a first-party
+OAuth flow built into claude-ui itself (not yet built; see `docs/plan/phase-5-extensions.md` 5.15).
+
+## 9. Updating
 
 ```bash
 kill "$(cat /tmp/claude-ui.pid)"       # a running JVM blocks jar repackaging
@@ -125,7 +154,7 @@ git pull
 # start again (section 6); Flyway migrates the DB automatically on boot
 ```
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
@@ -135,3 +164,4 @@ git pull
 | Health DOWN / boot fails on datasource | Postgres not up yet — `docker compose up -d`, wait for healthy |
 | PR button → 409 | `gh` missing or not authenticated, or repo has no GitHub remote — message says which |
 | Widgets empty after update | Hard-refresh the browser (cached JS) |
+| Ticket import: "needs auth" / "cannot run the OAuth flow" | `CLAUDE_UI_LINEAR_OAUTH` mode only: the interactive `claude mcp add` setup (section 8) wasn't done on this host, or its cached credential isn't visible to headless sessions — check `logs/sidecar/<system-session-id>.log` |

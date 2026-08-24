@@ -11,7 +11,11 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class GitOpsService {
 
-	public record GitStatus(String branch, List<String> dirty, String upstream, int ahead, int behind) {
+	/**
+	 * aheadOfBase: commits on this branch not on baseBranch (-1 if it couldn't be computed,
+	 * e.g. baseBranch no longer exists — callers should treat that as "unknown", not "none").
+	 */
+	public record GitStatus(String branch, List<String> dirty, String upstream, int ahead, int behind, int aheadOfBase) {
 	}
 
 	public record LogEntry(String hash, String subject, String author, String date) {
@@ -25,7 +29,7 @@ public class GitOpsService {
 		this.worktrees = worktrees;
 	}
 
-	public GitStatus status(Path worktree) {
+	public GitStatus status(Path worktree, String baseBranch) {
 		String branch = git.runOrThrow(worktree, "branch", "--show-current").stdout();
 		List<String> dirty = worktrees.dirtyFiles(worktree);
 		String upstream = null;
@@ -41,7 +45,14 @@ public class GitOpsService {
 				ahead = Integer.parseInt(parts[1]);
 			}
 		}
-		return new GitStatus(branch, dirty, upstream, ahead, behind);
+		// commits not on baseBranch: what a fresh push/PR would actually carry, independent of
+		// whether this branch has ever been pushed (ahead/behind above is upstream-relative only)
+		int aheadOfBase = -1;
+		var baseCount = git.run(worktree, "rev-list", "--count", baseBranch + "..HEAD");
+		if (baseCount.ok()) {
+			aheadOfBase = Integer.parseInt(baseCount.stdout());
+		}
+		return new GitStatus(branch, dirty, upstream, ahead, behind, aheadOfBase);
 	}
 
 	/** Tracked changes vs HEAD plus content of untracked files. */

@@ -79,6 +79,7 @@ export default function Transcript({
             return (
               <div key={i} className="t-footer">
                 {item.stopReason} · ${item.costUsd.toFixed(4)} · {(item.durationMs / 1000).toFixed(1)}s
+                {item.model ? ` · ${item.model}` : ''}
               </div>
             );
           case 'note':

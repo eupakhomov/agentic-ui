@@ -16,6 +16,8 @@ const MODE_LABEL: Record<PermissionMode, string> = {
   bypassPermissions: 'Bypass',
 };
 
+const MODEL_CYCLE = ['sonnet', 'opus', 'haiku'];
+
 export default function SessionWidget({ sessionId, onClosed }: { sessionId: string; onClosed: () => void }) {
   const view = useStore((s) => s.views[sessionId]);
   const apply = useStore((s) => s.apply);
@@ -83,6 +85,15 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
     send({ type: 'set_permission_mode', mode: next });
   }, [view, send]);
 
+  const cycleModel = useCallback(() => {
+    if (!view) return;
+    // system_init reports a concrete resolved id (e.g. "claude-sonnet-5") even when
+    // launched via an alias, so match by substring rather than exact equality
+    const current = MODEL_CYCLE.findIndex((m) => (view.model ?? '').toLowerCase().includes(m));
+    const next = MODEL_CYCLE[(current + 1) % MODEL_CYCLE.length]!;
+    send({ type: 'set_model', model: next });
+  }, [view, send]);
+
   const resume = useCallback(async () => {
     setActionError('');
     try {
@@ -118,13 +129,23 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
         >
           {view.name ?? entity?.name ?? sessionId.slice(0, 8)}
         </span>
-        {entity?.repoPath && (
+        {entity?.kind === 'system' && <span className="chip" title="backend-initiated system session">🛠 system</span>}
+        {entity?.kind !== 'system' && entity?.repoPath && (
           <span className="chip" title={entity.repoPath}>
             {entity.repoPath.split('/').pop()}
           </span>
         )}
-        <span className="chip" title="branch">{entity?.branch}</span>
-        {(view.model ?? entity?.model) && <span className="chip">{view.model ?? entity?.model}</span>}
+        {entity?.kind !== 'system' && <span className="chip" title="branch">{entity?.branch}</span>}
+        {(view.model ?? entity?.model) && (
+          <span
+            className={`chip${view.capabilities?.modelSwitch ?? true ? ' clickable' : ''}`}
+            title={view.capabilities?.modelSwitch ?? true ? 'click to switch model' : undefined}
+            onClick={cycleModel}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {view.model ?? entity?.model}
+          </span>
+        )}
         {entity?.ecosystemPath && <span className="chip" title={`context: ${entity.ecosystemPath}`}>🌐</span>}
         <span className="spacer" />
         <span
@@ -152,11 +173,13 @@ export default function SessionWidget({ sessionId, onClosed }: { sessionId: stri
         {state === 'CRASHED' && (
           <button onMouseDown={(e) => e.stopPropagation()} onClick={() => void resume()}>Resume</button>
         )}
-        <button
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => setShowGit((v) => !v)}
-          title="git panel"
-        >⎇</button>
+        {entity?.kind !== 'system' && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setShowGit((v) => !v)}
+            title="git panel"
+          >⎇</button>
+        )}
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => setClosing(true)}
