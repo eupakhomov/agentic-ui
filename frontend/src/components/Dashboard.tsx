@@ -36,8 +36,8 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [sessionIds, setSessionIds] = useState<string[]>(
     initialSessions.filter((s) => s.state !== 'CLOSED' && s.kind !== 'system').map((s) => s.id),
   );
-  const [systemSessionIds, setSystemSessionIds] = useState<string[]>(
-    initialSessions.filter((s) => s.state !== 'CLOSED' && s.kind === 'system').map((s) => s.id),
+  const [systemSessions, setSystemSessions] = useState<SessionSummary[]>(
+    initialSessions.filter((s) => s.state !== 'CLOSED' && s.kind === 'system'),
   );
   const [showSystem, setShowSystem] = useState(() => localStorage.getItem('claude-ui.showSystem') === '1');
   const [layout, setLayout] = useState<Layout[]>(loadLayout());
@@ -62,9 +62,14 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     return () => window.removeEventListener('beforeunload', guard);
   }, [views]);
 
+  // views[id] only exists once that session's widget has mounted its own WebSocket (see
+  // SessionWidget); fall back to the last-fetched summary state until then, so the topbar
+  // dot doesn't go stale after e.g. a resume that happened while the panel was open.
+  const systemState = systemSessions[0] && (views[systemSessions[0].id]?.state ?? systemSessions[0].state);
+
   const visibleIds = useMemo(
-    () => [...sessionIds, ...(showSystem ? systemSessionIds : [])],
-    [sessionIds, systemSessionIds, showSystem],
+    () => [...sessionIds, ...(showSystem ? systemSessions.map((s) => s.id) : [])],
+    [sessionIds, systemSessions, showSystem],
   );
 
   const fullLayout = useMemo(() => {
@@ -88,7 +93,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
 
   const onClosed = useCallback((id: string) => {
     setSessionIds((ids) => ids.filter((x) => x !== id));
-    setSystemSessionIds((ids) => ids.filter((x) => x !== id));
+    setSystemSessions((list) => list.filter((s) => s.id !== id));
     removeView(id);
   }, [removeView]);
 
@@ -96,7 +101,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     const list = await api.listSessions();
     const live = list.filter((s) => s.state !== 'CLOSED');
     setSessionIds(live.filter((s) => s.kind !== 'system').map((s) => s.id));
-    setSystemSessionIds(live.filter((s) => s.kind === 'system').map((s) => s.id));
+    setSystemSessions(live.filter((s) => s.kind === 'system'));
   }, []);
 
   return (
@@ -107,19 +112,20 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         <button onClick={() => void refresh()}>Refresh</button>
         <button onClick={() => setShowTemplates(true)}>Templates</button>
         <button
-          disabled={systemSessionIds.length === 0}
+          disabled={systemSessions.length === 0}
           title={
-            systemSessionIds.length === 0
-              ? 'no system sessions yet (created by backend tasks like ticket import)'
-              : showSystem ? 'hide system sessions' : `show ${systemSessionIds.length} system session(s) (backend-initiated tasks)`
+            systemSessions.length === 0
+              ? 'no system session yet (created by backend tasks like ticket import)'
+              : showSystem ? 'hide system session' : `show system session (${systemState!.toLowerCase()})`
           }
+          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
           onClick={() => setShowSystem((v) => {
             const next = !v;
             localStorage.setItem('claude-ui.showSystem', next ? '1' : '0');
             return next;
           })}
         >
-          🤖{systemSessionIds.length > 0 ? ` ${systemSessionIds.length}` : ''}
+          🤖{systemState && <span className={`dot ${systemState}`} />}
         </button>
         <button title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
         <button className="primary" onClick={() => setShowCreate(true)}>+ New Session</button>

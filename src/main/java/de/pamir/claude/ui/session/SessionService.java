@@ -312,12 +312,17 @@ public class SessionService {
 		} catch (IOException e) {
 			throw new IllegalStateException("failed to create system session scratch dir: " + e.getMessage(), e);
 		}
+		JsonNode mcpConfig = systemMcpConfig();
+		// Backend-initiated turns have nobody to answer an interactive permission prompt, so tools
+		// exposed via systemMcpConfig() are pre-approved here (allowedTools bypasses canUseTool
+		// entirely, regardless of permissionMode) rather than left to prompt and hang/time out.
+		List<String> allowedTools = mcpConfig != null ? List.of("mcp__linear") : List.of();
 		SessionEntity entity = new SessionEntity(
 				id, "system", "claude", null,
 				"(system)", null, List.of(),
 				"(system)", "(system)", scratch.toString(),
 				null, null, "haiku", "default",
-				List.of(), List.of(), systemMcpConfig(), null, mapper.createArrayNode(), mapper.createArrayNode(),
+				allowedTools, List.of(), mcpConfig, null, mapper.createArrayNode(), mapper.createArrayNode(),
 				null, null, null, null, null, null, null,
 				SessionState.CREATING, "system", null, null);
 		sessions.insert(entity);

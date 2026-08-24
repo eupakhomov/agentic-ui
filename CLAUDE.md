@@ -36,8 +36,10 @@ architectural choice — most have been explicitly decided.
 
 ## Build & test (CLI)
 
+**WSL/Windows:**
+
 ```bash
-# WSL: make sure JDK 25 is active (a login shell picks this up from ~/.bashrc)
+# make sure JDK 25 is active (a login shell picks this up from ~/.bashrc)
 export JAVA_HOME="$HOME/.jdks/jdk-25.0.4.1+1"; export PATH="$JAVA_HOME/bin:$PATH"
 ./mvnw -v                     # must report Java 25
 
@@ -47,6 +49,17 @@ export JAVA_HOME="$HOME/.jdks/jdk-25.0.4.1+1"; export PATH="$JAVA_HOME/bin:$PATH
 
 Gotcha (bash): `export A=x PATH=$A/bin:$PATH` in ONE statement expands `$A` before the
 assignment takes effect — export `JAVA_HOME` and `PATH` as two statements.
+
+**macOS:** JDK 25 and Maven are typically already on `PATH` (e.g. via sdkman/brew), and
+`mvnw` loses its executable bit across some git checkouts (`git ls-files -s mvnw` shows
+`100644`) — use the system `mvn` instead of `./mvnw`:
+
+```bash
+mvn -v                        # must report Java 25
+
+mvn clean verify              # full build + tests — REQUIRES Postgres running (see below)
+mvn clean verify -DskipTests  # compile-only, no DB needed
+```
 
 ## Database
 
@@ -71,8 +84,10 @@ docker compose up -d          # if WSL integration is enabled
 # 1. Postgres must be up (see Database section), then build the jar.
 #    IMPORTANT: stop a running backend first — a live JVM holds the jar and the
 #    spring-boot repackage fails half-written.
-./mvnw package -DskipTests -Dskip.installnodenpm -Dskip.npm   # fast: reuses frontend/dist
-./mvnw package -DskipTests                                    # full: rebuilds frontend too
+# WSL/Windows: use ./mvnw. macOS: use mvn (see "Build & test" above for why).
+mvnw="./mvnw"; command -v mvn >/dev/null && [ "$(uname)" = "Darwin" ] && mvnw="mvn"
+$mvnw package -DskipTests -Dskip.installnodenpm -Dskip.npm   # fast: reuses frontend/dist
+$mvnw package -DskipTests                                    # full: rebuilds frontend too
 # (run `cd frontend && npm run build` first if frontend sources changed and you use the fast form)
 
 # 2. Generate a token, start in background, print the token for the browser login:

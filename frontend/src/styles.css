@@ -153,9 +153,11 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; width: min(680px, 92vw); max-height: 88vh; overflow-y: auto; }
 .modal h2 { margin: 0 0 14px; font-size: calc(16px * var(--font-scale)); }
-.form-grid { display: grid; grid-template-columns: 130px 1fr; gap: 7px 12px; align-items: center; }
+.form-grid { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 7px 12px; align-items: center; }
 .form-grid label { color: var(--muted); font-size: calc(13px * var(--font-scale)); }
 .form-grid .full { grid-column: 1 / -1; }
+.form-grid > input, .form-grid > select, .form-grid > textarea { width: 100%; min-width: 0; }
+.form-grid input, .form-grid select, .form-grid textarea { max-width: 100%; }
 .modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .skills-list { display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
 .error-text { color: var(--red); font-size: calc(13px * var(--font-scale)); white-space: pre-wrap; }

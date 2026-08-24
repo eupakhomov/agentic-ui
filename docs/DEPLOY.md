@@ -63,8 +63,13 @@ set `CLAUDE_UI_DB_PASSWORD` for both compose and the backend.
 
 ## 5. Build
 
+`mvnw` sometimes loses its executable bit across git checkouts (`git ls-files -s mvnw`
+shows `100644`, not `100755`) — if `./mvnw` fails with "permission denied", either
+`chmod +x mvnw` or, if JDK 25 + Maven are already on `PATH` (e.g. via sdkman/brew), just
+use the system `mvn`:
+
 ```bash
-./mvnw package -DskipTests
+mvn package -DskipTests        # or: ./mvnw package -DskipTests
 ```
 
 First build is slow: it downloads a Node distro into `target/` and npm-installs the
@@ -75,7 +80,7 @@ not 10+). Then build the sidecar once:
 cd sidecar && npm install && npm run build && cd ..
 ```
 
-Rebuilds that don't touch the frontend: `./mvnw package -DskipTests -Dskip.installnodenpm -Dskip.npm`.
+Rebuilds that don't touch the frontend: `mvn package -DskipTests -Dskip.installnodenpm -Dskip.npm`.
 
 ## 6. Run
 
@@ -162,7 +167,7 @@ OAuth flow built into claude-ui itself (not yet built; see `docs/plan/phase-5-ex
 kill "$(cat /tmp/claude-ui.pid)"       # a running JVM blocks jar repackaging
 git pull
 (cd sidecar && npm install && npm run build)
-./mvnw package -DskipTests
+mvn package -DskipTests                # or: ./mvnw package -DskipTests
 # start again (section 6); Flyway migrates the DB automatically on boot
 ```
 
