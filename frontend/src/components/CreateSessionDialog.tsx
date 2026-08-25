@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { placeholdersOf, type ServicesResponse, type SkillInfo, type Template } from '../protocol';
+import { placeholdersOf, type ServicesResponse, type SkillInfo, type Template, type TicketSummary } from '../protocol';
+import TicketPickerDialog from './TicketPickerDialog';
 
 export default function CreateSessionDialog({
   onCreated,
@@ -41,6 +42,11 @@ export default function CreateSessionDialog({
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState('');
   const importAbortRef = useRef<AbortController | null>(null);
+  const [showTicketPicker, setShowTicketPicker] = useState(false);
+  const [recentTickets, setRecentTickets] = useState<TicketSummary[] | null>(null);
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerError, setPickerError] = useState('');
+  const pickerAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     api.services().then((info) => {
@@ -53,7 +59,8 @@ export default function CreateSessionDialog({
     api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
   }, []);
 
-  const importTicket = async () => {
+  const importTicket = async (refOverride?: string) => {
+    const ref = (refOverride ?? ticketRef).trim();
     setImportError('');
     setImportBusy(true);
     const controller = new AbortController();
@@ -63,10 +70,10 @@ export default function CreateSessionDialog({
     // real error by then; this is a client-side safety net so the button can never
     // get stuck forever even if that assumption turns out wrong in some environment
     const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
-    console.log('[claude-ui] ticket import: fetching', ticketRef.trim());
+    console.log('[claude-ui] ticket import: fetching', ref);
     const started = performance.now();
     try {
-      const result = await api.importTicket(ticketRef.trim(), controller.signal);
+      const result = await api.importTicket(ref, controller.signal);
       console.log('[claude-ui] ticket import: succeeded in', Math.round(performance.now() - started), 'ms', result);
       setBranch(result.branchName);
       setInitialPrompt(result.prompt);
@@ -89,6 +96,41 @@ export default function CreateSessionDialog({
       importAbortRef.current = null;
       setImportBusy(false);
     }
+  };
+
+  const browseRecentTickets = async () => {
+    setPickerError('');
+    setPickerBusy(true);
+    setShowTicketPicker(true);
+    const controller = new AbortController();
+    pickerAbortRef.current = controller;
+    const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
+    console.log('[claude-ui] ticket browse: fetching recent tickets');
+    const started = performance.now();
+    try {
+      const list = await api.listRecentTickets(controller.signal);
+      console.log('[claude-ui] ticket browse: succeeded in', Math.round(performance.now() - started), 'ms', list);
+      setRecentTickets(list);
+    } catch (e) {
+      const elapsed = Math.round(performance.now() - started);
+      if (controller.signal.aborted) {
+        console.error('[claude-ui] ticket browse: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
+        setPickerError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (50s)');
+      } else {
+        console.error('[claude-ui] ticket browse: failed after', elapsed, 'ms', e);
+        setPickerError(e instanceof ApiError ? e.message : String(e));
+      }
+    } finally {
+      clearTimeout(safetyNet);
+      pickerAbortRef.current = null;
+      setPickerBusy(false);
+    }
+  };
+
+  const pickTicket = (ref: string) => {
+    setShowTicketPicker(false);
+    setTicketRef(ref);
+    void importTicket(ref);
   };
 
   useEffect(() => {
@@ -154,6 +196,7 @@ export default function CreateSessionDialog({
   };
 
   return (
+    <>
     <div className="modal-backdrop" onClick={() => { if (!busy && !importBusy) onCancel(); }}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>New Session</h2>
@@ -180,13 +223,17 @@ export default function CreateSessionDialog({
                   style={{ flex: 1 }}
                   value={ticketRef}
                   onChange={(e) => setTicketRef(e.target.value)}
-                  placeholder="Linear ticket, e.g. ENG-123 or a ticket URL"
-                  disabled={importBusy}
+                  placeholder="Linear ticket, e.g. ENG-123 or a URL — leave blank to browse tickets assigned to you"
+                  disabled={importBusy || pickerBusy}
                 />
-                {importBusy ? (
-                  <button onClick={() => importAbortRef.current?.abort('user')}>Cancel</button>
+                {importBusy || pickerBusy ? (
+                  <button onClick={() => { importAbortRef.current?.abort('user'); pickerAbortRef.current?.abort('user'); }}>
+                    Cancel
+                  </button>
                 ) : (
-                  <button disabled={!ticketRef.trim()} onClick={() => void importTicket()}>Fetch</button>
+                  <button onClick={() => void (ticketRef.trim() ? importTicket() : browseRecentTickets())}>
+                    {ticketRef.trim() ? 'Fetch' : 'Browse'}
+                  </button>
                 )}
               </div>
               {importBusy && (
@@ -327,5 +374,15 @@ export default function CreateSessionDialog({
         </div>
       </div>
     </div>
+    {showTicketPicker && (
+      <TicketPickerDialog
+        tickets={recentTickets}
+        busy={pickerBusy}
+        error={pickerError}
+        onPick={pickTicket}
+        onClose={() => { pickerAbortRef.current?.abort('user'); setShowTicketPicker(false); }}
+      />
+    )}
+    </>
   );
 }

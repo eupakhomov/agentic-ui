@@ -106,6 +106,12 @@ export interface Settings {
   linearApiKeyConfigured: boolean;
 }
 
+export interface TicketSummary {
+  ref: string;
+  title: string;
+  status: string;
+}
+
 export const LIVE_STATES: SessionState[] = ['STARTING', 'IDLE', 'RUNNING', 'WAITING_INPUT'];
 
 /** Extract {{placeholders}} from a kickoff prompt template. */

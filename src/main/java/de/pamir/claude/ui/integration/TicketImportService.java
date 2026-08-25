@@ -8,6 +8,8 @@ import de.pamir.claude.ui.session.SessionService;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -23,6 +25,9 @@ public class TicketImportService {
 	private static final Set<String> VALID_MODELS = Set.of("sonnet", "opus", "haiku");
 
 	public record TicketImportResult(String branchName, String prompt, String recommendedModel) {
+	}
+
+	public record TicketSummary(String ref, String title, String status) {
 	}
 
 	private final SessionService sessionService;
@@ -71,11 +76,44 @@ public class TicketImportService {
 		return parse(raw);
 	}
 
-	private TicketImportResult parse(String raw) {
-		String cleaned = raw == null ? "" : raw.strip();
-		if (cleaned.startsWith("```")) {
-			cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
+	public List<TicketSummary> listMyTickets() {
+		if (!enabled()) {
+			throw new IllegalStateException(
+					"Linear integration is not configured (set CLAUDE_UI_LINEAR_API_KEY, or enable OAuth in Settings)");
 		}
+		String prompt = "You have access to Linear via MCP tools. List up to 20 issues currently assigned to me "
+				+ "(the authenticated Linear user), ordered by most recently updated first, excluding any issue "
+				+ "in a completed or canceled state. Then respond with ONLY a JSON array — no markdown fences, "
+				+ "no commentary — of objects of the form {\"ref\": \"ENG-123\", \"title\": \"...\", \"status\": "
+				+ "\"...\"}. If there are no matching issues, respond with an empty array [].";
+		String raw = sessionService.runSystemTurn(prompt, TIMEOUT);
+		return parseTickets(raw);
+	}
+
+	private List<TicketSummary> parseTickets(String raw) {
+		JsonNode node;
+		try {
+			node = mapper.readTree(stripFences(raw));
+		} catch (RuntimeException e) {
+			throw new IllegalStateException("could not parse ticket list response: " + truncate(raw));
+		}
+		if (!node.isArray()) {
+			node = node.path("tickets");
+		}
+		List<TicketSummary> tickets = new ArrayList<>();
+		for (JsonNode item : node) {
+			String ref = item.path("ref").asText("").strip();
+			String title = item.path("title").asText("").strip();
+			if (ref.isBlank() || title.isBlank()) {
+				continue;
+			}
+			tickets.add(new TicketSummary(ref, title, item.path("status").asText("").strip()));
+		}
+		return tickets;
+	}
+
+	private TicketImportResult parse(String raw) {
+		String cleaned = stripFences(raw);
 		JsonNode node;
 		try {
 			node = mapper.readTree(cleaned);
@@ -92,6 +130,14 @@ public class TicketImportService {
 			recommendedModel = null;
 		}
 		return new TicketImportResult(branchName, promptText, recommendedModel);
+	}
+
+	private static String stripFences(String raw) {
+		String cleaned = raw == null ? "" : raw.strip();
+		if (cleaned.startsWith("```")) {
+			cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
+		}
+		return cleaned;
 	}
 
 	private static String sanitizeBranch(String s) {

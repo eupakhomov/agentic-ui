@@ -1,4 +1,4 @@
-import type { ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, Template } from '../protocol';
+import type { ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, Template, TicketSummary } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -70,6 +70,8 @@ export const api = {
   importTicket: (ticketRef: string, signal?: AbortSignal) =>
     request<{ branchName: string; prompt: string; recommendedModel: string | null }>(
       'POST', '/api/tickets/import', { ticketRef }, signal),
+  listRecentTickets: (signal?: AbortSignal) =>
+    request<TicketSummary[]>('POST', '/api/tickets/recent', undefined, signal),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
