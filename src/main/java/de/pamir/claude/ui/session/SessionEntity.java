@@ -39,6 +39,8 @@ public record SessionEntity(
 		SessionState state,
 		/** 'user' (default) or 'system' — backend-initiated tasks (ticket import, ...), hidden by default in the UI */
 		String kind,
+		/** Canonical ticket identifier (e.g. "ENG-123") if this session was created via ticket import; null otherwise */
+		String ticketRef,
 		Instant createdAt,
 		Instant updatedAt
 ) {

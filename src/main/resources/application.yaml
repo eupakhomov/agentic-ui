@@ -22,7 +22,6 @@ management:
 claude-ui:
   repo-path: ${CLAUDE_UI_REPO:/mnt/d/projects/claude-ui}
   worktree-root: ${CLAUDE_UI_WORKTREE_ROOT:${HOME}/claude-worktrees}
-  ecosystem-root: ${CLAUDE_UI_ECOSYSTEM_ROOT:/mnt/d/projects}
   skills-root: ${CLAUDE_UI_SKILLS_ROOT:${HOME}/claude-skills}
   max-sessions: ${CLAUDE_UI_MAX_SESSIONS:4}
   idle-park-minutes: ${CLAUDE_UI_IDLE_PARK_MINUTES:30}

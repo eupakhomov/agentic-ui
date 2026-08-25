@@ -10,7 +10,6 @@ import java.util.Map;
 public record AppProperties(
 		String repoPath,
 		String worktreeRoot,
-		String ecosystemRoot,
 		String skillsRoot,
 		int maxSessions,
 		String authToken,

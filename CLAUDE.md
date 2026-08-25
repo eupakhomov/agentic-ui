@@ -125,11 +125,12 @@ Note the `[.]` in the pkill pattern: `pkill -f` matches its own shell's command 
 so an unescaped pattern kills the shell that runs it (learned the hard way).
 
 Config lives in `application.yaml` under `claude-ui.*` (default repo path, worktree
-root, ecosystem root, skills root, max sessions, auth token, provider launch
-commands), bound by `de.pamir.claude.ui.config.AppProperties` and logged at startup
-(token masked). Service repo and ecosystem path are selectable **per session** in the
-create dialog; the config values are only defaults. Local secrets belong in gitignored
-`application-local.yaml` or env vars — never commit them.
+root, skills root, max sessions, auth token, provider launch commands), bound by
+`de.pamir.claude.ui.config.AppProperties` and logged at startup (token masked). Service
+repo and ecosystem path are selectable **per session** in the create dialog; the config
+values are only defaults (the ecosystem root default itself is a persisted setting, not
+env-based — see below). Local secrets belong in gitignored `application-local.yaml` or
+env vars — never commit them.
 
 ## Sidecar (Phase 1+)
 
@@ -172,26 +173,40 @@ the backend's environment):
 | `CLAUDE_UI_TOKEN` | — | Dashboard/API auth token (required for non-loopback binds) |
 | `CLAUDE_UI_REPO` | `/mnt/d/projects/claude-ui` | Default service repo (per-session selectable in the UI) |
 | `CLAUDE_UI_WORKTREE_ROOT` | `~/claude-worktrees` | Where session worktrees live |
-| `CLAUDE_UI_ECOSYSTEM_ROOT` | `/mnt/d/projects` | Default read-only context folder + service discovery root |
 | `CLAUDE_UI_SKILLS_ROOT` | `~/claude-skills` | Skills library scanned for the create-dialog picker |
-| `CLAUDE_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku) |
+| `CLAUDE_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku). When configured (or the OAuth toggle is on), the Linear MCP server is also layered by default into every regular session's `mcpConfig` (`SessionService.linearMcpServer()`/`withDefaultLinearMcp()`), so the agent can read/update tickets directly — unless the session's own `mcpConfig` already declares its own `linear` entry, which wins. Regular sessions go through the normal permission-approval flow for its tools (the system session pre-approves them instead, since backend-initiated turns have nobody to answer a prompt). |
 
 **Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
 `costBudgetUsd` (turns are refused once cumulative cost reaches it; in-flight turns
 finish; raise via the widget's cost chip), `maxTurns` (agentic turns per prompt),
 `thinking` budget and `effort` level.
 
-**Persisted settings** (Settings dialog → "Linear integration"; `app_setting` table,
-`SettingsService`/`SettingsController` — `GET`/`PATCH /api/settings`): non-secret,
-UI-editable, take effect on the next system-session turn with no backend restart.
-- **OAuth toggle** — alternative to `CLAUDE_UI_LINEAR_API_KEY` for SSO-gated Linear
-  accounts (e.g. Google identity): omits the Authorization header, relying on the
-  ambient `claude` CLI's own cached OAuth credential for `mcp.linear.app` — run
+**Permission modes** (create dialog, or click the widget's mode chip to cycle at
+runtime): `default` (ask for edits & commands), `acceptEdits`, `plan`, and
+`bypassPermissions` — the last skips **every** approval prompt, Bash included, with
+no per-session safety net of our own (the worktree-only `readOnlyDenial` check in
+`sidecar/src/permissions.ts` lives inside the `canUseTool` callback, which the
+underlying CLI does not invoke at all in this mode — `allowDangerouslySkipPermissions`
+is its own explicit opt-in, set in `sidecar/src/session.ts` only when this mode is
+selected). Use only for sessions you already fully trust.
+
+**Persisted settings** (Settings dialog; `app_setting` table, `SettingsService`/
+`SettingsController` — `GET`/`PATCH /api/settings`): non-secret, UI-editable, take
+effect on the next use with no backend restart.
+- **Ecosystem root** (Settings dialog → "Sessions") — default read-only context folder
+  + service discovery root (parent of all sibling services); empty = no default wider
+  context. Overridable per session in the create dialog (`ecosystemPath`, `null` = no
+  wider context for that session). Replaces the old `CLAUDE_UI_ECOSYSTEM_ROOT` env var.
+- **OAuth toggle** (Settings dialog → "Linear integration") — alternative to
+  `CLAUDE_UI_LINEAR_API_KEY` for SSO-gated Linear accounts (e.g. Google identity): omits
+  the Authorization header, relying on the ambient `claude` CLI's own cached OAuth
+  credential for `mcp.linear.app` — run
   `claude mcp add --transport http linear https://mcp.linear.app/mcp` once,
   interactively, on the backend host first. Ignored if `CLAUDE_UI_LINEAR_API_KEY` is set.
-- **Branch-naming guidance** — free text appended to the Haiku prompt that generates a
-  ticket import's `branchName`/`prompt`, e.g. "keep the ticket number uppercase" or
-  "format as feat(TICKET)-description / fix(TICKET)-description".
+- **Branch-naming guidance** (Settings dialog → "Linear integration") — free text
+  appended to the Haiku prompt that generates a ticket import's `branchName`/`prompt`,
+  e.g. "keep the ticket number uppercase" or "format as feat(TICKET)-description /
+  fix(TICKET)-description".
 
 **Fixed internals** (code constants, for awareness): stream_delta journal batching
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100

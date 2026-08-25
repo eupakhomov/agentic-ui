@@ -50,6 +50,8 @@ export interface SessionEntity {
   kickoffPrompt: string | null;
   /** 'user' (default) or 'system' — backend-initiated tasks, hidden by default in the dashboard */
   kind: 'user' | 'system';
+  /** Canonical ticket identifier (e.g. "ENG-123") if this session was created via ticket import */
+  ticketRef: string | null;
 }
 
 export interface SessionSummary {
@@ -104,6 +106,7 @@ export interface Settings {
   linearOAuthEnabled: boolean;
   ticketImportSpec: string;
   linearApiKeyConfigured: boolean;
+  ecosystemRoot: string;
 }
 
 export interface TicketSummary {

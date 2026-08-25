@@ -116,6 +116,9 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     ...(config.model ? { model: config.model } : {}),
     ...(config.fallbackModel ? { fallbackModel: config.fallbackModel } : {}),
     ...(config.permissionMode ? { permissionMode: config.permissionMode } : {}),
+    // required by the SDK to actually honor bypassPermissions (a safety measure on its side,
+    // separate from our own — readOnlyDenial in canUseTool below still applies regardless)
+    ...(config.permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
     ...(config.allowedTools ? { allowedTools: config.allowedTools } : {}),
     ...(config.disallowedTools ? { disallowedTools: config.disallowedTools } : {}),
     ...(config.contextDirs.length > 0 ? { additionalDirectories: config.contextDirs } : {}),

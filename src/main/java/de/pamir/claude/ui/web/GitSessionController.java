@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.web;
 
 import de.pamir.claude.ui.git.GitOpsService;
+import de.pamir.claude.ui.session.GitAssistService;
 import de.pamir.claude.ui.session.SessionEntity;
 import de.pamir.claude.ui.session.SessionRepository;
 import de.pamir.claude.ui.session.SessionState;
@@ -29,10 +30,12 @@ public class GitSessionController {
 
 	private final SessionRepository sessions;
 	private final GitOpsService gitOps;
+	private final GitAssistService assist;
 
-	public GitSessionController(SessionRepository sessions, GitOpsService gitOps) {
+	public GitSessionController(SessionRepository sessions, GitOpsService gitOps, GitAssistService assist) {
 		this.sessions = sessions;
 		this.gitOps = gitOps;
+		this.assist = assist;
 	}
 
 	@GetMapping("/status")
@@ -58,6 +61,16 @@ public class GitSessionController {
 		Path worktree = worktree(id, true);
 		gitOps.commitAll(worktree, request.message().strip());
 		return gitOps.status(worktree, sessions.get(id).baseBranch());
+	}
+
+	@PostMapping("/commit-message/suggest")
+	public GitAssistService.CommitSuggestion suggestCommitMessage(@PathVariable UUID id) {
+		return assist.suggestCommitMessage(id);
+	}
+
+	@PostMapping("/pr/suggest")
+	public GitAssistService.PrSuggestion suggestPr(@PathVariable UUID id) {
+		return assist.suggestPr(id);
 	}
 
 	@PostMapping("/push")

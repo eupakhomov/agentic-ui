@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../api/rest';
+import PrDialog from './PrDialog';
 
 interface GitStatus {
   branch: string;
@@ -30,6 +31,7 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [prUrl, setPrUrl] = useState('');
+  const [showPrDialog, setShowPrDialog] = useState(false);
 
   const refresh = useCallback(async () => {
     setError('');
@@ -59,6 +61,7 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
   };
 
   return (
+    <>
     <div className="git-panel">
       <div className="git-head">
         <strong>⎇ {status?.branch ?? '…'}</strong>
@@ -88,6 +91,16 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
                 value={commitMessage}
                 onChange={(e) => setCommitMessage(e.target.value)}
               />
+              <button
+                disabled={busy !== ''}
+                title="suggest a commit message from the diff"
+                onClick={() => void run('suggest-commit', async () => {
+                  const r = await gitApi<{ message: string }>(sessionId, 'commit-message/suggest', 'POST');
+                  setCommitMessage(r.message);
+                })}
+              >
+                {busy === 'suggest-commit' ? '…' : '✨'}
+              </button>
               <button
                 className="primary"
                 disabled={!commitMessage.trim() || busy !== ''}
@@ -119,18 +132,9 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
           <button
             disabled={busy !== '' || noChanges}
             title={noChanges ? 'no changes to open a PR for' : undefined}
-            onClick={() => {
-              const title = prompt('PR title:');
-              if (!title) return;
-              const body = prompt('PR description (optional):') ?? '';
-              void run('pr', async () => {
-                const r = await gitApi<{ url: string }>(sessionId, 'pr', 'POST', { title, body });
-                setPrUrl(r.url);
-                await refresh();
-              });
-            }}
+            onClick={() => setShowPrDialog(true)}
           >
-            {busy === 'pr' ? '…' : 'Open PR'}
+            Open PR
           </button>
         </div>
       </div>
@@ -144,5 +148,18 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
         ))}
       </div>
     </div>
+    {showPrDialog && (
+      <PrDialog
+        sessionId={sessionId}
+        defaultTitle={commitMessage || undefined}
+        onClose={() => setShowPrDialog(false)}
+        onCreated={(url) => {
+          setPrUrl(url);
+          setShowPrDialog(false);
+          void refresh();
+        }}
+      />
+    )}
+    </>
   );
 }

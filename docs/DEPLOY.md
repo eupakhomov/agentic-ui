@@ -38,12 +38,11 @@ The repo currently lives only on the dev machine. Either:
 
 ## 3. Configure for the Mac
 
-All settings are env vars (see CLAUDE.md "Limits & caps" for the full table).
-The four that must change from the WSL defaults are paths:
+Most settings are env vars (see CLAUDE.md "Limits & caps" for the full table).
+The three that must change from the WSL defaults are paths:
 
 ```bash
 # ~/.zshrc (or a run script)
-export CLAUDE_UI_ECOSYSTEM_ROOT="$HOME/projects"       # parent folder of your services
 export CLAUDE_UI_REPO="$HOME/projects/<default-repo>"  # default service (per-session selectable anyway)
 export CLAUDE_UI_WORKTREE_ROOT="$HOME/claude-worktrees"
 export CLAUDE_UI_SKILLS_ROOT="$HOME/claude-skills"     # optional; create + drop SKILL.md dirs in
@@ -51,6 +50,10 @@ export CLAUDE_UI_SKILLS_ROOT="$HOME/claude-skills"     # optional; create + drop
 
 Alternatively keep a gitignored `application-local.yaml` next to the jar and run
 with `--spring.config.additional-location=file:./application-local.yaml`.
+
+The ecosystem root (parent folder of your services, used for read-only session
+context + the service picker) is not an env var — set it once in the Settings
+dialog → "Sessions" after first login; it's persisted in the database.
 
 ## 4. Database
 
@@ -115,8 +118,8 @@ without it — just restarts cleanly once the DB is there).
 
 1. Open the URL, enter the token (stored in the browser afterwards).
 2. Click **🔔** to enable desktop notifications (finished / needs input / crashed).
-3. **+ New Session** → pick a service (auto-discovered from `CLAUDE_UI_ECOSYSTEM_ROOT`),
-   branch, model, permissions — go.
+3. **+ New Session** → pick a service (auto-discovered from the ecosystem root set in
+   Settings), branch, model, permissions — go.
 4. The **⎇** button per widget: status/diff/commit/push/PR.
    PR button needs `gh auth login` done once.
 

@@ -96,7 +96,7 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .widget.crashed { border-color: var(--red); }
 .widget-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--panel2); cursor: move; }
 .widget-header .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.widget-header .spacer { flex: 1; }
+.spacer { flex: 1; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .dot.IDLE { background: var(--green); }
 .dot.RUNNING, .dot.STARTING, .dot.CREATING, .dot.PROVISIONING { background: var(--accent); animation: pulse 1.2s infinite; }

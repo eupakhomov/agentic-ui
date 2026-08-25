@@ -23,8 +23,8 @@ public class Application {
 	@Bean
 	CommandLineRunner logConfig(AppProperties props) {
 		return args -> log.info(
-				"claude-ui config: repoPath={}, worktreeRoot={}, ecosystemRoot={}, skillsRoot={}, maxSessions={}, authToken={}, providers={}",
-				props.repoPath(), props.worktreeRoot(), props.ecosystemRoot(), props.skillsRoot(),
+				"claude-ui config: repoPath={}, worktreeRoot={}, skillsRoot={}, maxSessions={}, authToken={}, providers={}",
+				props.repoPath(), props.worktreeRoot(), props.skillsRoot(),
 				props.maxSessions(),
 				props.authToken() == null || props.authToken().isBlank() ? "<unset>" : "****",
 				props.providers() == null ? "{}" : props.providers().keySet());

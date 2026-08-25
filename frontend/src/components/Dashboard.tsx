@@ -93,6 +93,11 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     setSessionIds((ids) => [...ids, id]);
     setPendingDraft(draftInput ? { id, text: draftInput } : null);
     setShowCreate(false);
+    // the create flow (e.g. ticket import) may have spun up the system session before this
+    // page ever loaded it — refresh so the topbar 🤖 toggle reflects it immediately
+    void api.listSessions().then((list) => {
+      setSystemSessions(list.filter((s) => s.kind === 'system' && s.state !== 'CLOSED'));
+    });
   }, []);
 
   const onClosed = useCallback((id: string) => {

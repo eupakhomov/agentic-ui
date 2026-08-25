@@ -35,16 +35,16 @@ public class SessionRepository {
 							context_dirs, branch, base_branch, worktree_path, model, permission_mode,
 							allowed_tools, disallowed_tools, mcp_config, env_vars, skill_sources, agent_sources,
 							instructions, thinking, effort, max_turns, fallback_model, cost_budget_usd,
-							kickoff_prompt, state, kind)
+							kickoff_prompt, state, kind, ticket_ref)
 						VALUES (?, ?, ?, ?::jsonb, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb,
-							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(s.id(), s.name(), s.provider(), json(s.providerConfig()), s.repoPath(), s.ecosystemPath(),
 						json(s.contextDirs()), s.branch(), s.baseBranch(), s.worktreePath(), s.model(),
 						s.permissionMode(), json(s.allowedTools()), json(s.disallowedTools()), json(s.mcpConfig()),
 						json(s.envVars()), json(s.skillSources()), json(s.agentSources()), s.instructions(),
 						s.thinking(), s.effort(), s.maxTurns(), s.fallbackModel(), s.costBudgetUsd(),
-						s.kickoffPrompt(), s.state().name(), s.kind())
+						s.kickoffPrompt(), s.state().name(), s.kind(), s.ticketRef())
 				.update();
 	}
 
@@ -209,6 +209,7 @@ public class SessionRepository {
 				rs.getString("kickoff_prompt"),
 				SessionState.valueOf(rs.getString("state")),
 				rs.getString("kind"),
+				rs.getString("ticket_ref"),
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("updated_at").toInstant());
 	}

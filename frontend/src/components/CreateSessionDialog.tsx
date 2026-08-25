@@ -24,7 +24,7 @@ export default function CreateSessionDialog({
   const [templateId, setTemplateId] = useState('');
   const [model, setModel] = useState('sonnet');
   const [recommendedModel, setRecommendedModel] = useState<string | null>(null);
-  const [permissionMode, setPermissionMode] = useState('default');
+  const [permissionMode, setPermissionMode] = useState('acceptEdits');
   const [thinking, setThinking] = useState('');
   const [effort, setEffort] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -35,6 +35,9 @@ export default function CreateSessionDialog({
   const [advanced, setAdvanced] = useState('');
   const [initialPrompt, setInitialPrompt] = useState('');
   const [ticketRef, setTicketRef] = useState('');
+  // the canonical ref returned by import (e.g. "ENG-123"), distinct from the raw text the user
+  // typed above (which may be a pasted URL) — this is what gets persisted on the session
+  const [resolvedTicketRef, setResolvedTicketRef] = useState<string | null>(null);
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
   // ticket-derived prompts land unsent in the new session's compose box (reviewed & sent by
   // hand there) instead of auto-firing as a kickoff turn the moment the sidecar is ready
@@ -78,6 +81,7 @@ export default function CreateSessionDialog({
       setBranch(result.branchName);
       setInitialPrompt(result.prompt);
       setPromptFromTicket(true);
+      setResolvedTicketRef(result.ticketRef);
       if (result.recommendedModel && ['sonnet', 'opus', 'haiku'].includes(result.recommendedModel)) {
         setModel(result.recommendedModel);
         setRecommendedModel(result.recommendedModel);
@@ -159,6 +163,7 @@ export default function CreateSessionDialog({
       if (effort) overrides['effort'] = effort;
       if (instructions.trim()) overrides['instructions'] = instructions.trim();
       overrides['ecosystemPath'] = ecosystemPath.trim() || null;
+      if (promptFromTicket && resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
       const skillSources = [
         ...[...selectedSkills].map((path) => ({ type: 'dir', ref: path })),
         ...(extraSkill.trim()
@@ -278,10 +283,17 @@ export default function CreateSessionDialog({
           )}
 
           <label>Permissions</label>
-          <select value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)}>
+          <select
+            value={permissionMode}
+            onChange={(e) => setPermissionMode(e.target.value)}
+            title={permissionMode === 'bypassPermissions'
+              ? 'ALL tool calls auto-approve, including Bash — no approval prompts at all'
+              : undefined}
+          >
             <option value="default">ask for edits & commands</option>
             <option value="acceptEdits">auto-accept edits</option>
             <option value="plan">plan first</option>
+            <option value="bypassPermissions">bypass all approval (including Bash) — no prompts at all</option>
           </select>
 
           <label>Thinking</label>

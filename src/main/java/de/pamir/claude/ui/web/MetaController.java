@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.web;
 
 import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitWorktreeService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,10 +27,12 @@ public class MetaController {
 	private static final Pattern FRONTMATTER_FIELD = Pattern.compile("^(name|description):\\s*(.+)$");
 
 	private final AppProperties props;
+	private final SettingsService settings;
 	private final GitWorktreeService worktrees;
 
-	public MetaController(AppProperties props, GitWorktreeService worktrees) {
+	public MetaController(AppProperties props, SettingsService settings, GitWorktreeService worktrees) {
 		this.props = props;
+		this.settings = settings;
 		this.worktrees = worktrees;
 	}
 
@@ -43,8 +46,9 @@ public class MetaController {
 	@GetMapping("/repo/services")
 	public ServicesResponse services() {
 		List<ServiceInfo> services = new ArrayList<>();
-		Path root = Path.of(props.ecosystemRoot());
-		if (Files.isDirectory(root)) {
+		String ecosystemRoot = settings.ecosystemRoot();
+		Path root = Path.of(ecosystemRoot.isBlank() ? "." : ecosystemRoot);
+		if (!ecosystemRoot.isBlank() && Files.isDirectory(root)) {
 			try (Stream<Path> children = Files.list(root)) {
 				children.filter(c -> Files.exists(c.resolve(".git"))).sorted()
 						.forEach(c -> services.add(new ServiceInfo(c.getFileName().toString(), c.toString())));
@@ -57,7 +61,7 @@ public class MetaController {
 				&& Files.exists(configured.resolve(".git"))) {
 			services.add(0, new ServiceInfo(configured.getFileName().toString(), configured.toString()));
 		}
-		return new ServicesResponse(props.ecosystemRoot(), props.repoPath(), services);
+		return new ServicesResponse(ecosystemRoot, props.repoPath(), services);
 	}
 
 	@GetMapping("/repo/branches")

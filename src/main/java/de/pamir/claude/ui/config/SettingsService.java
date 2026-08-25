@@ -11,6 +11,7 @@ public class SettingsService {
 
 	private static final String LINEAR_OAUTH_KEY = "linear.oauth";
 	private static final String TICKET_IMPORT_SPEC_KEY = "ticket-import.spec";
+	private static final String ECOSYSTEM_ROOT_KEY = "ecosystem.root";
 
 	private final SettingsRepository repo;
 
@@ -38,5 +39,17 @@ public class SettingsService {
 
 	public void setTicketImportSpec(String spec) {
 		repo.set(TICKET_IMPORT_SPEC_KEY, spec == null ? "" : spec);
+	}
+
+	/**
+	 * Default read-only context folder + service discovery root (parent of all sibling
+	 * services), editable per-session at creation time. Empty = no default wider context.
+	 */
+	public String ecosystemRoot() {
+		return repo.get(ECOSYSTEM_ROOT_KEY).orElse("");
+	}
+
+	public void setEcosystemRoot(String path) {
+		repo.set(ECOSYSTEM_ROOT_KEY, path == null ? "" : path);
 	}
 }

@@ -8,11 +8,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [fontSize, setFontSizeState] = useState<FontSize>(getFontSize());
   const [settings, setSettings] = useState<Settings | null>(null);
   const [specDraft, setSpecDraft] = useState('');
+  const [ecosystemRootDraft, setEcosystemRootDraft] = useState('');
 
   useEffect(() => {
     api.getSettings().then((s) => {
       setSettings(s);
       setSpecDraft(s.ticketImportSpec);
+      setEcosystemRootDraft(s.ecosystemRoot);
     }).catch(() => setSettings(null));
   }, []);
 
@@ -28,6 +30,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     void api.updateSettings({ ticketImportSpec: specDraft })
       .then(setSettings)
       .catch(() => setSpecDraft(settings.ticketImportSpec));
+  };
+
+  const saveEcosystemRoot = () => {
+    if (!settings || ecosystemRootDraft === settings.ecosystemRoot) return;
+    void api.updateSettings({ ecosystemRoot: ecosystemRootDraft })
+      .then(setSettings)
+      .catch(() => setEcosystemRootDraft(settings.ecosystemRoot));
   };
 
   return (
@@ -66,6 +75,20 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
 
         {settings && (
           <>
+            <h3 style={{ margin: '18px 0 10px' }}>Sessions</h3>
+            <div className="form-grid">
+              <label>Ecosystem root</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1' }}
+                value={ecosystemRootDraft}
+                onChange={(e) => setEcosystemRootDraft(e.target.value)}
+                onBlur={saveEcosystemRoot}
+                placeholder="parent folder of your services; empty = no default wider context"
+                title="default read-only context folder + service discovery root, overridable per session"
+              />
+            </div>
+
             <h3 style={{ margin: '18px 0 10px' }}>Linear integration</h3>
             <div className="form-grid">
               <label>API key</label>

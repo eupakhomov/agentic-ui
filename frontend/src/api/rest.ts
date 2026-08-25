@@ -68,11 +68,11 @@ export const api = {
   deleteTemplate: (id: string) => request<null>('DELETE', `/api/templates/${id}`),
   ticketImportEnabled: () => request<{ enabled: boolean }>('GET', '/api/tickets/import/enabled'),
   importTicket: (ticketRef: string, signal?: AbortSignal) =>
-    request<{ branchName: string; prompt: string; recommendedModel: string | null }>(
+    request<{ branchName: string; prompt: string; recommendedModel: string | null; ticketRef: string | null }>(
       'POST', '/api/tickets/import', { ticketRef }, signal),
   listRecentTickets: (signal?: AbortSignal) =>
     request<TicketSummary[]>('POST', '/api/tickets/recent', undefined, signal),
   getSettings: () => request<Settings>('GET', '/api/settings'),
-  updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec'>>) =>
+  updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
 };

@@ -66,9 +66,25 @@ public class GitOpsService {
 		return out.toString();
 	}
 
+	/** Diff of everything this branch would carry into a PR against baseBranch (merge-base diff). */
+	public String diffVsBase(Path worktree, String baseBranch) {
+		var result = git.run(worktree, "diff", baseBranch + "...HEAD");
+		return result.ok() ? result.stdout() : "";
+	}
+
 	public List<LogEntry> log(Path worktree, int limit) {
-		var result = git.runOrThrow(worktree, "log", "--format=%h%x1f%s%x1f%an%x1f%ad", "--date=relative",
-				"-" + limit);
+		return parseLog(git.runOrThrow(worktree, "log", "--format=%h%x1f%s%x1f%an%x1f%ad", "--date=relative",
+				"-" + limit));
+	}
+
+	/** Commits on this branch not on baseBranch, newest first — what a PR against it would contain. */
+	public List<LogEntry> logVsBase(Path worktree, String baseBranch, int limit) {
+		var result = git.run(worktree, "log", baseBranch + "..HEAD", "--format=%h%x1f%s%x1f%an%x1f%ad",
+				"--date=relative", "-" + limit);
+		return result.ok() ? parseLog(result) : List.of();
+	}
+
+	private List<LogEntry> parseLog(GitCommandRunner.GitResult result) {
 		if (result.stdout().isBlank()) {
 			return List.of();
 		}

@@ -24,7 +24,7 @@ public class TicketImportService {
 	private static final Duration TIMEOUT = Duration.ofSeconds(45);
 	private static final Set<String> VALID_MODELS = Set.of("sonnet", "opus", "haiku");
 
-	public record TicketImportResult(String branchName, String prompt, String recommendedModel) {
+	public record TicketImportResult(String branchName, String prompt, String recommendedModel, String ticketRef) {
 	}
 
 	public record TicketSummary(String ref, String title, String status) {
@@ -64,7 +64,8 @@ public class TicketImportService {
 				+ "Then respond with ONLY a single JSON object — no markdown fences, no commentary — "
 				+ "of the form: {\"branchName\": \"kebab-case-git-safe-branch-name\", \"prompt\": \"a clear, "
 				+ "actionable initial instruction for an engineer/agent implementing this ticket, including its "
-				+ "key requirements\", \"recommendedModel\": \"sonnet|opus|haiku\"}. branchName must be short, "
+				+ "key requirements\", \"recommendedModel\": \"sonnet|opus|haiku\", \"ticketRef\": "
+				+ "\"the issue's own short identifier, e.g. ENG-123, uppercased\"}. branchName must be short, "
 				+ "kebab-case, git-ref-safe, and include the ticket identifier, e.g. \"ENG-123-fix-login-bug\" OR "
 				+ "\"eng-123-fix-login-bug\". recommendedModel must be exactly one of \"sonnet\", \"opus\", or "
 				+ "\"haiku\", chosen by the ticket's apparent complexity: \"haiku\" for trivial/mechanical changes "
@@ -129,7 +130,8 @@ public class TicketImportService {
 		if (!VALID_MODELS.contains(recommendedModel)) {
 			recommendedModel = null;
 		}
-		return new TicketImportResult(branchName, promptText, recommendedModel);
+		String canonicalRef = node.path("ticketRef").asText("").strip().toUpperCase(Locale.ROOT);
+		return new TicketImportResult(branchName, promptText, recommendedModel, canonicalRef.isBlank() ? null : canonicalRef);
 	}
 
 	private static String stripFences(String raw) {

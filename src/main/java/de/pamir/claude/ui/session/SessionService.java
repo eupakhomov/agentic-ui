@@ -91,7 +91,7 @@ public class SessionService {
 				text(config, "provider", "claude"),
 				config.get("providerConfig"),
 				repo,
-				config.has("ecosystemPath") ? nullableText(config, "ecosystemPath") : props.ecosystemRoot(),
+				config.has("ecosystemPath") ? nullableText(config, "ecosystemPath") : nullableIfBlank(settings.ecosystemRoot()),
 				stringList(config, "contextDirs"),
 				branch, baseBranch, worktree.toString(),
 				null, null,
@@ -99,7 +99,7 @@ public class SessionService {
 				text(config, "permissionMode", "default"),
 				stringList(config, "allowedTools"),
 				stringList(config, "disallowedTools"),
-				config.get("mcpConfig"),
+				withDefaultLinearMcp(config.get("mcpConfig")),
 				config.get("envVars"),
 				arrayOrEmpty(config, "skillSources"),
 				arrayOrEmpty(config, "agentSources"),
@@ -110,7 +110,7 @@ public class SessionService {
 				nullableText(config, "fallbackModel"),
 				config.hasNonNull("costBudgetUsd") ? new BigDecimal(config.get("costBudgetUsd").asText()) : null,
 				fillPlaceholders(nullableText(config, "kickoffPrompt"), kickoffValues),
-				SessionState.CREATING, "user", null, null);
+				SessionState.CREATING, "user", nullableText(config, "ticketRef"), null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 
@@ -316,9 +316,9 @@ public class SessionService {
 		} catch (IOException e) {
 			throw new IllegalStateException("failed to create system session scratch dir: " + e.getMessage(), e);
 		}
-		JsonNode mcpConfig = systemMcpConfig();
+		JsonNode mcpConfig = linearMcpServer();
 		// Backend-initiated turns have nobody to answer an interactive permission prompt, so tools
-		// exposed via systemMcpConfig() are pre-approved here (allowedTools bypasses canUseTool
+		// exposed via linearMcpServer() are pre-approved here (allowedTools bypasses canUseTool
 		// entirely, regardless of permissionMode) rather than left to prompt and hang/time out.
 		List<String> allowedTools = mcpConfig != null ? List.of("mcp__linear") : List.of();
 		SessionEntity entity = new SessionEntity(
@@ -328,7 +328,7 @@ public class SessionService {
 				null, null, "haiku", "default",
 				allowedTools, List.of(), mcpConfig, null, mapper.createArrayNode(), mapper.createArrayNode(),
 				null, null, null, null, null, null, null,
-				SessionState.CREATING, "system", null, null);
+				SessionState.CREATING, "system", null, null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 		try {
@@ -344,8 +344,8 @@ public class SessionService {
 		return sessions.get(id);
 	}
 
-	/** Global integrations available to the system session; null (no MCP) if none are configured. */
-	private JsonNode systemMcpConfig() {
+	/** The Linear MCP server block ({"linear": {...}}), or null if Linear integration isn't configured. */
+	private ObjectNode linearMcpServer() {
 		boolean apiKey = props.linearApiKey() != null && !props.linearApiKey().isBlank();
 		if (!apiKey && !settings.linearOAuthEnabled()) {
 			return null;
@@ -360,6 +360,30 @@ public class SessionService {
 		// else: no headers — relies on the ambient `claude` CLI's own cached OAuth credential for
 		// this server URL (set up once via `claude mcp add` on the backend host, e.g. Google-SSO Linear)
 		return servers;
+	}
+
+	/**
+	 * Layers the Linear MCP server into a regular session's mcpConfig by default when Linear
+	 * integration is configured, so the agent can read/update tickets without the user having to
+	 * wire it up per session — unless the session's own config already defines a "linear" entry,
+	 * which wins. Regular sessions go through the normal permission-approval flow for its tools
+	 * (unlike the system session, which pre-approves them — see createSystemSession).
+	 */
+	private JsonNode withDefaultLinearMcp(JsonNode configured) {
+		ObjectNode linear = linearMcpServer();
+		if (linear == null) {
+			return configured;
+		}
+		if (configured == null || configured.isNull()) {
+			return linear;
+		}
+		if (!(configured instanceof ObjectNode existing) || existing.has("linear")) {
+			return configured;
+		}
+		ObjectNode merged = mapper.createObjectNode();
+		merged.setAll(existing);
+		merged.setAll(linear);
+		return merged;
 	}
 
 	private static void deleteRecursively(Path dir) {
@@ -621,6 +645,10 @@ public class SessionService {
 
 	private static String nullableText(ObjectNode node, String field) {
 		return node.hasNonNull(field) ? node.get(field).asText() : null;
+	}
+
+	private static String nullableIfBlank(String value) {
+		return value == null || value.isBlank() ? null : value;
 	}
 
 	private List<String> stringList(ObjectNode node, String field) {

@@ -13,10 +13,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/settings")
 public class SettingsController {
 
-	public record SettingsView(boolean linearOAuthEnabled, String ticketImportSpec, boolean linearApiKeyConfigured) {
+	public record SettingsView(boolean linearOAuthEnabled, String ticketImportSpec, boolean linearApiKeyConfigured,
+								String ecosystemRoot) {
 	}
 
-	public record SettingsUpdate(Boolean linearOAuthEnabled, String ticketImportSpec) {
+	public record SettingsUpdate(Boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot) {
 	}
 
 	private final SettingsService settings;
@@ -40,11 +41,15 @@ public class SettingsController {
 		if (update.ticketImportSpec() != null) {
 			settings.setTicketImportSpec(update.ticketImportSpec());
 		}
+		if (update.ecosystemRoot() != null) {
+			settings.setEcosystemRoot(update.ecosystemRoot());
+		}
 		return view();
 	}
 
 	private SettingsView view() {
 		boolean apiKeyConfigured = props.linearApiKey() != null && !props.linearApiKey().isBlank();
-		return new SettingsView(settings.linearOAuthEnabled(), settings.ticketImportSpec(), apiKeyConfigured);
+		return new SettingsView(settings.linearOAuthEnabled(), settings.ticketImportSpec(), apiKeyConfigured,
+				settings.ecosystemRoot());
 	}
 }

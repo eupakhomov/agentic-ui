@@ -8,7 +8,7 @@ import Transcript from './Transcript';
 import CloseDialog from './CloseDialog';
 import GitPanel from './GitPanel';
 
-const MODE_CYCLE: PermissionMode[] = ['default', 'acceptEdits', 'plan'];
+const MODE_CYCLE: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
 const MODE_LABEL: Record<PermissionMode, string> = {
   default: 'Ask edits',
   acceptEdits: 'Auto-accept',
@@ -155,10 +155,13 @@ export default function SessionWidget({
           </span>
         )}
         {entity?.ecosystemPath && <span className="chip" title={`context: ${entity.ecosystemPath}`}>🌐</span>}
+        {entity?.ticketRef && <span className="chip" title="linked ticket">🎫 {entity.ticketRef}</span>}
         <span className="spacer" />
         <span
           className={`chip clickable mode-${view.permissionMode}`}
-          title="click to switch permission mode"
+          title={view.permissionMode === 'bypassPermissions'
+            ? 'ALL tool calls auto-approve, including Bash — no approval prompts at all. Click to switch mode.'
+            : 'click to switch permission mode'}
           onClick={cycleMode}
           onMouseDown={(e) => e.stopPropagation()}
         >
