@@ -4,6 +4,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitCommandRunner;
 import de.pamir.claude.ui.git.GitWorktreeService;
 import de.pamir.claude.ui.journal.EventJournal;
@@ -37,6 +38,7 @@ public class SessionService {
 	private static final Logger log = LoggerFactory.getLogger(SessionService.class);
 
 	private final AppProperties props;
+	private final SettingsService settings;
 	private final SessionRepository sessions;
 	private final TemplateRepository templates;
 	private final GitWorktreeService worktrees;
@@ -54,10 +56,12 @@ public class SessionService {
 	private volatile CompletableFuture<String> pendingSystemTurn;
 	private final StringBuilder pendingSystemText = new StringBuilder();
 
-	public SessionService(AppProperties props, SessionRepository sessions, TemplateRepository templates,
-						  GitWorktreeService worktrees, GitCommandRunner git, AssetProvisioningService assets,
-						  SidecarManager sidecars, EventJournal journal, SessionEventBus bus, ObjectMapper mapper) {
+	public SessionService(AppProperties props, SettingsService settings, SessionRepository sessions,
+						  TemplateRepository templates, GitWorktreeService worktrees, GitCommandRunner git,
+						  AssetProvisioningService assets, SidecarManager sidecars, EventJournal journal,
+						  SessionEventBus bus, ObjectMapper mapper) {
 		this.props = props;
+		this.settings = settings;
 		this.sessions = sessions;
 		this.templates = templates;
 		this.worktrees = worktrees;
@@ -343,14 +347,14 @@ public class SessionService {
 	/** Global integrations available to the system session; null (no MCP) if none are configured. */
 	private JsonNode systemMcpConfig() {
 		boolean apiKey = props.linearApiKey() != null && !props.linearApiKey().isBlank();
-		if (!apiKey && !props.linearOAuth()) {
+		if (!apiKey && !settings.linearOAuthEnabled()) {
 			return null;
 		}
 		ObjectNode servers = mapper.createObjectNode();
 		ObjectNode linear = servers.putObject("linear");
 		linear.put("type", "http").put("url", "https://mcp.linear.app/mcp");
 		if (apiKey) {
-			// explicit key wins even if linearOAuth is also set
+			// explicit key wins even if OAuth is also enabled in Settings
 			linear.putObject("headers").put("Authorization", "Bearer " + props.linearApiKey());
 		}
 		// else: no headers — relies on the ambient `claude` CLI's own cached OAuth credential for

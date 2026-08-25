@@ -16,13 +16,6 @@ public record AppProperties(
 		String authToken,
 		/** Linear personal API key (Bearer token for https://mcp.linear.app/mcp); blank/unset = ticket import disabled */
 		@DefaultValue("") String linearApiKey,
-		/**
-		 * Alternative to linearApiKey for SSO-gated Linear accounts (e.g. Google identity): omits the
-		 * Authorization header entirely, trusting the ambient `claude` CLI's own cached OAuth credential
-		 * for this MCP server (set up once via `claude mcp add` on the backend host). Ignored if
-		 * linearApiKey is set — the explicit key always wins.
-		 */
-		@DefaultValue("false") boolean linearOAuth,
 		@DefaultValue("logs") String logDir,
 		@DefaultValue("30") int idleParkMinutes,
 		@DefaultValue("65536") int journalPayloadCapBytes,

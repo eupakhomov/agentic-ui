@@ -174,13 +174,24 @@ the backend's environment):
 | `CLAUDE_UI_WORKTREE_ROOT` | `~/claude-worktrees` | Where session worktrees live |
 | `CLAUDE_UI_ECOSYSTEM_ROOT` | `/mnt/d/projects` | Default read-only context folder + service discovery root |
 | `CLAUDE_UI_SKILLS_ROOT` | `~/claude-skills` | Skills library scanned for the create-dialog picker |
-| `CLAUDE_UI_LINEAR_API_KEY` | — | Linear personal API key; enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku) |
-| `CLAUDE_UI_LINEAR_OAUTH` | `false` | Alternative to `CLAUDE_UI_LINEAR_API_KEY` for SSO-gated Linear accounts (e.g. Google identity): omits the Authorization header, relying on the ambient `claude` CLI's own cached OAuth credential for `mcp.linear.app` — run `claude mcp add --transport http linear https://mcp.linear.app/mcp` once, interactively, on the backend host first. Ignored if `CLAUDE_UI_LINEAR_API_KEY` is also set |
+| `CLAUDE_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku) |
 
 **Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
 `costBudgetUsd` (turns are refused once cumulative cost reaches it; in-flight turns
 finish; raise via the widget's cost chip), `maxTurns` (agentic turns per prompt),
 `thinking` budget and `effort` level.
+
+**Persisted settings** (Settings dialog → "Linear integration"; `app_setting` table,
+`SettingsService`/`SettingsController` — `GET`/`PATCH /api/settings`): non-secret,
+UI-editable, take effect on the next system-session turn with no backend restart.
+- **OAuth toggle** — alternative to `CLAUDE_UI_LINEAR_API_KEY` for SSO-gated Linear
+  accounts (e.g. Google identity): omits the Authorization header, relying on the
+  ambient `claude` CLI's own cached OAuth credential for `mcp.linear.app` — run
+  `claude mcp add --transport http linear https://mcp.linear.app/mcp` once,
+  interactively, on the backend host first. Ignored if `CLAUDE_UI_LINEAR_API_KEY` is set.
+- **Branch-naming guidance** — free text appended to the Haiku prompt that generates a
+  ticket import's `branchName`/`prompt`, e.g. "keep the ticket number uppercase" or
+  "format as feat(TICKET)-description / fix(TICKET)-description".
 
 **Fixed internals** (code constants, for awareness): stream_delta journal batching
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100

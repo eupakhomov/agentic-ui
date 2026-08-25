@@ -45,6 +45,9 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [width, setWidth] = useState(window.innerWidth - 24);
+  // seeds a just-created session's compose box (e.g. an edited-but-unsent ticket import
+  // draft); read once by SessionWidget's initial state, no cleanup needed afterward
+  const [pendingDraft, setPendingDraft] = useState<{ id: string; text: string } | null>(null);
   const removeView = useStore((s) => s.remove);
 
   useEffect(() => {
@@ -86,8 +89,9 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(next));
   }, []);
 
-  const onCreated = useCallback((id: string) => {
+  const onCreated = useCallback((id: string, draftInput?: string) => {
     setSessionIds((ids) => [...ids, id]);
+    setPendingDraft(draftInput ? { id, text: draftInput } : null);
     setShowCreate(false);
   }, []);
 
@@ -142,7 +146,11 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         >
           {visibleIds.map((id) => (
             <div key={id}>
-              <SessionWidget sessionId={id} onClosed={() => onClosed(id)} />
+              <SessionWidget
+                sessionId={id}
+                initialInput={pendingDraft?.id === id ? pendingDraft.text : undefined}
+                onClosed={() => onClosed(id)}
+              />
             </div>
           ))}
         </GridLayout>

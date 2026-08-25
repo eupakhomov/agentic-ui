@@ -100,6 +100,12 @@ export interface ServicesResponse {
   services: ServiceInfo[];
 }
 
+export interface Settings {
+  linearOAuthEnabled: boolean;
+  ticketImportSpec: string;
+  linearApiKeyConfigured: boolean;
+}
+
 export const LIVE_STATES: SessionState[] = ['STARTING', 'IDLE', 'RUNNING', 'WAITING_INPUT'];
 
 /** Extract {{placeholders}} from a kickoff prompt template. */

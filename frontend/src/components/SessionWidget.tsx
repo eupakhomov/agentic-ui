@@ -18,13 +18,21 @@ const MODE_LABEL: Record<PermissionMode, string> = {
 
 const MODEL_CYCLE = ['sonnet', 'opus', 'haiku'];
 
-export default function SessionWidget({ sessionId, onClosed }: { sessionId: string; onClosed: () => void }) {
+export default function SessionWidget({
+  sessionId,
+  initialInput,
+  onClosed,
+}: {
+  sessionId: string;
+  initialInput?: string;
+  onClosed: () => void;
+}) {
   const view = useStore((s) => s.views[sessionId]);
   const apply = useStore((s) => s.apply);
   const setWsStatus = useStore((s) => s.setWsStatus);
   const seed = useStore((s) => s.seed);
   const [entity, setEntity] = useState<SessionEntity | null>(null);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialInput ?? '');
   const [closing, setClosing] = useState(false);
   const [showGit, setShowGit] = useState(false);
   const [actionError, setActionError] = useState('');

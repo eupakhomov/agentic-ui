@@ -127,3 +127,14 @@ tags them, giving each task a real transcript instead of an opaque subprocess ca
   prompt in the create dialog; a second import reuses the same system session (no
   second row created); the session is invisible by default and appears under the 🤖
   toggle with a full transcript of every import call.
+
+**Addendum 2026-08-25:** the OAuth toggle moved from `CLAUDE_UI_LINEAR_OAUTH` (env
+var, restart required) to a persisted setting — new `app_setting(key, value)` table
+(`V4__app_settings.sql`), `SettingsService`/`SettingsRepository`, `GET`/`PATCH
+/api/settings`, edited from the Settings dialog. `systemMcpConfig()` reads it on
+demand at system-session-creation time, so a toggle takes effect on the next ticket
+import with no backend restart. `CLAUDE_UI_LINEAR_API_KEY` (the actual secret) is
+untouched — still env-only, never written to `app_setting`. Also added a second
+persisted setting, `ticket-import.spec`: free text appended to the Haiku prompt that
+generates a ticket's `branchName`/`prompt` (e.g. branch-naming conventions). No
+seed-from-env migration for either — pre-launch, single user, not needed.

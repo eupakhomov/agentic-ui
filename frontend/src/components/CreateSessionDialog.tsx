@@ -6,7 +6,7 @@ export default function CreateSessionDialog({
   onCreated,
   onCancel,
 }: {
-  onCreated: (id: string) => void;
+  onCreated: (id: string, draftInput?: string) => void;
   onCancel: () => void;
 }) {
   const [servicesInfo, setServicesInfo] = useState<ServicesResponse | null>(null);
@@ -22,6 +22,7 @@ export default function CreateSessionDialog({
   const [baseBranch, setBaseBranch] = useState('main');
   const [templateId, setTemplateId] = useState('');
   const [model, setModel] = useState('sonnet');
+  const [recommendedModel, setRecommendedModel] = useState<string | null>(null);
   const [permissionMode, setPermissionMode] = useState('default');
   const [thinking, setThinking] = useState('');
   const [effort, setEffort] = useState('');
@@ -34,6 +35,9 @@ export default function CreateSessionDialog({
   const [initialPrompt, setInitialPrompt] = useState('');
   const [ticketRef, setTicketRef] = useState('');
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
+  // ticket-derived prompts land unsent in the new session's compose box (reviewed & sent by
+  // hand there) instead of auto-firing as a kickoff turn the moment the sidecar is ready
+  const [promptFromTicket, setPromptFromTicket] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState('');
   const importAbortRef = useRef<AbortController | null>(null);
@@ -66,6 +70,11 @@ export default function CreateSessionDialog({
       console.log('[claude-ui] ticket import: succeeded in', Math.round(performance.now() - started), 'ms', result);
       setBranch(result.branchName);
       setInitialPrompt(result.prompt);
+      setPromptFromTicket(true);
+      if (result.recommendedModel && ['sonnet', 'opus', 'haiku'].includes(result.recommendedModel)) {
+        setModel(result.recommendedModel);
+        setRecommendedModel(result.recommendedModel);
+      }
     } catch (e) {
       const elapsed = Math.round(performance.now() - started);
       if (controller.signal.aborted) {
@@ -117,7 +126,14 @@ export default function CreateSessionDialog({
           : []),
       ];
       if (skillSources.length > 0) overrides['skillSources'] = skillSources;
-      if (initialPrompt.trim()) overrides['kickoffPrompt'] = initialPrompt.trim();
+      const draftInput = promptFromTicket ? initialPrompt.trim() : '';
+      if (promptFromTicket) {
+        // explicit '' (not omitted) so a template's own kickoffPrompt can't leak through the
+        // config merge and auto-fire in place of the ticket text we're intentionally not sending
+        overrides['kickoffPrompt'] = '';
+      } else if (initialPrompt.trim()) {
+        overrides['kickoffPrompt'] = initialPrompt.trim();
+      }
       if (advanced.trim()) Object.assign(overrides, JSON.parse(advanced) as Record<string, unknown>);
 
       const created = await api.createSession({
@@ -129,7 +145,7 @@ export default function CreateSessionDialog({
         overrides,
         kickoffValues,
       });
-      onCreated(created.id);
+      onCreated(created.id, draftInput || undefined);
     } catch (e) {
       setError(e instanceof ApiError ? `${e.status}: ${e.message}` : String(e));
     } finally {
@@ -203,11 +219,16 @@ export default function CreateSessionDialog({
           />
 
           <label>Model</label>
-          <select value={model} onChange={(e) => setModel(e.target.value)}>
+          <select value={model} onChange={(e) => { setRecommendedModel(null); setModel(e.target.value); }}>
             <option value="sonnet">sonnet</option>
             <option value="opus">opus</option>
             <option value="haiku">haiku</option>
           </select>
+          {recommendedModel && recommendedModel === model && (
+            <div className="full" style={{ gridColumn: '2 / -1', color: 'var(--muted)', fontSize: 12.5 }}>
+              recommended by ticket import
+            </div>
+          )}
 
           <label>Permissions</label>
           <select value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)}>
