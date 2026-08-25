@@ -16,6 +16,7 @@ export default function CreateSessionDialog({
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [name, setName] = useState('');
   const [repoPath, setRepoPath] = useState('');
@@ -195,6 +196,7 @@ export default function CreateSessionDialog({
       onCreated(created.id, draftInput || undefined);
     } catch (e) {
       setError(e instanceof ApiError ? `${e.status}: ${e.message}` : String(e));
+      setAdvancedOpen(true);
     } finally {
       setBusy(false);
     }
@@ -212,9 +214,6 @@ export default function CreateSessionDialog({
               <option key={s.path} value={s.path}>{s.name}</option>
             ))}
           </select>
-
-          <label>Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="defaults to branch name" />
 
           <label>Branch</label>
           <input value={branch} onChange={(e) => setBranch(e.target.value)} list="branches" placeholder="feat/my-feature" autoFocus />
@@ -250,17 +249,6 @@ export default function CreateSessionDialog({
             </>
           )}
 
-          <label>Base branch</label>
-          <select value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)}>
-            {(branches.length ? branches : ['main']).map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
-
-          <label>Template</label>
-          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-            <option value="">— none —</option>
-            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-
           <label>Initial prompt</label>
           <textarea
             style={{ gridColumn: '2 / -1' }}
@@ -295,88 +283,111 @@ export default function CreateSessionDialog({
             <option value="plan">plan first</option>
             <option value="bypassPermissions">bypass all approval (including Bash) — no prompts at all</option>
           </select>
-
-          <label>Thinking</label>
-          <select value={thinking} onChange={(e) => setThinking(e.target.value)}>
-            <option value="">provider default</option>
-            <option value="off">off</option>
-            <option value="adaptive">adaptive</option>
-            <option value="16000">budget 16k</option>
-          </select>
-
-          <label>Effort</label>
-          <select value={effort} onChange={(e) => setEffort(e.target.value)}>
-            <option value="">provider default</option>
-            {['low', 'medium', 'high', 'xhigh', 'max'].map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
-
-          <label>Ecosystem</label>
-          <input
-            value={ecosystemPath}
-            onChange={(e) => setEcosystemPath(e.target.value)}
-            placeholder="read-only context folder; empty = no wider context"
-            title="parent folder attached read-only so Claude can read sibling services"
-          />
-
-          {skills.length > 0 && (
-            <>
-              <label>Skills</label>
-              <div className="skills-list">
-                {skills.map((s) => (
-                  <label key={s.path} title={s.description}>
-                    <input
-                      type="checkbox"
-                      checked={selectedSkills.has(s.path)}
-                      onChange={(e) => {
-                        const next = new Set(selectedSkills);
-                        if (e.target.checked) next.add(s.path);
-                        else next.delete(s.path);
-                        setSelectedSkills(next);
-                      }}
-                    />{' '}{s.name} <span style={{ color: 'var(--muted)' }}>{s.description}</span>
-                  </label>
-                ))}
-              </div>
-            </>
-          )}
-
-          <label>Extra skill</label>
-          <input
-            value={extraSkill}
-            onChange={(e) => setExtraSkill(e.target.value)}
-            placeholder="path or git URL of a skill source"
-          />
-
-          <label>Instructions</label>
-          <textarea
-            className="full"
-            style={{ gridColumn: '2 / -1' }}
-            rows={2}
-            value={instructions}
-            onChange={(e) => setInstructions(e.target.value)}
-            placeholder="extra system instructions for this session"
-          />
-
-          {placeholders.map((ph) => (
-            <div key={ph} style={{ display: 'contents' }}>
-              <label>{ph}</label>
-              <input
-                value={kickoffValues[ph] ?? ''}
-                onChange={(e) => setKickoffValues({ ...kickoffValues, [ph]: e.target.value })}
-                placeholder={`kickoff value for {{${ph}}}`}
-              />
-            </div>
-          ))}
-
-          <label>Advanced</label>
-          <textarea
-            style={{ gridColumn: '2 / -1', fontFamily: 'monospace' }}
-            rows={2}
-            value={advanced}
-            onChange={(e) => setAdvanced(e.target.value)}
-            placeholder='extra overrides JSON, e.g. {"maxTurns": 30, "contextDirs": ["/path"]}'
-          />
         </div>
+
+        <details
+          className="advanced-toggle"
+          open={advancedOpen}
+          onToggle={(e) => setAdvancedOpen(e.currentTarget.open)}
+        >
+          <summary>Advanced options</summary>
+          <div className="form-grid">
+            <label>Name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="defaults to branch name" />
+
+            <label>Base branch</label>
+            <select value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)}>
+              {(branches.length ? branches : ['main']).map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+
+            <label>Template</label>
+            <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+              <option value="">— none —</option>
+              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+
+            <label>Thinking</label>
+            <select value={thinking} onChange={(e) => setThinking(e.target.value)}>
+              <option value="">provider default</option>
+              <option value="off">off</option>
+              <option value="adaptive">adaptive</option>
+              <option value="16000">budget 16k</option>
+            </select>
+
+            <label>Effort</label>
+            <select value={effort} onChange={(e) => setEffort(e.target.value)}>
+              <option value="">provider default</option>
+              {['low', 'medium', 'high', 'xhigh', 'max'].map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+
+            <label>Ecosystem</label>
+            <input
+              value={ecosystemPath}
+              onChange={(e) => setEcosystemPath(e.target.value)}
+              placeholder="read-only context folder; empty = no wider context"
+              title="parent folder attached read-only so Claude can read sibling services"
+            />
+
+            {skills.length > 0 && (
+              <>
+                <label>Skills</label>
+                <div className="skills-list">
+                  {skills.map((s) => (
+                    <label key={s.path} title={s.description}>
+                      <input
+                        type="checkbox"
+                        checked={selectedSkills.has(s.path)}
+                        onChange={(e) => {
+                          const next = new Set(selectedSkills);
+                          if (e.target.checked) next.add(s.path);
+                          else next.delete(s.path);
+                          setSelectedSkills(next);
+                        }}
+                      />{' '}{s.name} <span style={{ color: 'var(--muted)' }}>{s.description}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <label>Extra skill</label>
+            <input
+              value={extraSkill}
+              onChange={(e) => setExtraSkill(e.target.value)}
+              placeholder="path or git URL of a skill source"
+            />
+
+            <label>Instructions</label>
+            <textarea
+              className="full"
+              style={{ gridColumn: '2 / -1' }}
+              rows={2}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="extra system instructions for this session"
+            />
+
+            {placeholders.map((ph) => (
+              <div key={ph} style={{ display: 'contents' }}>
+                <label>{ph}</label>
+                <input
+                  value={kickoffValues[ph] ?? ''}
+                  onChange={(e) => setKickoffValues({ ...kickoffValues, [ph]: e.target.value })}
+                  placeholder={`kickoff value for {{${ph}}}`}
+                />
+              </div>
+            ))}
+
+            <label>Raw overrides</label>
+            <textarea
+              style={{ gridColumn: '2 / -1', fontFamily: 'monospace' }}
+              rows={2}
+              value={advanced}
+              onChange={(e) => setAdvanced(e.target.value)}
+              placeholder='extra overrides JSON, e.g. {"maxTurns": 30, "contextDirs": ["/path"]}'
+            />
+          </div>
+        </details>
         {error && <div className="error-text" style={{ marginTop: 10 }}>{error}</div>}
         <div className="actions">
           <button onClick={onCancel}>Cancel</button>
