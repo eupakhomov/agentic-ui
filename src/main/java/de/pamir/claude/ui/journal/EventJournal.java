@@ -7,6 +7,7 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -118,6 +119,24 @@ public class EventJournal {
 						SELECT coalesce(sum((payload->>'costUsd')::numeric), 0)
 						FROM session_event WHERE session_id = ? AND type = 'turn_complete'""")
 				.params(sessionId).query(java.math.BigDecimal.class).single();
+	}
+
+	public record TurnUsage(UUID sessionId, String sessionName, Instant ts, String model, BigDecimal costUsd) {
+	}
+
+	/** Per-turn cost/model rows across all sessions since {@code since}, for the usage dashboard. */
+	public List<TurnUsage> usageSince(Instant since) {
+		flushAll();
+		return jdbc.sql("""
+						SELECT se.session_id, s.name AS session_name, se.ts,
+							   se.payload->>'model' AS model, (se.payload->>'costUsd')::numeric AS cost_usd
+						FROM session_event se JOIN session s ON s.id = se.session_id
+						WHERE se.type = 'turn_complete' AND se.ts >= ?
+						ORDER BY se.ts""")
+				.params(Timestamp.from(since))
+				.query((rs, i) -> new TurnUsage(rs.getObject("session_id", UUID.class), rs.getString("session_name"),
+						rs.getTimestamp("ts").toInstant(), rs.getString("model"), rs.getBigDecimal("cost_usd")))
+				.list();
 	}
 
 	@PreDestroy

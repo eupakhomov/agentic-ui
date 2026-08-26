@@ -6,6 +6,7 @@ import SessionWidget from './SessionWidget';
 import CreateSessionDialog from './CreateSessionDialog';
 import TemplateManager from './TemplateManager';
 import SettingsDialog from './SettingsDialog';
+import UsageDashboard from './UsageDashboard';
 import { useStore } from '../store/store';
 import { notificationsEnabled, toggleNotifications } from '../notify';
 
@@ -44,6 +45,8 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [showCreate, setShowCreate] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showUsage, setShowUsage] = useState(false);
+  const [staleCount, setStaleCount] = useState(0);
   const [width, setWidth] = useState(window.innerWidth - 24);
   // seeds a just-created session's compose box (e.g. an edited-but-unsent ticket import
   // draft); read once by SessionWidget's initial state, no cleanup needed afterward
@@ -55,6 +58,11 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  const refreshStale = useCallback(() => {
+    void api.staleSessions().then((list) => setStaleCount(list.length)).catch(() => {});
+  }, []);
+  useEffect(() => refreshStale(), [refreshStale]);
 
   const views = useStore((s) => s.views);
   useEffect(() => {
@@ -136,6 +144,13 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         >
           🤖{systemState && <span className={`dot ${systemState}`} />}
         </button>
+        <button
+          title={staleCount > 0 ? `Usage — ${staleCount} idle session${staleCount > 1 ? 's' : ''} to clean up` : 'Usage'}
+          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+          onClick={() => setShowUsage(true)}
+        >
+          📊{staleCount > 0 && <span className="count-badge">{staleCount}</span>}
+        </button>
         <button title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
         <button className="primary" onClick={() => setShowCreate(true)}>+ New Session</button>
       </div>
@@ -163,6 +178,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
       {showCreate && <CreateSessionDialog onCreated={onCreated} onCancel={() => setShowCreate(false)} />}
       {showTemplates && <TemplateManager onClose={() => setShowTemplates(false)} />}
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {showUsage && <UsageDashboard onClose={() => { setShowUsage(false); refreshStale(); }} />}
     </>
   );
 }

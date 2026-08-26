@@ -115,6 +115,24 @@ export interface TicketSummary {
   status: string;
 }
 
+export interface TurnUsage {
+  sessionId: string;
+  sessionName: string;
+  ts: string;
+  model: string | null;
+  costUsd: number;
+}
+
+export interface StaleSession {
+  id: string;
+  name: string;
+  branch: string;
+  state: SessionState;
+  updatedAt: string;
+  worktreeExists: boolean;
+  dirty: boolean;
+}
+
 export const LIVE_STATES: SessionState[] = ['STARTING', 'IDLE', 'RUNNING', 'WAITING_INPUT'];
 
 /** Extract {{placeholders}} from a kickoff prompt template. */

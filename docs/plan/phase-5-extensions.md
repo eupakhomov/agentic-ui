@@ -78,9 +78,20 @@ side-by-side compare view of diffs/costs; create API accepts batch (the Phase 2
 endpoint should keep its request shape array-friendly to not preclude this).
 - **DoD:** fan out one prompt to 3 branches; compare view shows 3 diffs; pick one, close others.
 
-## 5.12 Usage dashboard
+## 5.12 Usage dashboard — ✅ shipped 2026-08-26
 Costs page: per day / per session / per model, from `turn_complete` events (SQL + one chart).
 - **DoD:** totals match the SQL sum; filters by date range and model work.
+- One cross-session query (`EventJournal.usageSince`, joined to `session` for names) returns raw
+  per-turn `{sessionId, sessionName, ts, model, costUsd}` rows for a lookback window (`GET
+  /api/usage?months=`); day/month grouping, date-range preset, and model filter are all applied
+  client-side in the new `UsageDashboard.tsx`, which also renders a prominent "this month" total
+  (costs reset monthly) and by-session/by-model breakdown tables. Chart is a hand-rolled SVG bar
+  chart (no new npm dependency), built per the `dataviz` skill's mark specs.
+- Folded in the housekeeping reminder this exercise surfaced: `GET /api/usage/stale-sessions`
+  lists non-system PARKED/CRASHED/FAILED sessions untouched for 3+ days (fixed constant) whose
+  worktree may still be on disk, with a dirty-check per candidate; the dashboard's housekeeping
+  section reuses the existing `CloseDialog` unchanged (it only needs a `sessionId`) to close them —
+  no new close/delete logic. Topbar 📊 button shows a count badge when any exist.
 
 ## 5.13 Codex CLI provider adapter
 Second implementation of the adapter interface wrapping OpenAI's Codex CLI: maps its

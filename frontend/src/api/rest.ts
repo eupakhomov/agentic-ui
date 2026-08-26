@@ -1,4 +1,4 @@
-import type { ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, Template, TicketSummary } from '../protocol';
+import type { ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -75,4 +75,6 @@ export const api = {
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
+  usage: (months = 6) => request<TurnUsage[]>('GET', `/api/usage?months=${months}`),
+  staleSessions: () => request<StaleSession[]>('GET', '/api/usage/stale-sessions'),
 };
