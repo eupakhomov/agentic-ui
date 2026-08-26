@@ -22,6 +22,7 @@ export default function CreateSessionDialog({
   const [repoPath, setRepoPath] = useState('');
   const [branch, setBranch] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
+  const [syncBaseBranch, setSyncBaseBranch] = useState(true);
   const [templateId, setTemplateId] = useState('');
   const [model, setModel] = useState('sonnet');
   const [recommendedModel, setRecommendedModel] = useState<string | null>(null);
@@ -192,6 +193,7 @@ export default function CreateSessionDialog({
         templateId: templateId || null,
         overrides,
         kickoffValues,
+        syncBaseBranch,
       });
       onCreated(created.id, draftInput || undefined);
     } catch (e) {
@@ -214,6 +216,11 @@ export default function CreateSessionDialog({
               <option key={s.path} value={s.path}>{s.name}</option>
             ))}
           </select>
+
+          <label className="full" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="checkbox" checked={syncBaseBranch} onChange={(e) => setSyncBaseBranch(e.target.checked)} />
+            Update {baseBranch || 'base branch'} from origin before branching
+          </label>
 
           <label>Branch</label>
           <input value={branch} onChange={(e) => setBranch(e.target.value)} list="branches" placeholder="feat/my-feature" autoFocus />

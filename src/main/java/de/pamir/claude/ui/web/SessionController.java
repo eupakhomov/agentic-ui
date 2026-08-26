@@ -26,7 +26,8 @@ import java.util.UUID;
 public class SessionController {
 
 	public record CreateSessionRequest(String name, String branch, String baseBranch, String repoPath,
-									   UUID templateId, JsonNode overrides, Map<String, String> kickoffValues) {
+									   UUID templateId, JsonNode overrides, Map<String, String> kickoffValues,
+									   Boolean syncBaseBranch) {
 	}
 
 	public record SessionSummary(UUID id, String name, String provider, String branch, String model,
@@ -50,7 +51,8 @@ public class SessionController {
 			throw new IllegalArgumentException("name, branch and baseBranch are required");
 		}
 		return service.create(request.name(), request.branch(), request.baseBranch(), request.repoPath(),
-				request.templateId(), request.overrides(), request.kickoffValues());
+				request.templateId(), request.overrides(), request.kickoffValues(),
+				Boolean.TRUE.equals(request.syncBaseBranch()));
 	}
 
 	@GetMapping

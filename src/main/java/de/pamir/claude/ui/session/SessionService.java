@@ -76,7 +76,7 @@ public class SessionService {
 	// ------------------------------------------------------------------ creation
 
 	public SessionEntity create(String name, String branch, String baseBranch, String repoPath, UUID templateId,
-								JsonNode overrides, Map<String, String> kickoffValues) {
+								JsonNode overrides, Map<String, String> kickoffValues, boolean syncBaseBranch) {
 		enforceSessionLimit();
 		String repo = repoPath == null || repoPath.isBlank() ? props.repoPath() : repoPath;
 		if (!Files.exists(Path.of(repo).resolve(".git"))) {
@@ -116,6 +116,9 @@ public class SessionService {
 
 		try {
 			transition(id, SessionState.PROVISIONING);
+			if (syncBaseBranch) {
+				worktrees.syncBaseBranch(Path.of(entity.repoPath()), baseBranch);
+			}
 			worktrees.createWorktree(Path.of(entity.repoPath()), worktree, branch, baseBranch);
 			excludeProvisionedAssets(worktree);
 			for (var warning : assets.provision(worktree, entity.skillSources(), entity.agentSources())) {

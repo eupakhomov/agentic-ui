@@ -2,6 +2,7 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { TranscriptItem } from '../store/store';
+import AskUserQuestionCard from './AskUserQuestionCard';
 
 export type PermissionResponse =
   | { behavior: 'allow'; updatedInput?: Record<string, unknown> }
@@ -20,6 +21,10 @@ export default function PermissionCard({
   const [edited, setEdited] = useState('');
   const isPlan = item.plan !== null;
   const resolved = item.decision !== null;
+
+  if (item.toolName === 'AskUserQuestion') {
+    return <AskUserQuestionCard item={item} onRespond={onRespond} />;
+  }
 
   if (isPlan) {
     return (

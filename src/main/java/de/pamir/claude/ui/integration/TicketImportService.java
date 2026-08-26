@@ -59,7 +59,10 @@ public class TicketImportService {
 		String guidance = spec.isBlank() ? "" : "Follow these additional guidelines when choosing the branch name "
 				+ "and/or writing the prompt: " + spec.strip() + " ";
 		String prompt = ("You have access to Linear via MCP tools. Fetch the Linear issue referenced by \"%s\" "
-				+ "(it may be a short identifier like ENG-123 or a full Linear issue URL). "
+				+ "(it may be a short identifier like ENG-123 or a full Linear issue URL), along with its "
+				+ "comments. Read the comment thread for any clarifications, scope changes, decisions, or "
+				+ "blocking questions/answers raised after the ticket was created — the description alone may "
+				+ "be stale — and factor anything relevant into the prompt you write. "
 				+ "%s"
 				+ "Then respond with ONLY a single JSON object — no markdown fences, no commentary — "
 				+ "of the form: {\"branchName\": \"kebab-case-git-safe-branch-name\", \"prompt\": \"a clear, "

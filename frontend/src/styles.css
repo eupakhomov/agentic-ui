@@ -17,6 +17,7 @@
   --error-bg: #43272a;
   --perm-bg: #2b2618;
   --plan-bg: #241f2e;
+  --ask-bg: #1a2436;
   font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
   /* font size: "medium" is the default (~8% bigger than the old fixed sizes) */
   --font-scale: 1.08;
@@ -41,6 +42,7 @@
     --error-bg: #fbdcdb;
     --perm-bg: #fdf1da;
     --plan-bg: #ede4fa;
+    --ask-bg: #e4ecfb;
   }
 }
 
@@ -62,6 +64,7 @@
   --error-bg: #fbdcdb;
   --perm-bg: #fdf1da;
   --plan-bg: #ede4fa;
+  --ask-bg: #e4ecfb;
 }
 
 :root[data-font-size="small"] { --font-scale: 0.93; }
@@ -140,9 +143,22 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .plan-card .head { color: var(--purple); }
 .plan-body { background: var(--panel); border-radius: 6px; padding: 10px; max-height: 320px; overflow-y: auto; }
 
+.ask-card { border-color: var(--accent); background: var(--ask-bg); }
+.ask-card .head { color: var(--accent); }
+.ask-question { margin: 10px 0; }
+.ask-question:first-of-type { margin-top: 4px; }
+.ask-chip { display: inline-block; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; font-size: calc(11px * var(--font-scale)); color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.ask-text { font-weight: 600; margin: 4px 0 8px; }
+.ask-options { display: flex; flex-direction: column; gap: 6px; }
+.ask-option { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: var(--panel); cursor: pointer; }
+.ask-option.selected { border-color: var(--accent); }
+.ask-option .ask-desc { color: var(--muted); font-size: calc(12px * var(--font-scale)); }
+.ask-other-input { flex: 1; min-width: 0; }
+.ask-answer { background: var(--panel); border-radius: 6px; padding: 6px 8px; }
+
 .inputbar { border-top: 1px solid var(--border); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: var(--panel2); }
 .inputbar .row { display: flex; gap: 8px; align-items: flex-end; }
-.inputbar textarea { flex: 1; resize: none; min-height: 36px; max-height: 140px; }
+.inputbar textarea { flex: 1; resize: vertical; min-height: 36px; max-height: 50vh; }
 .queue-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .queue-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px dashed var(--border); border-radius: 12px; padding: 2px 9px; font-size: calc(12px * var(--font-scale)); color: var(--muted); }
 .queue-chip button { border: none; background: none; padding: 0 2px; color: var(--muted); }

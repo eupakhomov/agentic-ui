@@ -129,10 +129,11 @@ function reduce(view: SessionView, e: Envelope): SessionView {
     }
     case 'permission_response': {
       const id = p['requestId'] as string;
+      const updatedInput = p['updatedInput'] as Record<string, unknown> | undefined;
       for (let i = t.length - 1; i >= 0; i--) {
         const item = t[i]!;
         if (item.kind === 'permission' && item.requestId === id) {
-          t[i] = { ...item, decision: p['behavior'] as 'allow' | 'deny' };
+          t[i] = { ...item, decision: p['behavior'] as 'allow' | 'deny', input: updatedInput ?? item.input };
           break;
         }
       }
