@@ -156,13 +156,11 @@ public class SessionRepository {
 				.query((rs, i) -> new QueuedMessage(rs.getLong("pos"), rs.getString("text"))).list();
 	}
 
-	public Optional<QueuedMessage> pollQueue(UUID sessionId) {
-		var head = jdbc.sql("SELECT pos, text FROM session_queue WHERE session_id = ? ORDER BY pos LIMIT 1")
+	/** Head of the queue without removing it — the caller deletes it only after a successful dispatch. */
+	public Optional<QueuedMessage> peekQueue(UUID sessionId) {
+		return jdbc.sql("SELECT pos, text FROM session_queue WHERE session_id = ? ORDER BY pos LIMIT 1")
 				.params(sessionId)
 				.query((rs, i) -> new QueuedMessage(rs.getLong("pos"), rs.getString("text"))).optional();
-		head.ifPresent(m -> jdbc.sql("DELETE FROM session_queue WHERE session_id = ? AND pos = ?")
-				.params(sessionId, m.pos()).update());
-		return head;
 	}
 
 	public boolean deleteQueued(UUID sessionId, long pos) {

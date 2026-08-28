@@ -438,10 +438,15 @@ public class SessionService {
 				}
 			}
 			case "turn_complete" -> {
-				journal.deleteDeltasBefore(id, journal.lastSeq(id));
-				maybeAutoTitle(id);
+				// drain first: best-effort housekeeping below must never be able to block it
 				synchronized (lock(id)) {
 					becomeIdleAndDrainQueue(id);
+				}
+				try {
+					journal.deleteDeltasBefore(id, journal.lastSeq(id));
+					maybeAutoTitle(id);
+				} catch (RuntimeException e) {
+					log.warn("post-turn housekeeping failed for {}: {}", id, e.getMessage());
 				}
 				completePendingSystemTurn(id, pendingSystemText.toString(), null);
 			}
@@ -512,10 +517,15 @@ public class SessionService {
 				(handle, code) -> onSidecarExit(session.id(), code, handle.stderrTail(), handle.isShutdownRequested()));
 	}
 
+	/**
+	 * Sends to the sidecar before journaling "sent" — if the handle is dead or the write
+	 * fails, nothing is recorded and the caller can safely leave the message queued for a
+	 * retry, rather than showing a transcript entry that was never actually delivered.
+	 */
 	private void dispatch(UUID id, String text) {
-		record(id, "user_message", mapper.createObjectNode().put("text", text));
 		sidecars.handle(id).send(mapper.createObjectNode()
 				.put("type", "user_message").put("text", text).toString());
+		record(id, "user_message", mapper.createObjectNode().put("text", text));
 		transition(id, SessionState.RUNNING);
 	}
 
@@ -528,9 +538,19 @@ public class SessionService {
 			}
 			return; // queued messages stay queued until the budget is raised
 		}
-		sessions.pollQueue(id).ifPresent(next -> {
+		// peek (not pop): only removed from the queue once dispatch actually succeeds, so a
+		// dead sidecar handle or transient send failure can't silently drop the message
+		sessions.peekQueue(id).ifPresent(next -> {
+			try {
+				dispatch(id, next.text());
+			} catch (RuntimeException e) {
+				record(id, "error", mapper.createObjectNode()
+						.put("message", "failed to send queued message, will retry: " + e.getMessage())
+						.put("fatal", false));
+				return;
+			}
+			sessions.deleteQueued(id, next.pos());
 			recordQueue(id);
-			dispatch(id, next.text());
 		});
 	}
 

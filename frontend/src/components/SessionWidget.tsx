@@ -244,6 +244,11 @@ export default function SessionWidget({
           {actionError && <div className="error-text">{actionError}</div>}
           {view.queued.length > 0 && (
             <div className="queue-chips">
+              {state === 'WAITING_INPUT' && (
+                <div className="t-note warn" style={{ width: '100%' }}>
+                  ⏳ waiting for your approval above — queued messages send once you respond
+                </div>
+              )}
               {view.queued.map((q) => (
                 <span key={q.pos} className="queue-chip" title={q.text}>
                   {q.text.length > 40 ? q.text.slice(0, 40) + '…' : q.text}
