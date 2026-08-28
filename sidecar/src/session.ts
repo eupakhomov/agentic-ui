@@ -89,12 +89,19 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   const inputQueue = new AsyncQueue<SDKUserMessage>();
   let exiting: 'shutdown' | 'stdin_closed' | undefined;
 
+  // bypassPermissions requires --dangerously-skip-permissions at launch (see allowDangerouslySkipPermissions
+  // below) and can't be granted to an already-running process — advertising it as switchable for a
+  // session that wasn't launched with it would let the UI cycle into a transition that always fails.
+  const permissionModes = config.permissionMode === 'bypassPermissions'
+    ? CLAUDE_CAPABILITIES.permissionModes
+    : CLAUDE_CAPABILITIES.permissionModes.filter((m) => m !== 'bypassPermissions');
+
   writeEvent({
     type: 'ready',
     pid: process.pid,
     protocolVersion: PROTOCOL_VERSION,
     provider: 'claude',
-    capabilities: CLAUDE_CAPABILITIES,
+    capabilities: { ...CLAUDE_CAPABILITIES, permissionModes },
   });
 
   async function* userMessages(): AsyncGenerator<SDKUserMessage> {
