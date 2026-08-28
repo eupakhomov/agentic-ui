@@ -18,6 +18,15 @@ const MODE_LABEL: Record<PermissionMode, string> = {
 
 const MODEL_CYCLE = ['sonnet', 'opus', 'haiku'];
 
+const PR_STATUS_ICON: Record<NonNullable<SessionEntity['prCheckStatus']>, string> = {
+  PENDING: '⏳',
+  SUCCESS: '✅',
+  FAILURE: '❌',
+  MERGED: '🟣',
+  CLOSED: '⚪',
+  ERROR: '⚠️',
+};
+
 export default function SessionWidget({
   sessionId,
   initialInput,
@@ -66,6 +75,12 @@ export default function SessionWidget({
         notify(`${who} finished`, 'the agent completed its turn');
       } else if (e.type === 'state_changed' && e.payload['state'] === 'CRASHED') {
         notify(`${who} crashed`, 'the session needs a resume');
+      } else if (e.type === 'pr_status_changed') {
+        const status = e.payload['status'] as SessionEntity['prCheckStatus'];
+        const url = e.payload['url'] as string | undefined;
+        setEntity((prev) => (prev ? { ...prev, prCheckStatus: status ?? prev.prCheckStatus, prUrl: url ?? prev.prUrl } : prev));
+        if (status === 'SUCCESS') notify(`${who}'s PR passed CI`, 'checks succeeded');
+        else if (status === 'FAILURE') notify(`${who}'s PR failed CI`, 'checks failed — take a look');
       }
     };
     const ws = new WsSession(sessionId, onEvent, (s) => {
@@ -156,6 +171,18 @@ export default function SessionWidget({
         )}
         {entity?.ecosystemPath && <span className="chip" title={`context: ${entity.ecosystemPath}`}>🌐</span>}
         {entity?.ticketRef && <span className="chip" title="linked ticket">🎫 {entity.ticketRef}</span>}
+        {entity?.prUrl && (
+          <a
+            className="chip clickable"
+            href={entity.prUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={`PR ${entity.prCheckStatus ?? 'PENDING'} — click to open on GitHub`}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {PR_STATUS_ICON[entity.prCheckStatus ?? 'PENDING']} PR
+          </a>
+        )}
         <span className="spacer" />
         <span
           className={`chip clickable mode-${view.permissionMode}`}
@@ -201,7 +228,17 @@ export default function SessionWidget({
         {view.wsStatus !== 'open' && state !== 'CLOSED' && (
           <div className="overlay">disconnected — reconnecting…</div>
         )}
-        {showGit && <GitPanel sessionId={sessionId} onClose={() => setShowGit(false)} />}
+        {showGit && (
+          <GitPanel
+            sessionId={sessionId}
+            onClose={() => setShowGit(false)}
+            prUrl={entity?.prUrl ?? null}
+            prCheckStatus={entity?.prCheckStatus ?? null}
+            onPrCreated={(url) =>
+              setEntity((prev) => (prev ? { ...prev, prUrl: url, prCheckStatus: 'PENDING' } : prev))
+            }
+          />
+        )}
         <Transcript items={view.transcript} onPermission={(requestId, response) => send({ type: 'permission_response', requestId, ...response })} />
         <div className="inputbar">
           {actionError && <div className="error-text">{actionError}</div>}

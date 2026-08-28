@@ -1,15 +1,22 @@
 package de.pamir.claude.ui.git;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-/** Read/write git operations on a session worktree, plus PR creation via gh. */
+/** Read/write git operations on a session worktree, plus PR creation/status via gh. */
 @Service
 public class GitOpsService {
+
+	private static final Logger log = LoggerFactory.getLogger(GitOpsService.class);
 
 	/**
 	 * aheadOfBase: commits on this branch not on baseBranch (-1 if it couldn't be computed,
@@ -21,12 +28,23 @@ public class GitOpsService {
 	public record LogEntry(String hash, String subject, String author, String date) {
 	}
 
+	public enum PrCheckStatus { PENDING, SUCCESS, FAILURE, MERGED, CLOSED, ERROR }
+
+	public record PrCheckResult(PrCheckStatus status, String headSha) {
+	}
+
+	private static final Set<String> FAILING_CONCLUSIONS =
+			Set.of("FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE");
+	private static final Set<String> FAILING_STATES = Set.of("FAILURE", "ERROR");
+
 	private final GitCommandRunner git;
 	private final GitWorktreeService worktrees;
+	private final ObjectMapper mapper;
 
-	public GitOpsService(GitCommandRunner git, GitWorktreeService worktrees) {
+	public GitOpsService(GitCommandRunner git, GitWorktreeService worktrees, ObjectMapper mapper) {
 		this.git = git;
 		this.worktrees = worktrees;
+		this.mapper = mapper;
 	}
 
 	public GitStatus status(Path worktree, String baseBranch) {
@@ -98,6 +116,10 @@ public class GitOpsService {
 		worktrees.commitAll(worktree, message);
 	}
 
+	public String headSha(Path worktree) {
+		return git.runOrThrow(worktree, "rev-parse", "HEAD").stdout();
+	}
+
 	public String push(Path worktree, String branch) {
 		var remotes = git.runOrThrow(worktree, "remote");
 		if (remotes.stdout().isBlank()) {
@@ -132,5 +154,71 @@ public class GitOpsService {
 			Thread.currentThread().interrupt();
 			throw new IllegalStateException("interrupted while creating PR");
 		}
+	}
+
+	/** Aggregate check-suite + merge status for a PR, via the same ambient gh auth used to create it. */
+	public PrCheckResult checkPrStatus(Path worktree, String prUrl) {
+		try {
+			Process process = new ProcessBuilder("gh", "pr", "view", prUrl,
+					"--json", "state,headRefOid,statusCheckRollup")
+					.directory(worktree.toFile()).start();
+			String stdout = new String(process.getInputStream().readAllBytes()).strip();
+			String stderr = new String(process.getErrorStream().readAllBytes()).strip();
+			if (!process.waitFor(30, TimeUnit.SECONDS)) {
+				process.destroyForcibly();
+				throw new IllegalStateException("gh pr view timed out");
+			}
+			if (process.exitValue() != 0) {
+				throw new IllegalStateException("gh pr view failed: " + (stderr.isBlank() ? stdout : stderr));
+			}
+			JsonNode json = mapper.readTree(stdout);
+			String headSha = json.path("headRefOid").asText(null);
+			String state = json.path("state").asText("OPEN");
+			if ("MERGED".equals(state)) {
+				return new PrCheckResult(PrCheckStatus.MERGED, headSha);
+			}
+			if ("CLOSED".equals(state)) {
+				return new PrCheckResult(PrCheckStatus.CLOSED, headSha);
+			}
+			return new PrCheckResult(aggregateChecks(json.path("statusCheckRollup")), headSha);
+		} catch (IOException | RuntimeException e) {
+			log.warn("gh pr view failed for {}: {}", prUrl, e.getMessage());
+			return new PrCheckResult(PrCheckStatus.ERROR, null);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return new PrCheckResult(PrCheckStatus.ERROR, null);
+		}
+	}
+
+	/**
+	 * Each rollup entry is either a CheckRun (status/conclusion) or a legacy StatusContext
+	 * (state only). An empty rollup means no checks have reported yet — treated as pending
+	 * rather than success, since a repo with real CI will populate it shortly.
+	 */
+	private PrCheckStatus aggregateChecks(JsonNode rollup) {
+		if (!rollup.isArray() || rollup.isEmpty()) {
+			return PrCheckStatus.PENDING;
+		}
+		boolean anyPending = false;
+		for (JsonNode check : rollup) {
+			String conclusion = check.path("conclusion").asText(null);
+			if (conclusion != null) {
+				if (FAILING_CONCLUSIONS.contains(conclusion)) {
+					return PrCheckStatus.FAILURE;
+				}
+				if (!"COMPLETED".equals(check.path("status").asText(null))) {
+					anyPending = true;
+				}
+				continue;
+			}
+			String state = check.path("state").asText(null);
+			if (FAILING_STATES.contains(state)) {
+				return PrCheckStatus.FAILURE;
+			}
+			if (state == null || "PENDING".equals(state) || "EXPECTED".equals(state)) {
+				anyPending = true;
+			}
+		}
+		return anyPending ? PrCheckStatus.PENDING : PrCheckStatus.SUCCESS;
 	}
 }

@@ -110,7 +110,7 @@ public class SessionService {
 				nullableText(config, "fallbackModel"),
 				config.hasNonNull("costBudgetUsd") ? new BigDecimal(config.get("costBudgetUsd").asText()) : null,
 				fillPlaceholders(nullableText(config, "kickoffPrompt"), kickoffValues),
-				SessionState.CREATING, "user", nullableText(config, "ticketRef"), null, null);
+				SessionState.CREATING, "user", nullableText(config, "ticketRef"), null, null, null, null, null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 
@@ -331,7 +331,7 @@ public class SessionService {
 				null, null, "haiku", "default",
 				allowedTools, List.of(), mcpConfig, null, mapper.createArrayNode(), mapper.createArrayNode(),
 				null, null, null, null, null, null, null,
-				SessionState.CREATING, "system", null, null, null);
+				SessionState.CREATING, "system", null, null, null, null, null, null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 		try {

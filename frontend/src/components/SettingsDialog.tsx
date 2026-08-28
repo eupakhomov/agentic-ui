@@ -9,12 +9,14 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [specDraft, setSpecDraft] = useState('');
   const [ecosystemRootDraft, setEcosystemRootDraft] = useState('');
+  const [pollIntervalDraft, setPollIntervalDraft] = useState('');
 
   useEffect(() => {
     api.getSettings().then((s) => {
       setSettings(s);
       setSpecDraft(s.ticketImportSpec);
       setEcosystemRootDraft(s.ecosystemRoot);
+      setPollIntervalDraft(String(s.prCheckPollIntervalSeconds));
     }).catch(() => setSettings(null));
   }, []);
 
@@ -23,6 +25,22 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     const next = { ...settings, linearOAuthEnabled: !settings.linearOAuthEnabled };
     setSettings(next);
     void api.updateSettings({ linearOAuthEnabled: next.linearOAuthEnabled }).catch(() => setSettings(settings));
+  };
+
+  const togglePrChecks = () => {
+    if (!settings) return;
+    const next = { ...settings, prChecksEnabled: !settings.prChecksEnabled };
+    setSettings(next);
+    void api.updateSettings({ prChecksEnabled: next.prChecksEnabled }).catch(() => setSettings(settings));
+  };
+
+  const savePollInterval = () => {
+    if (!settings) return;
+    const seconds = Number(pollIntervalDraft);
+    if (!Number.isFinite(seconds) || seconds === settings.prCheckPollIntervalSeconds) return;
+    void api.updateSettings({ prCheckPollIntervalSeconds: seconds })
+      .then((s) => { setSettings(s); setPollIntervalDraft(String(s.prCheckPollIntervalSeconds)); })
+      .catch(() => setPollIntervalDraft(String(settings.prCheckPollIntervalSeconds)));
   };
 
   const saveSpec = () => {
@@ -87,6 +105,28 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 placeholder="parent folder of your services; empty = no default wider context"
                 title="default read-only context folder + service discovery root, overridable per session"
               />
+            </div>
+
+            <h3 style={{ margin: '18px 0 10px' }}>PR checks</h3>
+            <div className="form-grid">
+              <label>Enabled</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input type="checkbox" checked={settings.prChecksEnabled} onChange={togglePrChecks} />
+                poll GitHub for CI status on sessions with an open PR, and notify when it resolves
+              </label>
+
+              <label>Poll interval</label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="number"
+                  min={30}
+                  style={{ width: 90 }}
+                  value={pollIntervalDraft}
+                  onChange={(e) => setPollIntervalDraft(e.target.value)}
+                  onBlur={savePollInterval}
+                />
+                seconds (minimum 30)
+              </span>
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>Linear integration</h3>

@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../api/rest';
+import type { PrCheckStatus } from '../protocol';
 import PrDialog from './PrDialog';
+
+const PR_STATUS_LABEL: Record<PrCheckStatus, string> = {
+  PENDING: '⏳ checks pending',
+  SUCCESS: '✅ checks passed',
+  FAILURE: '❌ checks failed',
+  MERGED: '🟣 merged',
+  CLOSED: '⚪ closed',
+  ERROR: '⚠️ status check failed — will retry',
+};
 
 interface GitStatus {
   branch: string;
@@ -23,14 +33,19 @@ async function gitApi<T>(id: string, path: string, method = 'GET', body?: unknow
   return api.raw<T>(method, `/api/sessions/${id}/git/${path}`, body);
 }
 
-export default function GitPanel({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+export default function GitPanel({ sessionId, onClose, prUrl, prCheckStatus, onPrCreated }: {
+  sessionId: string;
+  onClose: () => void;
+  prUrl: string | null;
+  prCheckStatus: PrCheckStatus | null;
+  onPrCreated: (url: string) => void;
+}) {
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [diff, setDiff] = useState<string | null>(null);
   const [commitMessage, setCommitMessage] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [prUrl, setPrUrl] = useState('');
   const [showPrDialog, setShowPrDialog] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -73,7 +88,12 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
         <button onClick={onClose}>✕</button>
       </div>
       {error && <div className="error-text">{error}</div>}
-      {prUrl && <div className="t-note info">PR created: <a href={prUrl} target="_blank" rel="noreferrer">{prUrl}</a></div>}
+      {prUrl && (
+        <div className="t-note info">
+          PR: <a href={prUrl} target="_blank" rel="noreferrer">{prUrl}</a>
+          {' — '}{PR_STATUS_LABEL[prCheckStatus ?? 'PENDING']}
+        </div>
+      )}
 
       <div className="git-section">
         <div className="git-label">changes ({status?.dirty.length ?? 0})</div>
@@ -154,7 +174,7 @@ export default function GitPanel({ sessionId, onClose }: { sessionId: string; on
         defaultTitle={commitMessage || undefined}
         onClose={() => setShowPrDialog(false)}
         onCreated={(url) => {
-          setPrUrl(url);
+          onPrCreated(url);
           setShowPrDialog(false);
           void refresh();
         }}

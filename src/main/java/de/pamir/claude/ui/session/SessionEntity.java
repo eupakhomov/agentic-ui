@@ -41,6 +41,13 @@ public record SessionEntity(
 		String kind,
 		/** Canonical ticket identifier (e.g. "ENG-123") if this session was created via ticket import; null otherwise */
 		String ticketRef,
+		/** GitHub PR URL opened from this session's branch, if any; one PR tracked per session */
+		String prUrl,
+		/** Head commit the last check result applies to — a mismatch on the next poll means new commits were pushed */
+		String prHeadSha,
+		/** PENDING | SUCCESS | FAILURE | MERGED | CLOSED | ERROR; null when prUrl is null */
+		String prCheckStatus,
+		Instant prCheckedAt,
 		Instant createdAt,
 		Instant updatedAt
 ) {

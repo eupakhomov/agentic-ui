@@ -14,10 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class SettingsController {
 
 	public record SettingsView(boolean linearOAuthEnabled, String ticketImportSpec, boolean linearApiKeyConfigured,
-								String ecosystemRoot) {
+								String ecosystemRoot, boolean prChecksEnabled, int prCheckPollIntervalSeconds) {
 	}
 
-	public record SettingsUpdate(Boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot) {
+	public record SettingsUpdate(Boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot,
+								  Boolean prChecksEnabled, Integer prCheckPollIntervalSeconds) {
 	}
 
 	private final SettingsService settings;
@@ -44,12 +45,18 @@ public class SettingsController {
 		if (update.ecosystemRoot() != null) {
 			settings.setEcosystemRoot(update.ecosystemRoot());
 		}
+		if (update.prChecksEnabled() != null) {
+			settings.setPrChecksEnabled(update.prChecksEnabled());
+		}
+		if (update.prCheckPollIntervalSeconds() != null) {
+			settings.setPrCheckPollIntervalSeconds(update.prCheckPollIntervalSeconds());
+		}
 		return view();
 	}
 
 	private SettingsView view() {
 		boolean apiKeyConfigured = props.linearApiKey() != null && !props.linearApiKey().isBlank();
 		return new SettingsView(settings.linearOAuthEnabled(), settings.ticketImportSpec(), apiKeyConfigured,
-				settings.ecosystemRoot());
+				settings.ecosystemRoot(), settings.prChecksEnabled(), settings.prCheckPollIntervalSeconds());
 	}
 }

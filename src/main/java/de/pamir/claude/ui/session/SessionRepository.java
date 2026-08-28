@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -105,6 +106,33 @@ public class SessionRepository {
 	public void updateCostBudget(UUID id, BigDecimal budget) {
 		jdbc.sql("UPDATE session SET cost_budget_usd = ?, updated_at = now() WHERE id = ?")
 				.params(budget, id).update();
+	}
+
+	/** Called right after a PR is created; seeds the polling loop with a PENDING check. */
+	public void attachPr(UUID id, String prUrl, String headSha) {
+		jdbc.sql("UPDATE session SET pr_url = ?, pr_head_sha = ?, pr_check_status = 'PENDING', "
+						+ "pr_checked_at = NULL, updated_at = now() WHERE id = ?")
+				.params(prUrl, headSha, id).update();
+	}
+
+	/** Called after a follow-up push to an already-PR'd branch, so the next tick re-checks. */
+	public void resetPrCheckPending(UUID id) {
+		jdbc.sql("UPDATE session SET pr_check_status = 'PENDING', pr_checked_at = NULL, updated_at = now() "
+						+ "WHERE id = ? AND pr_url IS NOT NULL")
+				.params(id).update();
+	}
+
+	public void updatePrCheck(UUID id, String status, String headSha, Instant checkedAt) {
+		jdbc.sql("UPDATE session SET pr_check_status = ?, pr_head_sha = ?, pr_checked_at = ? WHERE id = ?")
+				.params(status, headSha, java.sql.Timestamp.from(checkedAt), id).update();
+	}
+
+	/** Sessions with an open PR whose status is still PENDING and due for another check. */
+	public List<SessionEntity> findAwaitingPrCheck(Instant cutoff) {
+		return jdbc.sql("SELECT * FROM session WHERE pr_url IS NOT NULL AND pr_check_status = 'PENDING' "
+						+ "AND (pr_checked_at IS NULL OR pr_checked_at <= ?) ORDER BY created_at")
+				.params(java.sql.Timestamp.from(cutoff))
+				.query(rowMapper).list();
 	}
 
 	public long countByStates(List<SessionState> states) {
@@ -210,6 +238,10 @@ public class SessionRepository {
 				SessionState.valueOf(rs.getString("state")),
 				rs.getString("kind"),
 				rs.getString("ticket_ref"),
+				rs.getString("pr_url"),
+				rs.getString("pr_head_sha"),
+				rs.getString("pr_check_status"),
+				rs.getTimestamp("pr_checked_at") == null ? null : rs.getTimestamp("pr_checked_at").toInstant(),
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("updated_at").toInstant());
 	}

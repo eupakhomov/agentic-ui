@@ -52,7 +52,13 @@ export interface SessionEntity {
   kind: 'user' | 'system';
   /** Canonical ticket identifier (e.g. "ENG-123") if this session was created via ticket import */
   ticketRef: string | null;
+  /** GitHub PR URL opened from this session's branch, if any; one PR tracked per session */
+  prUrl: string | null;
+  prCheckStatus: PrCheckStatus | null;
+  prCheckedAt: string | null;
 }
+
+export type PrCheckStatus = 'PENDING' | 'SUCCESS' | 'FAILURE' | 'MERGED' | 'CLOSED' | 'ERROR';
 
 export interface SessionSummary {
   id: string;
@@ -107,6 +113,8 @@ export interface Settings {
   ticketImportSpec: string;
   linearApiKeyConfigured: boolean;
   ecosystemRoot: string;
+  prChecksEnabled: boolean;
+  prCheckPollIntervalSeconds: number;
 }
 
 export interface TicketSummary {

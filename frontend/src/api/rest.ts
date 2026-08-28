@@ -73,7 +73,8 @@ export const api = {
   listRecentTickets: (signal?: AbortSignal) =>
     request<TicketSummary[]>('POST', '/api/tickets/recent', undefined, signal),
   getSettings: () => request<Settings>('GET', '/api/settings'),
-  updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'>>) =>
+  updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
+    | 'prChecksEnabled' | 'prCheckPollIntervalSeconds'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
   usage: (months = 6) => request<TurnUsage[]>('GET', `/api/usage?months=${months}`),
   staleSessions: () => request<StaleSession[]>('GET', '/api/usage/stale-sessions'),

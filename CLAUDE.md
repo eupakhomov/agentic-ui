@@ -207,6 +207,16 @@ effect on the next use with no backend restart.
   appended to the Haiku prompt that generates a ticket import's `branchName`/`prompt`,
   e.g. "keep the ticket number uppercase" or "format as feat(TICKET)-description /
   fix(TICKET)-description".
+- **PR checks** (Settings dialog → "PR checks") — `enabled` (default on) and
+  `poll-interval-seconds` (default 180, floor 30) for the background GitHub PR CI
+  poller (`PrCheckPollingService`, ticks every 30s and re-reads both settings each
+  time, so changes take effect on the next tick). Uses the ambient `gh` CLI auth
+  already used for PR creation — no separate token. One PR tracked per session
+  (`session.pr_url`/`pr_check_status`/`pr_head_sha`/`pr_checked_at`); polling stops
+  once a terminal result (`SUCCESS`/`FAILURE`/`MERGED`/`CLOSED`) is seen and re-arms
+  on the next push to that branch. Status changes journal a `pr_status_changed` event
+  (see docs/PROTOCOL.md) that drives the Git panel's status pill and a desktop
+  notification via the same unfocused-tab `notify()` helper used for turn completion.
 
 **Fixed internals** (code constants, for awareness): stream_delta journal batching
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100

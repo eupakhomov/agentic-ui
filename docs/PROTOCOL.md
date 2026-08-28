@@ -108,8 +108,12 @@ this, never from the provider name:
   `{seq, ts, type, payload}` — `seq` is the per-session monotonic journal sequence.
   The backend also journals/broadcasts its own event types: `state_changed {state}`,
   `user_message {text}` (inbound messages echoed into the transcript),
-  `queue_updated {queued:[{pos,text}]}`, `warning {message}`, `error`, and
-  `permission_response` (echo of the user's decision).
+  `queue_updated {queued:[{pos,text}]}`, `warning {message}`, `error`,
+  `permission_response` (echo of the user's decision), and
+  `pr_status_changed {url, status, previousStatus, headSha}` — emitted by the background
+  PR-check poller (`PrCheckPollingService`) whenever a session's tracked PR's aggregate
+  check-suite status changes; `status`/`previousStatus` are one of
+  `PENDING|SUCCESS|FAILURE|MERGED|CLOSED|ERROR`.
 - On connect the journal is replayed from `afterSeq`, terminated by
   `{seq, type: "replay_complete", payload:{lastSeq}}`, then live events follow —
   no gaps, no duplicates (seq strictly increases).

@@ -76,7 +76,13 @@ public class GitSessionController {
 	@PostMapping("/push")
 	public Map<String, String> push(@PathVariable UUID id) {
 		SessionEntity session = sessions.get(id);
-		return Map.of("result", gitOps.push(worktree(id, true), session.branch()));
+		String result = gitOps.push(worktree(id, true), session.branch());
+		if (session.prUrl() != null) {
+			// follow-up push to an already-open PR: drop any stale terminal result so the
+			// next poll tick re-checks the new commits rather than sitting on the old one
+			sessions.resetPrCheckPending(id);
+		}
+		return Map.of("result", result);
 	}
 
 	@PostMapping("/pr")
@@ -84,7 +90,11 @@ public class GitSessionController {
 		SessionEntity session = sessions.get(id);
 		String title = request.title() == null || request.title().isBlank() ? session.name() : request.title().strip();
 		String body = request.body() == null ? "" : request.body();
-		return Map.of("url", gitOps.createPullRequest(worktree(id, true), session.branch(), title, body));
+		Path worktree = worktree(id, true);
+		String url = gitOps.createPullRequest(worktree, session.branch(), title, body);
+		String headSha = gitOps.headSha(worktree);
+		sessions.attachPr(id, url, headSha);
+		return Map.of("url", url);
 	}
 
 	/** Writes are refused while the agent may be mid-tool-execution. */
