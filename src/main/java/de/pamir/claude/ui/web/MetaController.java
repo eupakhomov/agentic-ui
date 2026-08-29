@@ -73,10 +73,10 @@ public class MetaController {
 		return worktrees.localBranches(path);
 	}
 
-	/** Skills found in the configured skills-root library (dirs containing SKILL.md). */
+	/** Skills found in the managed skills root (dirs containing SKILL.md) — a persisted setting. */
 	@GetMapping("/skills")
 	public List<SkillInfo> skills() {
-		Path root = Path.of(props.skillsRoot());
+		Path root = Path.of(settings.librarySkillsRoot());
 		if (!Files.isDirectory(root)) {
 			return List.of();
 		}

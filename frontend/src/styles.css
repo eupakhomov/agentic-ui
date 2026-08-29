@@ -236,6 +236,10 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .git-log-line { padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-panel a { color: var(--accent); }
 
+.candidate-list { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow-y: auto; }
+.candidate-row { background: var(--panel2); border-radius: 6px; padding: 6px 8px; font-size: calc(12.5px * var(--font-scale)); }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; color: var(--muted); font-size: calc(12.5px * var(--font-scale)); }
+
 .gate { display: flex; align-items: center; justify-content: center; height: 100vh; }
 .gate .modal { width: 360px; }
 

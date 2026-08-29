@@ -14,11 +14,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class SettingsController {
 
 	public record SettingsView(boolean linearOAuthEnabled, String ticketImportSpec, boolean linearApiKeyConfigured,
-								String ecosystemRoot, boolean prChecksEnabled, int prCheckPollIntervalSeconds) {
+								String ecosystemRoot, boolean prChecksEnabled, int prCheckPollIntervalSeconds,
+								String librarySkillsRoot, String libraryAgentsRoot, boolean libraryVectorize,
+								boolean librarySyncEnabled, int librarySyncIntervalMinutes, boolean voyageConfigured) {
 	}
 
 	public record SettingsUpdate(Boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot,
-								  Boolean prChecksEnabled, Integer prCheckPollIntervalSeconds) {
+								  Boolean prChecksEnabled, Integer prCheckPollIntervalSeconds,
+								  String librarySkillsRoot, String libraryAgentsRoot, Boolean libraryVectorize,
+								  Boolean librarySyncEnabled, Integer librarySyncIntervalMinutes) {
 	}
 
 	private final SettingsService settings;
@@ -51,12 +55,30 @@ public class SettingsController {
 		if (update.prCheckPollIntervalSeconds() != null) {
 			settings.setPrCheckPollIntervalSeconds(update.prCheckPollIntervalSeconds());
 		}
+		if (update.librarySkillsRoot() != null) {
+			settings.setLibrarySkillsRoot(update.librarySkillsRoot());
+		}
+		if (update.libraryAgentsRoot() != null) {
+			settings.setLibraryAgentsRoot(update.libraryAgentsRoot());
+		}
+		if (update.libraryVectorize() != null) {
+			settings.setLibraryVectorize(update.libraryVectorize());
+		}
+		if (update.librarySyncEnabled() != null) {
+			settings.setLibrarySyncEnabled(update.librarySyncEnabled());
+		}
+		if (update.librarySyncIntervalMinutes() != null) {
+			settings.setLibrarySyncIntervalMinutes(update.librarySyncIntervalMinutes());
+		}
 		return view();
 	}
 
 	private SettingsView view() {
 		boolean apiKeyConfigured = props.linearApiKey() != null && !props.linearApiKey().isBlank();
+		boolean voyageConfigured = props.voyageApiKey() != null && !props.voyageApiKey().isBlank();
 		return new SettingsView(settings.linearOAuthEnabled(), settings.ticketImportSpec(), apiKeyConfigured,
-				settings.ecosystemRoot(), settings.prChecksEnabled(), settings.prCheckPollIntervalSeconds());
+				settings.ecosystemRoot(), settings.prChecksEnabled(), settings.prCheckPollIntervalSeconds(),
+				settings.librarySkillsRoot(), settings.libraryAgentsRoot(), settings.libraryVectorize(),
+				settings.librarySyncEnabled(), settings.librarySyncIntervalMinutes(), voyageConfigured);
 	}
 }

@@ -10,6 +10,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [specDraft, setSpecDraft] = useState('');
   const [ecosystemRootDraft, setEcosystemRootDraft] = useState('');
   const [pollIntervalDraft, setPollIntervalDraft] = useState('');
+  const [skillsRootDraft, setSkillsRootDraft] = useState('');
+  const [agentsRootDraft, setAgentsRootDraft] = useState('');
+  const [syncIntervalDraft, setSyncIntervalDraft] = useState('');
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -17,6 +20,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setSpecDraft(s.ticketImportSpec);
       setEcosystemRootDraft(s.ecosystemRoot);
       setPollIntervalDraft(String(s.prCheckPollIntervalSeconds));
+      setSkillsRootDraft(s.librarySkillsRoot);
+      setAgentsRootDraft(s.libraryAgentsRoot);
+      setSyncIntervalDraft(String(s.librarySyncIntervalMinutes));
     }).catch(() => setSettings(null));
   }, []);
 
@@ -55,6 +61,43 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     void api.updateSettings({ ecosystemRoot: ecosystemRootDraft })
       .then(setSettings)
       .catch(() => setEcosystemRootDraft(settings.ecosystemRoot));
+  };
+
+  const saveSkillsRoot = () => {
+    if (!settings || skillsRootDraft === settings.librarySkillsRoot) return;
+    void api.updateSettings({ librarySkillsRoot: skillsRootDraft })
+      .then((s) => { setSettings(s); setSkillsRootDraft(s.librarySkillsRoot); })
+      .catch(() => setSkillsRootDraft(settings.librarySkillsRoot));
+  };
+
+  const saveAgentsRoot = () => {
+    if (!settings || agentsRootDraft === settings.libraryAgentsRoot) return;
+    void api.updateSettings({ libraryAgentsRoot: agentsRootDraft })
+      .then((s) => { setSettings(s); setAgentsRootDraft(s.libraryAgentsRoot); })
+      .catch(() => setAgentsRootDraft(settings.libraryAgentsRoot));
+  };
+
+  const saveSyncInterval = () => {
+    if (!settings) return;
+    const minutes = Number(syncIntervalDraft);
+    if (!Number.isFinite(minutes) || minutes === settings.librarySyncIntervalMinutes) return;
+    void api.updateSettings({ librarySyncIntervalMinutes: minutes })
+      .then((s) => { setSettings(s); setSyncIntervalDraft(String(s.librarySyncIntervalMinutes)); })
+      .catch(() => setSyncIntervalDraft(String(settings.librarySyncIntervalMinutes)));
+  };
+
+  const toggleVectorize = () => {
+    if (!settings) return;
+    const next = { ...settings, libraryVectorize: !settings.libraryVectorize };
+    setSettings(next);
+    void api.updateSettings({ libraryVectorize: next.libraryVectorize }).catch(() => setSettings(settings));
+  };
+
+  const toggleLibrarySync = () => {
+    if (!settings) return;
+    const next = { ...settings, librarySyncEnabled: !settings.librarySyncEnabled };
+    setSettings(next);
+    void api.updateSettings({ librarySyncEnabled: next.librarySyncEnabled }).catch(() => setSettings(settings));
   };
 
   return (
@@ -105,6 +148,61 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 placeholder="parent folder of your services; empty = no default wider context"
                 title="default read-only context folder + service discovery root, overridable per session"
               />
+            </div>
+
+            <h3 style={{ margin: '18px 0 10px' }}>Skill library</h3>
+            <div className="form-grid">
+              <label>Skills folder</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1' }}
+                value={skillsRootDraft}
+                onChange={(e) => setSkillsRootDraft(e.target.value)}
+                onBlur={saveSkillsRoot}
+                title="managed skill folder — import destination and the root the create-dialog picker scans"
+              />
+
+              <label>Agents folder</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1' }}
+                value={agentsRootDraft}
+                onChange={(e) => setAgentsRootDraft(e.target.value)}
+                onBlur={saveAgentsRoot}
+                title="managed agent folder — import destination for agent assets"
+              />
+
+              <label>Vectorize</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input
+                  type="checkbox"
+                  checked={settings.libraryVectorize}
+                  disabled={!settings.voyageConfigured}
+                  onChange={toggleVectorize}
+                />
+                {settings.voyageConfigured
+                  ? 'embed content on import & sync for semantic search (Voyage AI)'
+                  : 'requires CLAUDE_UI_VOYAGE_API_KEY (env var only)'}
+              </label>
+
+              <label>Source sync</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input type="checkbox" checked={settings.librarySyncEnabled} onChange={toggleLibrarySync} />
+                periodically re-check synced sources; update changed assets, archive removed ones
+              </label>
+
+              <label>Sync interval</label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="number"
+                  min={5}
+                  style={{ width: 90 }}
+                  value={syncIntervalDraft}
+                  onChange={(e) => setSyncIntervalDraft(e.target.value)}
+                  onBlur={saveSyncInterval}
+                />
+                minutes (minimum 5)
+              </span>
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>PR checks</h3>

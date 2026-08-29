@@ -2,7 +2,7 @@ package de.pamir.claude.ui.provision;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitCommandRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,12 +32,12 @@ public class AssetProvisioningService {
 	private static final Logger log = LoggerFactory.getLogger(AssetProvisioningService.class);
 	private static final int MAX_INDEX_DEPTH = 5;
 
-	private final AppProperties props;
+	private final SettingsService settings;
 	private final GitCommandRunner git;
 	private final ObjectMapper mapper;
 
-	public AssetProvisioningService(AppProperties props, GitCommandRunner git, ObjectMapper mapper) {
-		this.props = props;
+	public AssetProvisioningService(SettingsService settings, GitCommandRunner git, ObjectMapper mapper) {
+		this.settings = settings;
 		this.git = git;
 		this.mapper = mapper;
 	}
@@ -116,7 +116,7 @@ public class AssetProvisioningService {
 	}
 
 	private Path cloneOrUpdate(String url) {
-		Path cacheRoot = Path.of(props.skillsRoot(), ".repo-cache");
+		Path cacheRoot = Path.of(settings.librarySkillsRoot(), ".repo-cache");
 		String slug = HexFormat.of().toHexDigits(url.hashCode());
 		Path target = cacheRoot.resolve(slug);
 		try {

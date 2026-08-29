@@ -173,7 +173,8 @@ the backend's environment):
 | `CLAUDE_UI_TOKEN` | — | Dashboard/API auth token (required for non-loopback binds) |
 | `CLAUDE_UI_REPO` | `/mnt/d/projects/claude-ui` | Default service repo (per-session selectable in the UI) |
 | `CLAUDE_UI_WORKTREE_ROOT` | `~/claude-worktrees` | Where session worktrees live |
-| `CLAUDE_UI_SKILLS_ROOT` | `~/claude-skills` | Skills library scanned for the create-dialog picker |
+| `CLAUDE_UI_SKILLS_ROOT` | `~/claude-skills` | *Default* for the managed skills root, which is now a persisted setting (`library.skills-root`) — the create-dialog picker, provisioning's repo cache, and library imports all read the setting |
+| `CLAUDE_UI_VOYAGE_API_KEY` | — | Voyage AI API key (a secret — env var only); enables the library's "vectorize" setting + semantic search (`VoyageEmbeddingClient`, voyage-3.5-lite, pgvector). Unset = those features disabled, everything else works |
 | `CLAUDE_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku). When configured (or the OAuth toggle is on), the Linear MCP server is also layered by default into every regular session's `mcpConfig` (`SessionService.linearMcpServer()`/`withDefaultLinearMcp()`), so the agent can read/update tickets directly — unless the session's own `mcpConfig` already declares its own `linear` entry, which wins. Regular sessions go through the normal permission-approval flow for its tools (the system session pre-approves them instead, since backend-initiated turns have nobody to answer a prompt). |
 
 **Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
@@ -217,6 +218,17 @@ effect on the next use with no backend restart.
   on the next push to that branch. Status changes journal a `pr_status_changed` event
   (see docs/PROTOCOL.md) that drives the Git panel's status pill and a desktop
   notification via the same unfocused-tab `notify()` helper used for turn completion.
+- **Skill library** (Settings dialog → "Skill library"; feature docs:
+  `docs/plan/phase-6-skill-library.md`, `docs/ARCHITECTURE.md` §3a) —
+  `library.skills-root` / `library.agents-root` (managed import destinations;
+  skills root defaults to `CLAUDE_UI_SKILLS_ROOT`), `library.vectorize` (default
+  off; needs the Voyage key), `library.sync-enabled` (default on) and
+  `library.sync-interval-minutes` (default 60, floor 5) for the background source
+  sync (`LibrarySyncService`, ticks every 60s, interval as cutoff — PR-checks
+  pattern). The 📚 dashboard dialog scans a local folder or GitHub repo (via `gh`,
+  GitHub-only for now), imports skills/agents with metadata + tags (AI-fill via the
+  Haiku system session), and synced sources auto-update/archive assets and surface
+  new upstream files as badge + desktop notification.
 
 **Fixed internals** (code constants, for awareness): stream_delta journal batching
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100

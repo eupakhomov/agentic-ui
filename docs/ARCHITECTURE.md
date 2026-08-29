@@ -1,9 +1,9 @@
 # claude-ui — Architecture (as built)
 
 Status: Phases 0–4 complete plus git panel (5.1), PR creation (5.2), desktop
-notifications (5.14), and per-session service/ecosystem selection (5.7). This
-document describes the running system and sketches implementations for the remaining
-backlog (5.3–5.13). The dated decision log in `docs/plan/README.md` remains the
+notifications (5.14), per-session service/ecosystem selection (5.7), and the skill &
+agent library (Phase 6). This document describes the running system and sketches
+implementations for the remaining backlog (5.3–5.13). The dated decision log in `docs/plan/README.md` remains the
 authority on *why*; this file covers *what and how*.
 
 ## 1. System overview
@@ -61,8 +61,37 @@ authority on *why*; this file covers *what and how*.
 `session` (config + provider/session ids + capabilities + state) ·
 `session_event(session_id, seq, ts, type, payload jsonb)` ·
 `session_queue` (FIFO pending messages) · `session_template(config jsonb)`.
-Postgres runs the `pgvector/pg17` image — the `vector` extension is available but
-unused until 5.3.
+Postgres runs the `pgvector/pg17` image; V7 enables the `vector` extension for the
+skill library (see below) — 5.3 will reuse it.
+
+## 3a. Skill & agent library (Phase 6)
+
+Curated library on top of per-session skill sources (`de.pamir.claude.ui.library`):
+
+- **Tables (V7)**: `asset_source` (dir/repo ref, sync flag + last-sync state) ·
+  `library_asset` (kind, name/description, managed-copy `location`, `source_path`,
+  SHA-256 `content_hash`, ACTIVE/ARCHIVED) · `asset_tag` · `asset_embedding`
+  (`vector(1024)`, HNSW cosine) · `source_discovery` (new upstream files).
+- **Scan** (`AssetScanService`): convention-first — `SKILL.md` dir = one skill
+  (whole-dir tree hash), `.md` under `agent(s)` path = agent, name-contains only a
+  low-confidence fallback. Repo sources fetched exclusively via `gh`
+  (`RepoCacheService`: `gh repo clone --depth 1` / `gh repo sync`, cache under
+  `<skillsRoot>/.repo-cache/<sha256[:16]>`), GitHub-only by design for now.
+- **Import** (`LibraryService`): copies into the managed roots (persisted settings
+  `library.skills-root` / `library.agents-root`; skills root is also what the
+  create-dialog picker and provisioning read), never overwrites different content
+  (`-2` suffix + warning), dedupes identical content, writes asset+tags, best-effort
+  embeds (`VoyageEmbeddingClient` behind `EmbeddingClient`, key
+  `CLAUDE_UI_VOYAGE_API_KEY`, model voyage-3.5-lite).
+- **AI-fill** (`LibraryAiService`): batches ≤5 file contents per Haiku system-session
+  turn (`SessionService.runSystemTurn`), returns name/description/tags per path.
+- **Sync** (`LibrarySyncService`): 60s tick, interval as `last_synced_at` cutoff
+  (PrCheckPollingService shape). Changed hash → refresh copy + re-embed; vanished →
+  ARCHIVED (files kept); reappeared → restored; unimported → `source_discovery`.
+  Frontend polls `GET /api/library/sources` for the 📚 badge + desktop notification
+  (the journal/WS pipeline is per-session, so a global event has no transport).
+- **API**: `/api/library/{scan,import,ai-fill,assets,search,sources}` — see
+  `LibraryController`.
 
 ## 4. Backlog implementation sketches (5.3–5.13)
 

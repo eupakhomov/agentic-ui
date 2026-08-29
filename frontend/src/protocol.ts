@@ -115,6 +115,86 @@ export interface Settings {
   ecosystemRoot: string;
   prChecksEnabled: boolean;
   prCheckPollIntervalSeconds: number;
+  librarySkillsRoot: string;
+  libraryAgentsRoot: string;
+  libraryVectorize: boolean;
+  librarySyncEnabled: boolean;
+  librarySyncIntervalMinutes: number;
+  voyageConfigured: boolean;
+}
+
+// --- skill & agent library ---
+
+export type AssetKind = 'skill' | 'agent';
+export type AssetStatus = 'ACTIVE' | 'ARCHIVED';
+
+export interface LibraryAsset {
+  id: string;
+  sourceId: string | null;
+  kind: AssetKind;
+  name: string;
+  description: string;
+  location: string;
+  sourcePath: string | null;
+  contentHash: string;
+  status: AssetStatus;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScanCandidate {
+  path: string;
+  kind: AssetKind;
+  confidence: 'high' | 'low';
+  name: string;
+  description: string;
+  hash: string;
+  sizeBytes: number;
+  alreadyImported: boolean;
+  changedSinceImport: boolean;
+}
+
+export interface ScanResult {
+  type: 'dir' | 'repo';
+  ref: string;
+  candidates: ScanCandidate[];
+}
+
+export interface ImportItemResult {
+  path: string;
+  assetId: string | null;
+  warning: string | null;
+}
+
+export interface FilledMeta {
+  path: string;
+  name: string;
+  description: string;
+  tags: string[];
+}
+
+export interface LibraryDiscovery {
+  path: string;
+  kind: AssetKind;
+  firstSeenAt: string;
+}
+
+export interface LibrarySource {
+  id: string;
+  type: 'dir' | 'repo';
+  ref: string;
+  syncEnabled: boolean;
+  lastSyncedAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  assetCount: number;
+  discoveries: LibraryDiscovery[];
+}
+
+export interface LibrarySearchHit {
+  asset: LibraryAsset;
+  distance: number;
 }
 
 export interface TicketSummary {

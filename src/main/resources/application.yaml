@@ -30,6 +30,7 @@ claude-ui:
   ws-send-buffer-bytes: ${CLAUDE_UI_WS_BUFFER_LIMIT:1048576}
   auth-token: ${CLAUDE_UI_TOKEN:}
   linear-api-key: ${CLAUDE_UI_LINEAR_API_KEY:}
+  voyage-api-key: ${CLAUDE_UI_VOYAGE_API_KEY:}
   providers:
     claude:
       command: ["node", "sidecar/dist/index.js"]

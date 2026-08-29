@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GridLayout, { type Layout } from 'react-grid-layout';
 import { api } from '../api/rest';
 import type { SessionSummary } from '../protocol';
@@ -7,8 +7,9 @@ import CreateSessionDialog from './CreateSessionDialog';
 import TemplateManager from './TemplateManager';
 import SettingsDialog from './SettingsDialog';
 import UsageDashboard from './UsageDashboard';
+import LibraryDialog from './LibraryDialog';
 import { useStore } from '../store/store';
-import { notificationsEnabled, toggleNotifications } from '../notify';
+import { notificationsEnabled, notify, toggleNotifications } from '../notify';
 
 const LAYOUT_KEY = 'claude-ui.layout';
 const COLS = 12;
@@ -46,7 +47,9 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [staleCount, setStaleCount] = useState(0);
+  const [discoveryCount, setDiscoveryCount] = useState(0);
   const [width, setWidth] = useState(window.innerWidth - 24);
   // seeds a just-created session's compose box (e.g. an edited-but-unsent ticket import
   // draft); read once by SessionWidget's initial state, no cleanup needed afterward
@@ -63,6 +66,26 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     void api.staleSessions().then((list) => setStaleCount(list.length)).catch(() => {});
   }, []);
   useEffect(() => refreshStale(), [refreshStale]);
+
+  // library source-sync discoveries drive the 📚 badge; a rising count on a background
+  // tab also fires a desktop notification (sync is server-side, so polling is the transport)
+  const prevDiscoveries = useRef(-1);
+  const refreshDiscoveries = useCallback(() => {
+    void api.librarySources().then((sources) => {
+      const total = sources.reduce((n, s) => n + s.discoveries.length, 0);
+      if (prevDiscoveries.current >= 0 && total > prevDiscoveries.current) {
+        const withNew = sources.filter((s) => s.discoveries.length > 0).map((s) => s.ref).join(', ');
+        notify('Skill library', `${total} new file(s) found in ${withNew}`);
+      }
+      prevDiscoveries.current = total;
+      setDiscoveryCount(total);
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshDiscoveries();
+    const timer = setInterval(refreshDiscoveries, 60_000);
+    return () => clearInterval(timer);
+  }, [refreshDiscoveries]);
 
   const views = useStore((s) => s.views);
   useEffect(() => {
@@ -151,6 +174,13 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         >
           📊{staleCount > 0 && <span className="count-badge">{staleCount}</span>}
         </button>
+        <button
+          title={discoveryCount > 0 ? `Skill library — ${discoveryCount} new file(s) in synced sources` : 'Skill library'}
+          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+          onClick={() => setShowLibrary(true)}
+        >
+          📚{discoveryCount > 0 && <span className="count-badge">{discoveryCount}</span>}
+        </button>
         <button title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
         <button className="primary" onClick={() => setShowCreate(true)}>+ New Session</button>
       </div>
@@ -179,6 +209,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
       {showTemplates && <TemplateManager onClose={() => setShowTemplates(false)} />}
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
       {showUsage && <UsageDashboard onClose={() => { setShowUsage(false); refreshStale(); }} />}
+      {showLibrary && <LibraryDialog onClose={() => { setShowLibrary(false); refreshDiscoveries(); }} />}
     </>
   );
 }

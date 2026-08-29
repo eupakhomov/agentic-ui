@@ -16,11 +16,20 @@ public class SettingsService {
 	private static final String PR_CHECKS_POLL_INTERVAL_KEY = "pr-checks.poll-interval-seconds";
 	private static final int DEFAULT_PR_CHECK_POLL_INTERVAL_SECONDS = 180;
 	private static final int MIN_PR_CHECK_POLL_INTERVAL_SECONDS = 30;
+	private static final String LIBRARY_SKILLS_ROOT_KEY = "library.skills-root";
+	private static final String LIBRARY_AGENTS_ROOT_KEY = "library.agents-root";
+	private static final String LIBRARY_VECTORIZE_KEY = "library.vectorize";
+	private static final String LIBRARY_SYNC_ENABLED_KEY = "library.sync-enabled";
+	private static final String LIBRARY_SYNC_INTERVAL_KEY = "library.sync-interval-minutes";
+	private static final int DEFAULT_LIBRARY_SYNC_INTERVAL_MINUTES = 60;
+	private static final int MIN_LIBRARY_SYNC_INTERVAL_MINUTES = 5;
 
 	private final SettingsRepository repo;
+	private final AppProperties props;
 
-	public SettingsService(SettingsRepository repo) {
+	public SettingsService(SettingsRepository repo, AppProperties props) {
 		this.repo = repo;
+		this.props = props;
 	}
 
 	/**
@@ -75,5 +84,57 @@ public class SettingsService {
 
 	public void setPrCheckPollIntervalSeconds(int seconds) {
 		repo.set(PR_CHECKS_POLL_INTERVAL_KEY, Integer.toString(Math.max(seconds, MIN_PR_CHECK_POLL_INTERVAL_SECONDS)));
+	}
+
+	/**
+	 * Managed skill folder: import destination AND the root the create-dialog picker scans /
+	 * provisioning reads. The old CLAUDE_UI_SKILLS_ROOT config value is the default, so
+	 * existing installs keep working with no row present.
+	 */
+	public String librarySkillsRoot() {
+		return repo.get(LIBRARY_SKILLS_ROOT_KEY).filter(v -> !v.isBlank()).orElse(props.skillsRoot());
+	}
+
+	public void setLibrarySkillsRoot(String path) {
+		repo.set(LIBRARY_SKILLS_ROOT_KEY, path == null ? "" : path);
+	}
+
+	/** Managed agent folder — import destination for agent assets. */
+	public String libraryAgentsRoot() {
+		return repo.get(LIBRARY_AGENTS_ROOT_KEY).filter(v -> !v.isBlank())
+				.orElse(System.getProperty("user.home") + "/claude-agents");
+	}
+
+	public void setLibraryAgentsRoot(String path) {
+		repo.set(LIBRARY_AGENTS_ROOT_KEY, path == null ? "" : path);
+	}
+
+	/** Embed skill/agent content on import & sync (needs CLAUDE_UI_VOYAGE_API_KEY). */
+	public boolean libraryVectorize() {
+		return repo.get(LIBRARY_VECTORIZE_KEY).map(Boolean::parseBoolean).orElse(false);
+	}
+
+	public void setLibraryVectorize(boolean enabled) {
+		repo.set(LIBRARY_VECTORIZE_KEY, Boolean.toString(enabled));
+	}
+
+	/** Global on/off switch for the scheduled library source sync. */
+	public boolean librarySyncEnabled() {
+		return repo.get(LIBRARY_SYNC_ENABLED_KEY).map(Boolean::parseBoolean).orElse(true);
+	}
+
+	public void setLibrarySyncEnabled(boolean enabled) {
+		repo.set(LIBRARY_SYNC_ENABLED_KEY, Boolean.toString(enabled));
+	}
+
+	/** How often (minutes) a synced source is re-checked; clamped to a sane floor. */
+	public int librarySyncIntervalMinutes() {
+		return repo.get(LIBRARY_SYNC_INTERVAL_KEY).map(Integer::parseInt)
+				.map(v -> Math.max(v, MIN_LIBRARY_SYNC_INTERVAL_MINUTES))
+				.orElse(DEFAULT_LIBRARY_SYNC_INTERVAL_MINUTES);
+	}
+
+	public void setLibrarySyncIntervalMinutes(int minutes) {
+		repo.set(LIBRARY_SYNC_INTERVAL_KEY, Integer.toString(Math.max(minutes, MIN_LIBRARY_SYNC_INTERVAL_MINUTES)));
 	}
 }

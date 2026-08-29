@@ -1,4 +1,4 @@
-import type { ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
+import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibrarySearchHit, LibrarySource, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -74,8 +74,36 @@ export const api = {
     request<TicketSummary[]>('POST', '/api/tickets/recent', undefined, signal),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
-    | 'prChecksEnabled' | 'prCheckPollIntervalSeconds'>>) =>
+    | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
+    | 'libraryVectorize' | 'librarySyncEnabled' | 'librarySyncIntervalMinutes'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
+  libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>
+    request<ScanResult>('POST', '/api/library/scan', { type, ref }, signal),
+  libraryImport: (source: { type: 'dir' | 'repo'; ref: string; syncEnabled: boolean },
+    items: { path: string; kind: AssetKind; name: string; description: string; tags: string[] }[]) =>
+    request<ImportItemResult[]>('POST', '/api/library/import', { source, items }),
+  libraryAiFill: (type: 'dir' | 'repo', ref: string, paths: string[], signal?: AbortSignal) =>
+    request<FilledMeta[]>('POST', '/api/library/ai-fill', { type, ref, paths }, signal),
+  libraryAssets: (filters?: { kind?: string; status?: string; q?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.kind) params.set('kind', filters.kind);
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.q) params.set('q', filters.q);
+    const qs = params.toString();
+    return request<LibraryAsset[]>('GET', `/api/library/assets${qs ? `?${qs}` : ''}`);
+  },
+  libraryUpdateAsset: (id: string, patch: { name?: string; description?: string; tags?: string[]; status?: string }) =>
+    request<LibraryAsset>('PATCH', `/api/library/assets/${id}`, patch),
+  libraryDeleteAsset: (id: string) => request<null>('DELETE', `/api/library/assets/${id}`),
+  librarySearch: (q: string, k = 10) =>
+    request<LibrarySearchHit[]>('GET', `/api/library/search?q=${encodeURIComponent(q)}&k=${k}`),
+  librarySources: () => request<LibrarySource[]>('GET', '/api/library/sources'),
+  libraryUpdateSource: (id: string, patch: { syncEnabled?: boolean }) =>
+    request<LibrarySource>('PATCH', `/api/library/sources/${id}`, patch),
+  librarySyncNow: (id: string) => request<LibrarySource>('POST', `/api/library/sources/${id}/sync`),
+  libraryDeleteSource: (id: string) => request<null>('DELETE', `/api/library/sources/${id}`),
+  libraryDismiss: (id: string, paths?: string[]) =>
+    request<LibrarySource>('POST', `/api/library/sources/${id}/discoveries/dismiss`, paths ? { paths } : {}),
   usage: (months = 6) => request<TurnUsage[]>('GET', `/api/usage?months=${months}`),
   staleSessions: () => request<StaleSession[]>('GET', '/api/usage/stale-sessions'),
 };
