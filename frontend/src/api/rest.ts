@@ -1,4 +1,4 @@
-import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibrarySearchHit, LibrarySource, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
+import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -95,6 +95,7 @@ export const api = {
   libraryUpdateAsset: (id: string, patch: { name?: string; description?: string; tags?: string[]; status?: string }) =>
     request<LibraryAsset>('PATCH', `/api/library/assets/${id}`, patch),
   libraryDeleteAsset: (id: string) => request<null>('DELETE', `/api/library/assets/${id}`),
+  libraryAssetContent: (id: string) => request<LibraryAssetContent>('GET', `/api/library/assets/${id}/content`),
   librarySearch: (q: string, k = 10) =>
     request<LibrarySearchHit[]>('GET', `/api/library/search?q=${encodeURIComponent(q)}&k=${k}`),
   librarySources: () => request<LibrarySource[]>('GET', '/api/library/sources'),

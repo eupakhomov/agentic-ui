@@ -113,6 +113,11 @@ public class LibraryController {
 		return ResponseEntity.noContent().build();
 	}
 
+	@GetMapping("/assets/{id}/content")
+	public LibraryService.ContentPreview content(@PathVariable UUID id) {
+		return library.previewContent(assets.get(id));
+	}
+
 	@GetMapping("/search")
 	public List<SearchHitView> search(@RequestParam String q, @RequestParam(defaultValue = "10") int k) {
 		if (q == null || q.isBlank()) {

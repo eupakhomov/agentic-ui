@@ -197,6 +197,12 @@ export interface LibrarySearchHit {
   distance: number;
 }
 
+export interface LibraryAssetContent {
+  content: string;
+  truncated: boolean;
+  sourceFile: string;
+}
+
 export interface TicketSummary {
   ref: string;
   title: string;

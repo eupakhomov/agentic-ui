@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/rest';
-import type { AssetKind, LibraryAsset, LibrarySource, ScanCandidate, ScanResult, Settings } from '../protocol';
+import type { AssetKind, LibraryAsset, LibraryAssetContent, LibrarySource, ScanCandidate, ScanResult, Settings } from '../protocol';
 
 const PAGE_SIZE = 20;
 
@@ -100,6 +100,25 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
     void api.libraryDeleteAsset(a.id).then(refreshAssets)
       .catch((e) => setLibraryError(String((e as Error).message ?? e)));
   };
+
+  // --- details drawer state ---
+  const [detailAsset, setDetailAsset] = useState<LibraryAsset | null>(null);
+  const [detailContent, setDetailContent] = useState<LibraryAssetContent | null>(null);
+  const [detailError, setDetailError] = useState('');
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const openDetails = (a: LibraryAsset) => {
+    setDetailAsset(a);
+    setDetailContent(null);
+    setDetailError('');
+    setDetailLoading(true);
+    api.libraryAssetContent(a.id)
+      .then(setDetailContent)
+      .catch((e) => setDetailError(String((e as Error).message ?? e)))
+      .finally(() => setDetailLoading(false));
+  };
+
+  const closeDetails = () => setDetailAsset(null);
 
   // --- import view state ---
   const [sourceRef, setSourceRef] = useState('');
@@ -262,6 +281,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
 
   // --- render ---
 
+  const detailSource = detailAsset ? (sources ?? []).find((s) => s.id === detailAsset.sourceId) ?? null : null;
   const semanticAvailable = !!settings?.voyageConfigured && !!settings?.libraryVectorize;
   const shownAssets = (assets ?? [])
     .filter((a) => !semantic || !semanticHits || semanticHits.has(a.id))
@@ -357,7 +377,14 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                   ) : (
                     <>
                       <span title={a.kind}>{kindIcon(a.kind)}</span>
-                      <span className="name" title={a.location}>{a.name}</span>
+                      <span
+                        className="name"
+                        title={`${a.location} — click for details`}
+                        style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}
+                        onClick={() => openDetails(a)}
+                      >
+                        {a.name}
+                      </span>
                       <span className="branch" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.description}>
                         {a.description}
                       </span>
@@ -367,6 +394,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                         <span className="idle" title="cosine distance">{semanticHits.get(a.id)!.toFixed(3)}</span>
                       )}
                       <span style={{ marginLeft: 'auto', display: 'flex', gap: 5 }}>
+                        <button onClick={() => openDetails(a)}>Details</button>
                         <button onClick={() => startEdit(a)}>Edit</button>
                         {a.status === 'ACTIVE'
                           ? <button onClick={() => setStatus(a.id, 'ARCHIVED')}>Archive</button>
@@ -545,6 +573,74 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
           <button onClick={onClose}>Close</button>
         </div>
       </div>
+
+      {detailAsset && (
+        <div className="drawer-backdrop" onClick={(e) => { e.stopPropagation(); closeDetails(); }}>
+          <div className="drawer" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <span style={{ fontSize: 'calc(20px * var(--font-scale))' }} title={detailAsset.kind}>{kindIcon(detailAsset.kind)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 'calc(15px * var(--font-scale))', wordBreak: 'break-word' }}>{detailAsset.name}</div>
+                <div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                  {detailAsset.kind}
+                  {detailAsset.status === 'ARCHIVED' && <span className="chip" style={{ marginLeft: 6, color: 'var(--amber)', borderColor: 'var(--amber)' }}>archived</span>}
+                </div>
+              </div>
+              <button onClick={closeDetails}>✕</button>
+            </div>
+
+            {detailAsset.description && (
+              <p style={{ marginTop: 12, color: 'var(--text)' }}>{detailAsset.description}</p>
+            )}
+
+            {detailAsset.tags.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+                {detailAsset.tags.map((t) => <span key={t} className="chip">{t}</span>)}
+              </div>
+            )}
+
+            <dl className="drawer-meta">
+              <dt>Location</dt>
+              <dd title={detailAsset.location} style={{ wordBreak: 'break-all' }}>{detailAsset.location}</dd>
+
+              {detailSource && (
+                <>
+                  <dt>Source</dt>
+                  <dd title={detailSource.ref} style={{ wordBreak: 'break-all' }}>
+                    {detailSource.type === 'repo' ? '🌐' : '📁'} {detailSource.ref}
+                    {detailAsset.sourcePath && detailAsset.sourcePath !== '.' ? ` (${detailAsset.sourcePath})` : ''}
+                  </dd>
+                </>
+              )}
+
+              <dt>Content hash</dt>
+              <dd><code>{detailAsset.contentHash.slice(0, 12)}</code></dd>
+
+              <dt>Created</dt>
+              <dd>{new Date(detailAsset.createdAt).toLocaleString()}</dd>
+
+              <dt>Updated</dt>
+              <dd>{new Date(detailAsset.updatedAt).toLocaleString()}</dd>
+            </dl>
+
+            <h3 style={{ margin: '16px 0 6px', fontSize: 'calc(13px * var(--font-scale))' }}>
+              {detailContent ? detailContent.sourceFile : 'Content'}
+            </h3>
+            {detailLoading && <div style={{ color: 'var(--muted)' }}>loading…</div>}
+            {detailError && <div className="error-text">{detailError}</div>}
+            {detailContent && (
+              <>
+                <pre className="drawer-content">{detailContent.content || '(empty)'}</pre>
+                {detailContent.truncated && (
+                  <div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginTop: 4 }}>
+                    truncated — showing the first part of the file
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

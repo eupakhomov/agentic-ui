@@ -29,11 +29,15 @@ public class LibraryService {
 
 	private static final Logger log = LoggerFactory.getLogger(LibraryService.class);
 	private static final int EMBED_CONTENT_CHARS = 16_000;
+	private static final int PREVIEW_CONTENT_CHARS = 40_000;
 
 	public record ImportItem(String path, String kind, String name, String description, List<String> tags) {
 	}
 
 	public record ImportItemResult(String path, UUID assetId, String warning) {
+	}
+
+	public record ContentPreview(String content, boolean truncated, String sourceFile) {
 	}
 
 	private final SettingsService settings;
@@ -227,9 +231,27 @@ public class LibraryService {
 		return assets.searchByEmbedding(embeddings.embed(query, true), limit);
 	}
 
-	/** A skill's searchable content is its SKILL.md; an agent's is the file itself. */
+	/** Full text of an asset's primary file, for the library detail drawer; capped for display. */
+	public ContentPreview previewContent(LibraryRepository.AssetEntity asset) {
+		Path file = contentFile(Path.of(asset.location()));
+		try {
+			byte[] bytes = Files.readAllBytes(file);
+			String content = new String(bytes, StandardCharsets.UTF_8);
+			boolean truncated = content.length() > PREVIEW_CONTENT_CHARS;
+			return new ContentPreview(truncated ? content.substring(0, PREVIEW_CONTENT_CHARS) : content,
+					truncated, file.getFileName().toString());
+		} catch (IOException e) {
+			return new ContentPreview("", false, file.getFileName().toString());
+		}
+	}
+
+	/** A skill's primary file is its SKILL.md; an agent's is the file itself. */
+	private static Path contentFile(Path location) {
+		return Files.isDirectory(location) ? location.resolve("SKILL.md") : location;
+	}
+
 	private static String readContent(Path location) {
-		Path file = Files.isDirectory(location) ? location.resolve("SKILL.md") : location;
+		Path file = contentFile(location);
 		try {
 			byte[] bytes = Files.readAllBytes(file);
 			String content = new String(bytes, StandardCharsets.UTF_8);
