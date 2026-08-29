@@ -289,6 +289,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
       ? (semanticHits.get(a.id) ?? 9) - (semanticHits.get(b.id) ?? 9)
       : a.name.localeCompare(b.name));
   const assetPage = shownAssets.slice(libraryPage * PAGE_SIZE, (libraryPage + 1) * PAGE_SIZE);
+  const awaitingSemanticSearch = semantic && !semanticHits && textFilter.trim().length > 0;
   const candidatePage = (scan?.candidates ?? []).slice(importPage * PAGE_SIZE, (importPage + 1) * PAGE_SIZE);
   const kindIcon = (kind: AssetKind) => (kind === 'skill' ? '📖' : '🤖');
 
@@ -331,7 +332,11 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                   <input
                     type="checkbox"
                     checked={semantic}
-                    onChange={(e) => { setSemantic(e.target.checked); setSemanticHits(null); }}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setSemantic(on);
+                      if (on && textFilter.trim()) { runSemanticSearch(); } else { setSemanticHits(null); }
+                    }}
                   />
                   semantic
                 </label>
@@ -339,10 +344,13 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
             </div>
             {libraryError && <div className="error-text">{libraryError}</div>}
             {assets === null && !libraryError && <div style={{ color: 'var(--muted)' }}>loading…</div>}
-            {assets !== null && shownAssets.length === 0 && (
+            {assets !== null && !awaitingSemanticSearch && shownAssets.length === 0 && (
               <div style={{ color: 'var(--muted)' }}>
                 nothing here yet — use the Import tab to scan a folder or GitHub repo
               </div>
+            )}
+            {awaitingSemanticSearch && (
+              <div style={{ color: 'var(--muted)' }}>press Enter to search — showing all assets until then</div>
             )}
             <div className="stale-list">
               {assetPage.map((a) => (
