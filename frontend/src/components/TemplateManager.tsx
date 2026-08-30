@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { assetStub, type AssetKind, type LibraryAsset, type Settings, type Template } from '../protocol';
+import { assetStub, type AssetKind, type LibraryAsset, type ProviderView, type Settings, type Template } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import { AttachedAssetsRow } from './CreateSessionDialog';
 
-const PROMOTED_KEYS = ['model', 'permissionMode', 'baseBranch', 'kickoffPrompt', 'instructions', 'mcpConfig', 'envVars'];
+const PROMOTED_KEYS = ['provider', 'model', 'permissionMode', 'baseBranch', 'kickoffPrompt', 'instructions', 'mcpConfig', 'envVars'];
 
 type EnvRow = { key: string; value: string };
 
@@ -21,6 +21,8 @@ export default function TemplateManager({ onClose }: { onClose: () => void }) {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [providers, setProviders] = useState<ProviderView[]>([]);
+  const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
   const [permissionMode, setPermissionMode] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
@@ -38,13 +40,17 @@ export default function TemplateManager({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void load();
     api.getSettings().then(setSettings).catch(() => setSettings(null));
+    api.listProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
+
+  const activeCapabilities = providers.find((p) => p.id === provider)?.capabilities;
 
   const startEdit = (t: Template | null) => {
     setEditing(t);
     setName(t?.name ?? '');
     setDescription(t?.description ?? '');
     const config = t?.config ?? {};
+    setProvider(typeof config['provider'] === 'string' ? config['provider'] as string : '');
     setModel(typeof config['model'] === 'string' ? config['model'] as string : '');
     setPermissionMode(typeof config['permissionMode'] === 'string' ? config['permissionMode'] as string : '');
     setBaseBranch(typeof config['baseBranch'] === 'string' ? config['baseBranch'] as string : '');
@@ -63,6 +69,7 @@ export default function TemplateManager({ onClose }: { onClose: () => void }) {
     setError('');
     try {
       const config: Record<string, unknown> = JSON.parse(advanced || '{}');
+      if (provider) config['provider'] = provider;
       if (model) config['model'] = model;
       if (permissionMode) config['permissionMode'] = permissionMode;
       if (baseBranch.trim()) config['baseBranch'] = baseBranch.trim();
@@ -116,21 +123,39 @@ export default function TemplateManager({ onClose }: { onClose: () => void }) {
           <label>Description</label>
           <input value={description} onChange={(e) => setDescription(e.target.value)} />
 
-          <label>Model</label>
-          <select value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="">provider default</option>
-            <option value="sonnet">sonnet</option>
-            <option value="opus">opus</option>
-            <option value="haiku">haiku</option>
+          <label>Provider</label>
+          <select value={provider} onChange={(e) => { setProvider(e.target.value); setModel(''); setPermissionMode(''); }}>
+            <option value="">session default</option>
+            {providers.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
           </select>
+
+          <label>Model</label>
+          {provider === 'claude' || provider === '' ? (
+            <select value={model} onChange={(e) => setModel(e.target.value)}>
+              <option value="">provider default</option>
+              <option value="sonnet">sonnet</option>
+              <option value="opus">opus</option>
+              <option value="haiku">haiku</option>
+            </select>
+          ) : (
+            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="provider default" />
+          )}
 
           <label>Permissions</label>
           <select value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)}>
             <option value="">provider default</option>
-            <option value="default">ask for edits & commands</option>
-            <option value="acceptEdits">auto-accept edits</option>
-            <option value="plan">plan first</option>
-            <option value="bypassPermissions">bypass all approval (including Bash)</option>
+            {(!activeCapabilities || activeCapabilities.permissionModes.includes('default')) && (
+              <option value="default">ask for edits & commands</option>
+            )}
+            {(!activeCapabilities || activeCapabilities.permissionModes.includes('acceptEdits')) && (
+              <option value="acceptEdits">auto-accept edits</option>
+            )}
+            {(!activeCapabilities || activeCapabilities.permissionModes.includes('plan')) && (
+              <option value="plan">plan first</option>
+            )}
+            {(!activeCapabilities || activeCapabilities.permissionModes.includes('bypassPermissions')) && (
+              <option value="bypassPermissions">bypass all approval (including Bash)</option>
+            )}
           </select>
 
           <label>Base branch</label>

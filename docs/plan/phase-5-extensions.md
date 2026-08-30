@@ -133,11 +133,18 @@ Costs page: per day / per session / per model, from `turn_complete` events (SQL 
   section reuses the existing `CloseDialog` unchanged (it only needs a `sessionId`) to close them —
   no new close/delete logic. Topbar 📊 button shows a count badge when any exist.
 
-## 5.13 Codex CLI provider adapter
-Second implementation of the adapter interface wrapping OpenAI's Codex CLI: maps its
-headless/approval semantics onto our NDJSON contract, announces its (smaller)
-capabilities set, registered under `claude-ui.providers.codex`. The exercise that
-proves the backend/UI are genuinely provider-agnostic.
+## 5.13 Codex CLI provider adapter — ✅ shipped 2026-08-30 — design doc: [phase-5.13-codex-provider.md](phase-5.13-codex-provider.md)
+Second implementation of the adapter interface wrapping OpenAI's Codex CLI: a new
+`sidecar-codex/` package speaking `codex app-server`'s JSON-RPC-over-stdio protocol
+(not `codex exec`, which is non-interactive and can't do the approval round-trip),
+mapped onto our NDJSON contract, registered under `claude-ui.providers.codex`.
+Provider is already a wired-through per-session field (`SessionEntity.provider`) with
+no schema change needed; this item is the adapter + a UI picker (create dialog +
+template, defaulting from a new Settings entry) that didn't exist yet. Cost is
+estimated from Codex's token counts against a Settings-editable per-model price table
+(Codex reports no per-turn USD). First-pass scope is deliberately an MVP (no skills,
+no MCP passthrough, no plan/acceptEdits modes) — see the design doc for the full
+capability/permission-mode mapping and why.
 - **DoD:** a `provider: codex` session runs a prompt with tool approval end-to-end in
   the same dashboard; unsupported controls (e.g. plan mode) simply don't render;
   Claude sessions are entirely unaffected side by side.

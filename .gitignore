@@ -32,9 +32,10 @@ build/
 ### VS Code ###
 .vscode/
 
-### Node (sidecar/, frontend/) ###
+### Node (sidecar/, sidecar-codex/, frontend/) ###
 node_modules/
 sidecar/dist/
+sidecar-codex/dist/
 frontend/dist/
 
 ### Local secrets/config ###

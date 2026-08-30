@@ -10,6 +10,7 @@ Agent SDK). Single user, LAN deployment, PostgreSQL persistence.
 ├─ src/                    # Spring Boot backend (Java 25, Boot 4.x, package de.pamir.claude.ui)
 │  └─ main/resources/db/migration/   # Flyway migrations — the ONLY way schema changes
 ├─ sidecar/                # Node + TypeScript session engine (Claude Agent SDK) — Phase 1
+├─ sidecar-codex/          # Codex CLI provider adapter (codex app-server JSON-RPC) — Phase 5.13
 ├─ frontend/               # Vite + React dashboard — Phase 3
 ├─ docker-compose.yaml     # PostgreSQL 17 (pgvector image)
 ├─ docs/
@@ -33,6 +34,7 @@ architectural choice — most have been explicitly decided.
 | Node | ≥ 22 LTS | via nvm (`~/.nvm`); needed by `sidecar/` and `frontend/`, not by the `claude` CLI (native binary) |
 | Docker | any recent | Postgres runs in Docker Desktop (Windows). WSL integration may be OFF — see DB section |
 | claude CLI | logged in | sidecars use the invoking user's `~/.claude` credentials |
+| codex CLI | logged in (optional) | only needed for `provider: codex` sessions; sidecar-codex uses the invoking user's `~/.codex` credentials (`codex login` once, interactively) — same posture as the `claude` CLI row above |
 
 ## Build & test (CLI)
 
@@ -130,7 +132,18 @@ root, skills root, max sessions, auth token, provider launch commands), bound by
 repo and ecosystem path are selectable **per session** in the create dialog; the config
 values are only defaults (the ecosystem root default itself is a persisted setting, not
 env-based — see below). Local secrets belong in gitignored `application-local.yaml` or
-env vars — never commit them.
+env vars — never commit them. Provider launch commands (`claude-ui.providers.<id>.command`)
+ship two entries out of the box:
+```yaml
+claude-ui:
+  providers:
+    claude:
+      command: ["node", "sidecar/dist/index.js"]
+    codex:
+      command: ["node", "sidecar-codex/dist/index.js"]
+```
+Session/template `provider` (default from the persisted `session.default-provider`
+setting, Settings dialog → "Sessions") selects which entry `SidecarManager` spawns.
 
 ## Sidecar (Phase 1+)
 
@@ -142,6 +155,26 @@ npm run drive -- --cwd /path/to/dir           # manual REPL driver for the NDJSO
 One sidecar process per session; stdout is protocol NDJSON only, logs go to stderr.
 The NDJSON contract is the provider adapter interface — keep it provider-neutral
 (`providerSessionId`, capabilities handshake), Claude specifics stay inside the sidecar.
+
+## Codex provider adapter (Phase 5.13)
+
+```bash
+cd sidecar-codex && npm install && npm run build   # tsc build to dist/
+```
+
+Second adapter implementation, wrapping `codex app-server`'s JSON-RPC-over-stdio
+protocol (not `codex exec`, which is non-interactive and can't do the tool-approval
+round trip) — translated to the same NDJSON adapter protocol v1 the Claude sidecar
+speaks. `sidecar-codex/src/protocol.ts`/`stdio.ts` are synced copies of `sidecar/`'s
+shared, provider-neutral types (a plain copy, not a cross-package import, to avoid
+coupling the two packages' build order — keep both in sync if protocol v1 changes).
+Deliberately narrower capability set for this first pass (no plan mode, no skills, no
+MCP passthrough — an explicit `mcpConfig`/`plan`/`acceptEdits` on a `codex` session is
+rejected at creation time, not silently downgraded); Codex reports token counts but no
+per-turn USD, so `costUsd` is estimated backend-side (`SessionService.
+applyCodexCostEstimate`) from a Settings-editable price table (Settings dialog →
+"Codex" → Pricing). Full design rationale, the capability/permission-mode mapping, and
+live-confirmed protocol quirks: `docs/plan/phase-5.13-codex-provider.md`.
 
 ## Frontend (Phase 3+)
 

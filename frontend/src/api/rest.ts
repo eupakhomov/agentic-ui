@@ -1,4 +1,4 @@
-import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
+import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, ProviderView, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -76,8 +76,10 @@ export const api = {
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
     | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
-    | 'libraryVectorize' | 'librarySyncEnabled' | 'librarySyncIntervalMinutes'>>) =>
+    | 'libraryVectorize' | 'librarySyncEnabled' | 'librarySyncIntervalMinutes'
+    | 'defaultProvider' | 'codexPricing'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
+  listProviders: () => request<ProviderView[]>('GET', '/api/providers'),
   libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>
     request<ScanResult>('POST', '/api/library/scan', { type, ref }, signal),
   libraryImport: (source: { type: 'dir' | 'repo'; ref: string; syncEnabled: boolean },

@@ -1,0 +1,14 @@
+{
+  "name": "claude-ui-sidecar-codex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider adapter for claude-ui sessions wrapping the Codex CLI's app-server JSON-RPC protocol. NDJSON over stdio (adapter protocol v1).",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.0"
+  }
+}

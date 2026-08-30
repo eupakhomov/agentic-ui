@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/rest';
 import { getFontSize, getTheme, setFontSize, setTheme, type FontSize, type Theme } from '../prefs';
-import type { Settings } from '../protocol';
+import type { ProviderView, Settings } from '../protocol';
 
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [theme, setThemeState] = useState<Theme>(getTheme());
   const [fontSize, setFontSizeState] = useState<FontSize>(getFontSize());
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [providers, setProviders] = useState<ProviderView[]>([]);
   const [specDraft, setSpecDraft] = useState('');
   const [ecosystemRootDraft, setEcosystemRootDraft] = useState('');
   const [pollIntervalDraft, setPollIntervalDraft] = useState('');
   const [skillsRootDraft, setSkillsRootDraft] = useState('');
   const [agentsRootDraft, setAgentsRootDraft] = useState('');
   const [syncIntervalDraft, setSyncIntervalDraft] = useState('');
+  const [codexPricingDraft, setCodexPricingDraft] = useState('');
+  const [codexPricingError, setCodexPricingError] = useState('');
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -23,7 +26,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setSkillsRootDraft(s.librarySkillsRoot);
       setAgentsRootDraft(s.libraryAgentsRoot);
       setSyncIntervalDraft(String(s.librarySyncIntervalMinutes));
+      setCodexPricingDraft(s.codexPricing);
     }).catch(() => setSettings(null));
+    api.listProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
 
   const toggleOAuth = () => {
@@ -84,6 +89,21 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     void api.updateSettings({ librarySyncIntervalMinutes: minutes })
       .then((s) => { setSettings(s); setSyncIntervalDraft(String(s.librarySyncIntervalMinutes)); })
       .catch(() => setSyncIntervalDraft(String(settings.librarySyncIntervalMinutes)));
+  };
+
+  const saveDefaultProvider = (id: string) => {
+    if (!settings) return;
+    const previous = settings.defaultProvider;
+    setSettings({ ...settings, defaultProvider: id });
+    void api.updateSettings({ defaultProvider: id }).catch(() => setSettings({ ...settings, defaultProvider: previous }));
+  };
+
+  const saveCodexPricing = () => {
+    if (!settings || codexPricingDraft === settings.codexPricing) return;
+    setCodexPricingError('');
+    void api.updateSettings({ codexPricing: codexPricingDraft })
+      .then((s) => { setSettings(s); setCodexPricingDraft(s.codexPricing); })
+      .catch((e: unknown) => setCodexPricingError(e instanceof Error ? e.message : String(e)));
   };
 
   const toggleVectorize = () => {
@@ -148,6 +168,28 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 placeholder="parent folder of your services; empty = no default wider context"
                 title="default read-only context folder + service discovery root, overridable per session"
               />
+
+              <label>Default provider</label>
+              <select value={settings.defaultProvider} onChange={(e) => saveDefaultProvider(e.target.value)}>
+                {(providers.length ? providers.map((p) => p.id) : [settings.defaultProvider]).map((id) => (
+                  <option key={id} value={id}>{id}</option>
+                ))}
+              </select>
+            </div>
+
+            <h3 style={{ margin: '18px 0 10px' }}>Codex</h3>
+            <div className="form-grid">
+              <label>Pricing</label>
+              <textarea
+                className="full"
+                style={{ gridColumn: '2 / -1', fontFamily: 'monospace' }}
+                rows={4}
+                value={codexPricingDraft}
+                onChange={(e) => setCodexPricingDraft(e.target.value)}
+                onBlur={saveCodexPricing}
+                title='per-model $-per-million-tokens estimate; Codex reports no per-turn USD itself. "default" is the fallback for a model with no specific row.'
+              />
+              {codexPricingError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{codexPricingError}</div>}
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>Skill library</h3>

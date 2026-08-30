@@ -120,6 +120,12 @@ public class SidecarManager {
 	}
 
 	private List<String> buildArgs(SessionEntity s, Path mcpConfigFile, boolean resume) {
+		// The codex adapter (sidecar-codex) only understands a subset of these flags — see
+		// docs/plan/phase-5.13-codex-provider.md "Out of scope". SessionService.create()
+		// already rejects a codex session that explicitly set one of the unsupported fields,
+		// so these guards are defense-in-depth, not the primary enforcement point.
+		boolean codex = "codex".equals(s.provider());
+
 		List<String> args = new ArrayList<>(List.of("--cwd", s.worktreePath()));
 		if (resume && s.providerSessionId() != null) {
 			args.addAll(List.of("--resume", s.providerSessionId()));
@@ -127,37 +133,39 @@ public class SidecarManager {
 		if (s.model() != null) {
 			args.addAll(List.of("--model", s.model()));
 		}
-		if (s.fallbackModel() != null) {
+		if (!codex && s.fallbackModel() != null) {
 			args.addAll(List.of("--fallback-model", s.fallbackModel()));
 		}
 		if (s.permissionMode() != null) {
 			args.addAll(List.of("--permission-mode", s.permissionMode()));
 		}
-		if (!s.allowedTools().isEmpty()) {
+		if (!codex && !s.allowedTools().isEmpty()) {
 			args.addAll(List.of("--allowed-tools", String.join(",", s.allowedTools())));
 		}
-		if (!s.disallowedTools().isEmpty()) {
+		if (!codex && !s.disallowedTools().isEmpty()) {
 			args.addAll(List.of("--disallowed-tools", String.join(",", s.disallowedTools())));
 		}
-		if (mcpConfigFile != null && Files.exists(mcpConfigFile)) {
+		if (!codex && mcpConfigFile != null && Files.exists(mcpConfigFile)) {
 			args.addAll(List.of("--mcp-config", mcpConfigFile.toString()));
 		}
 		if (s.instructions() != null && !s.instructions().isBlank()) {
 			args.addAll(List.of("--append-system-prompt", s.instructions()));
 		}
-		if (s.ecosystemPath() != null && !s.ecosystemPath().isBlank()) {
-			args.addAll(List.of("--context-dir", s.ecosystemPath()));
-		}
-		for (String dir : s.contextDirs()) {
-			args.addAll(List.of("--context-dir", dir));
-		}
-		if (s.thinking() != null) {
-			args.addAll(List.of("--thinking", s.thinking()));
+		if (!codex) {
+			if (s.ecosystemPath() != null && !s.ecosystemPath().isBlank()) {
+				args.addAll(List.of("--context-dir", s.ecosystemPath()));
+			}
+			for (String dir : s.contextDirs()) {
+				args.addAll(List.of("--context-dir", dir));
+			}
+			if (s.thinking() != null) {
+				args.addAll(List.of("--thinking", s.thinking()));
+			}
 		}
 		if (s.effort() != null) {
 			args.addAll(List.of("--effort", s.effort()));
 		}
-		if (s.maxTurns() != null) {
+		if (!codex && s.maxTurns() != null) {
 			args.addAll(List.of("--max-turns", s.maxTurns().toString()));
 		}
 		return args;

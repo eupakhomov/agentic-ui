@@ -34,3 +34,5 @@ claude-ui:
   providers:
     claude:
       command: ["node", "sidecar/dist/index.js"]
+    codex:
+      command: ["node", "sidecar-codex/dist/index.js"]

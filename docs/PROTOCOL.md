@@ -98,6 +98,46 @@ this, never from the provider name:
 - A `rate_limit_event` from the provider is currently ignored by the adapter
   (backend-level rate-limit surfacing arrives with Phase 4).
 
+## Behavioral notes (Codex adapter)
+
+`sidecar-codex/` wraps `codex app-server`'s JSON-RPC-over-stdio protocol (the same one
+IDE integrations use), not `codex exec`, which is non-interactive and has no
+approval round-trip. Full mapping tables and rationale:
+`docs/plan/phase-5.13-codex-provider.md`. Live-confirmed quirks (codex-cli 0.151.0):
+
+- **Not every command/edit prompts, either** — same "not every Bash call prompts"
+  behavior as Claude: `default` mode (`workspace-write` sandbox + `on-request`
+  approval policy) auto-allows anything the sandbox already permits (in-workspace
+  reads/writes, no network); only an action the sandbox denies by default (network
+  access, writing outside the workspace) triggers a `permission_request`.
+- **Deny semantics differ by item kind.** Declining a file-change approval lets the
+  turn continue normally (the model sees the denial and responds in text). Declining a
+  command-exec approval can instead **abort the whole turn** (`turn_complete` with
+  `stopReason: interrupted`, no closing assistant message) when Codex didn't offer a
+  plain `"decline"` option for that specific request (observed: only `"accept"` and
+  `"cancel"` offered) — `"cancel"` is a turn-level abort, not a per-call denial. The
+  adapter always picks from that request's own `availableDecisions`, never a hardcoded
+  decision string.
+- Only the **item-based** approval scheme (`item/commandExecution/requestApproval`,
+  `item/fileChange/requestApproval`) was observed firing; the legacy scheme
+  (`execCommandApproval`, `applyPatchApproval`) never appeared. An unrecognized
+  server-request method is auto-declined with a logged warning, never left hanging.
+- Usage arrives as running token counts via `thread/tokenUsage/updated` notifications
+  during the turn, not on the `Turn` object itself — the adapter tracks the
+  last-seen value and attaches it to `turn_complete.usage`. Codex reports no per-turn
+  USD; `turn_complete.costUsd` is always `0` from this adapter — the backend
+  overwrites it with an estimate from `usage` for `provider: codex` sessions
+  (`SessionService.applyCodexCostEstimate`, Settings-editable price table).
+- `numTurns` in `turn_complete` is always `1` — Codex has no multi-step-within-a-turn
+  counter the way Claude's SDK does; one completed `turn/start` call is one turn.
+- `set_permission_mode`/`set_model` apply starting the **next** turn (no live
+  mid-turn change), acknowledged optimistically like the Claude adapter.
+- A large volume of notifications (`mcpServer/*` for Codex's always-on internal
+  `codex_apps` server, `remoteControl/*`, `account/*`, `thread/status/changed`,
+  `turn/started`, `turn/diff/updated`, `serverRequest/resolved`, …) is expected and
+  dropped silently — roughly 15 notification types beyond the ones this adapter maps,
+  in a single two-tool-call turn.
+
 ## WebSocket contract (backend ↔ UI)
 
 - Endpoint: `ws://host:8080/ws/sessions/{sessionId}?afterSeq=<n>`.

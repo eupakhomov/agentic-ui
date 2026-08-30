@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.config;
 
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Persisted, UI-editable settings (Settings dialog → Linear integration). Deliberately not a
@@ -23,13 +24,25 @@ public class SettingsService {
 	private static final String LIBRARY_SYNC_INTERVAL_KEY = "library.sync-interval-minutes";
 	private static final int DEFAULT_LIBRARY_SYNC_INTERVAL_MINUTES = 60;
 	private static final int MIN_LIBRARY_SYNC_INTERVAL_MINUTES = 5;
+	private static final String DEFAULT_PROVIDER_KEY = "session.default-provider";
+	private static final String CODEX_PRICING_KEY = "codex.pricing";
+	/**
+	 * Codex reports token counts, never a per-turn USD figure (see
+	 * docs/plan/phase-5.13-codex-provider.md Decision 2) — this is a manually
+	 * maintained, Settings-editable estimate, not tied to any real billing API.
+	 * "default" is the fallback entry for a model with no specific row.
+	 */
+	private static final String DEFAULT_CODEX_PRICING =
+			"{\"default\": {\"inputPer1M\": 2, \"cachedInputPer1M\": 0.5, \"outputPer1M\": 8}}";
 
 	private final SettingsRepository repo;
 	private final AppProperties props;
+	private final ObjectMapper mapper;
 
-	public SettingsService(SettingsRepository repo, AppProperties props) {
+	public SettingsService(SettingsRepository repo, AppProperties props, ObjectMapper mapper) {
 		this.repo = repo;
 		this.props = props;
+		this.mapper = mapper;
 	}
 
 	/**
@@ -136,5 +149,36 @@ public class SettingsService {
 
 	public void setLibrarySyncIntervalMinutes(int minutes) {
 		repo.set(LIBRARY_SYNC_INTERVAL_KEY, Integer.toString(Math.max(minutes, MIN_LIBRARY_SYNC_INTERVAL_MINUTES)));
+	}
+
+	/** Provider id the create dialog pre-selects for a new session; per-session choice always wins. */
+	public String defaultProvider() {
+		return repo.get(DEFAULT_PROVIDER_KEY).filter(v -> !v.isBlank()).orElse("claude");
+	}
+
+	public void setDefaultProvider(String provider) {
+		repo.set(DEFAULT_PROVIDER_KEY, provider == null || provider.isBlank() ? "claude" : provider);
+	}
+
+	/** Per-model $-per-million-tokens rate table used to estimate Codex turn cost. */
+	public String codexPricing() {
+		return repo.get(CODEX_PRICING_KEY).filter(v -> !v.isBlank()).orElse(DEFAULT_CODEX_PRICING);
+	}
+
+	public void setCodexPricing(String json) {
+		if (json == null || json.isBlank()) {
+			repo.set(CODEX_PRICING_KEY, DEFAULT_CODEX_PRICING);
+			return;
+		}
+		boolean isObject;
+		try {
+			isObject = mapper.readTree(json).isObject();
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException("codexPricing is not valid JSON: " + e.getMessage());
+		}
+		if (!isObject) {
+			throw new IllegalArgumentException("codexPricing must be a JSON object");
+		}
+		repo.set(CODEX_PRICING_KEY, json);
 	}
 }

@@ -21,6 +21,13 @@ export interface Capabilities {
   modelSwitch: boolean;
 }
 
+/** GET /api/providers — static per-provider capabilities, used to gate create-dialog/
+ * template controls before any session exists (see ProviderController.java). */
+export interface ProviderView {
+  id: string;
+  capabilities: Capabilities;
+}
+
 /** Journal envelope arriving over the WebSocket. */
 export interface Envelope {
   seq: number;
@@ -125,6 +132,9 @@ export interface Settings {
   librarySyncEnabled: boolean;
   librarySyncIntervalMinutes: number;
   voyageConfigured: boolean;
+  defaultProvider: string;
+  /** JSON: {"<model>"|"default": {"inputPer1M":n, "cachedInputPer1M":n, "outputPer1M":n}} */
+  codexPricing: string;
 }
 
 // --- skill & agent library ---

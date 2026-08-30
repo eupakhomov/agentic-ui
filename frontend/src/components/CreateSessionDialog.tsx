@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type ServicesResponse, type Settings, type Template, type TicketSummary } from '../protocol';
+import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type ProviderView, type ServicesResponse, type Settings, type Template, type TicketSummary } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import TicketPickerDialog from './TicketPickerDialog';
 
@@ -25,6 +25,8 @@ export default function CreateSessionDialog({
   const [baseBranch, setBaseBranch] = useState('main');
   const [syncBaseBranch, setSyncBaseBranch] = useState(true);
   const [templateId, setTemplateId] = useState('');
+  const [providers, setProviders] = useState<ProviderView[]>([]);
+  const [provider, setProvider] = useState('claude');
   const [model, setModel] = useState('sonnet');
   const [recommendedModel, setRecommendedModel] = useState<string | null>(null);
   const [permissionMode, setPermissionMode] = useState('acceptEdits');
@@ -64,9 +66,25 @@ export default function CreateSessionDialog({
       setEcosystemPath(info.ecosystemRoot);
     }).catch(() => setServicesInfo(null));
     api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
-    api.getSettings().then(setSettings).catch(() => setSettings(null));
+    api.listProviders().then(setProviders).catch(() => setProviders([]));
+    api.getSettings().then((s) => { setSettings(s); setProvider(s.defaultProvider); }).catch(() => setSettings(null));
     api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
   }, []);
+
+  const activeCapabilities = providers.find((p) => p.id === provider)?.capabilities;
+
+  // keep permission mode / model within what the selected provider actually supports —
+  // capabilities gate the controls, never a provider-name check (docs/PROTOCOL.md)
+  useEffect(() => {
+    if (!activeCapabilities) return;
+    if (!(activeCapabilities.permissionModes as string[]).includes(permissionMode)) {
+      setPermissionMode(activeCapabilities.permissionModes.includes('acceptEdits') ? 'acceptEdits' : 'default');
+    }
+    if (!activeCapabilities.thinking) setThinking('');
+    if (provider !== 'claude' && ['sonnet', 'opus', 'haiku'].includes(model)) setModel('');
+    if (provider === 'claude' && model === '') setModel('sonnet');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, activeCapabilities]);
 
   const importTicket = async (refOverride?: string) => {
     const ref = (refOverride ?? ticketRef).trim();
@@ -174,7 +192,8 @@ export default function CreateSessionDialog({
     setError('');
     setBusy(true);
     try {
-      const overrides: Record<string, unknown> = { model, permissionMode };
+      const overrides: Record<string, unknown> = { provider, permissionMode };
+      if (model.trim()) overrides['model'] = model.trim();
       if (thinking) overrides['thinking'] = thinking;
       if (effort) overrides['effort'] = effort;
       if (instructions.trim()) overrides['instructions'] = instructions.trim();
@@ -282,12 +301,27 @@ export default function CreateSessionDialog({
             placeholder="optional — overrides the template's kickoff prompt; filled in automatically by ticket import"
           />
 
-          <label>Model</label>
-          <select value={model} onChange={(e) => { setRecommendedModel(null); setModel(e.target.value); }}>
-            <option value="sonnet">sonnet</option>
-            <option value="opus">opus</option>
-            <option value="haiku">haiku</option>
+          <label>Provider</label>
+          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+            {(providers.length ? providers : [{ id: provider, capabilities: activeCapabilities }]).map((p) => (
+              <option key={p.id} value={p.id}>{p.id}</option>
+            ))}
           </select>
+
+          <label>Model</label>
+          {provider === 'claude' ? (
+            <select value={model} onChange={(e) => { setRecommendedModel(null); setModel(e.target.value); }}>
+              <option value="sonnet">sonnet</option>
+              <option value="opus">opus</option>
+              <option value="haiku">haiku</option>
+            </select>
+          ) : (
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="provider default — leave blank"
+            />
+          )}
           {recommendedModel && recommendedModel === model && (
             <div className="full" style={{ gridColumn: '2 / -1', color: 'var(--muted)', fontSize: 12.5 }}>
               recommended by ticket import
@@ -302,10 +336,18 @@ export default function CreateSessionDialog({
               ? 'ALL tool calls auto-approve, including Bash — no approval prompts at all'
               : undefined}
           >
-            <option value="default">ask for edits & commands</option>
-            <option value="acceptEdits">auto-accept edits</option>
-            <option value="plan">plan first</option>
-            <option value="bypassPermissions">bypass all approval (including Bash) — no prompts at all</option>
+            {(!activeCapabilities || activeCapabilities.permissionModes.includes('default')) && (
+              <option value="default">ask for edits & commands</option>
+            )}
+            {(!activeCapabilities || activeCapabilities.permissionModes.includes('acceptEdits')) && (
+              <option value="acceptEdits">auto-accept edits</option>
+            )}
+            {(!activeCapabilities || activeCapabilities.permissionModes.includes('plan')) && (
+              <option value="plan">plan first</option>
+            )}
+            {(!activeCapabilities || activeCapabilities.permissionModes.includes('bypassPermissions')) && (
+              <option value="bypassPermissions">bypass all approval (including Bash) — no prompts at all</option>
+            )}
           </select>
         </div>
 
@@ -330,13 +372,17 @@ export default function CreateSessionDialog({
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
 
-            <label>Thinking</label>
-            <select value={thinking} onChange={(e) => setThinking(e.target.value)}>
-              <option value="">provider default</option>
-              <option value="off">off</option>
-              <option value="adaptive">adaptive</option>
-              <option value="16000">budget 16k</option>
-            </select>
+            {(!activeCapabilities || activeCapabilities.thinking) && (
+              <>
+                <label>Thinking</label>
+                <select value={thinking} onChange={(e) => setThinking(e.target.value)}>
+                  <option value="">provider default</option>
+                  <option value="off">off</option>
+                  <option value="adaptive">adaptive</option>
+                  <option value="16000">budget 16k</option>
+                </select>
+              </>
+            )}
 
             <label>Effort</label>
             <select value={effort} onChange={(e) => setEffort(e.target.value)}>

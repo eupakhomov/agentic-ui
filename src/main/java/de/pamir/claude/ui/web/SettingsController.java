@@ -16,13 +16,15 @@ public class SettingsController {
 	public record SettingsView(boolean linearOAuthEnabled, String ticketImportSpec, boolean linearApiKeyConfigured,
 								String ecosystemRoot, boolean prChecksEnabled, int prCheckPollIntervalSeconds,
 								String librarySkillsRoot, String libraryAgentsRoot, boolean libraryVectorize,
-								boolean librarySyncEnabled, int librarySyncIntervalMinutes, boolean voyageConfigured) {
+								boolean librarySyncEnabled, int librarySyncIntervalMinutes, boolean voyageConfigured,
+								String defaultProvider, String codexPricing) {
 	}
 
 	public record SettingsUpdate(Boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot,
 								  Boolean prChecksEnabled, Integer prCheckPollIntervalSeconds,
 								  String librarySkillsRoot, String libraryAgentsRoot, Boolean libraryVectorize,
-								  Boolean librarySyncEnabled, Integer librarySyncIntervalMinutes) {
+								  Boolean librarySyncEnabled, Integer librarySyncIntervalMinutes,
+								  String defaultProvider, String codexPricing) {
 	}
 
 	private final SettingsService settings;
@@ -70,6 +72,12 @@ public class SettingsController {
 		if (update.librarySyncIntervalMinutes() != null) {
 			settings.setLibrarySyncIntervalMinutes(update.librarySyncIntervalMinutes());
 		}
+		if (update.defaultProvider() != null) {
+			settings.setDefaultProvider(update.defaultProvider());
+		}
+		if (update.codexPricing() != null) {
+			settings.setCodexPricing(update.codexPricing());
+		}
 		return view();
 	}
 
@@ -79,6 +87,7 @@ public class SettingsController {
 		return new SettingsView(settings.linearOAuthEnabled(), settings.ticketImportSpec(), apiKeyConfigured,
 				settings.ecosystemRoot(), settings.prChecksEnabled(), settings.prCheckPollIntervalSeconds(),
 				settings.librarySkillsRoot(), settings.libraryAgentsRoot(), settings.libraryVectorize(),
-				settings.librarySyncEnabled(), settings.librarySyncIntervalMinutes(), voyageConfigured);
+				settings.librarySyncEnabled(), settings.librarySyncIntervalMinutes(), voyageConfigured,
+				settings.defaultProvider(), settings.codexPricing());
 	}
 }

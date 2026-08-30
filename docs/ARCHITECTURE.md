@@ -163,11 +163,15 @@ Endpoint + a small chart page (recharts or plain SVG). Journal retention (5.3) m
 keep `turn_complete` rows or roll them into a `usage_daily` table first.
 
 ### 5.13 Codex CLI provider adapter
-The proof of provider-agnosticism. New `sidecar-codex/` translating Codex CLI's
-headless protocol to adapter protocol v1: map its approval requests to
-`permission_request`, its session id to `providerSessionId`, announce a reduced
-capabilities set (no plan mode, no skills). Register under
-`claude-ui.providers.codex`; the UI needs zero changes — that's the whole point.
+The proof of provider-agnosticism. Design doc with the full capability/permission-mode
+mapping and rationale: `docs/plan/phase-5.13-codex-provider.md`. Summary: new
+`sidecar-codex/` speaks `codex app-server`'s JSON-RPC-over-stdio protocol (not `codex
+exec`, which is non-interactive and can't do the approval round-trip), translated to
+adapter protocol v1 — approval requests to `permission_request`, its thread id to
+`providerSessionId`, a reduced capabilities set (no plan mode, no skills, no MCP
+passthrough for this pass). Registered under `claude-ui.providers.codex`; the
+dashboard needs zero code that branches on the provider name — only on capabilities,
+same as the Claude adapter already requires.
 
 ## 5. Operational notes
 

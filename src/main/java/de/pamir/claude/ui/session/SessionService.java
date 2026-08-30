@@ -96,31 +96,77 @@ public class SessionService {
 						"agent", "file", assetWarnings));
 			}
 		}
+		String provider = text(config, "provider", settings.defaultProvider());
+		String permissionMode = text(config, "permissionMode", "default");
+		JsonNode explicitMcpConfig = config.get("mcpConfig");
+		List<String> allowedTools = stringList(config, "allowedTools");
+		List<String> disallowedTools = stringList(config, "disallowedTools");
+		String thinking = nullableText(config, "thinking");
+		Integer maxTurns = config.hasNonNull("maxTurns") ? config.get("maxTurns").asInt() : null;
+		String fallbackModel = nullableText(config, "fallbackModel");
+		String ecosystemPath = config.has("ecosystemPath") ? nullableText(config, "ecosystemPath")
+				: nullableIfBlank(settings.ecosystemRoot());
+		List<String> contextDirs = stringList(config, "contextDirs");
+		if ("codex".equals(provider)) {
+			// See docs/plan/phase-5.13-codex-provider.md's DoD: unsupported controls must be
+			// rejected at creation time, not silently downgraded. An explicit mcpConfig is
+			// rejected; the automatic default-Linear-MCP layering below is simply skipped for
+			// this provider instead (that's an ambient convenience, not explicit user intent).
+			if (!"default".equals(permissionMode) && !"bypassPermissions".equals(permissionMode)) {
+				throw new IllegalArgumentException(
+						"provider 'codex' does not support permission mode '" + permissionMode + "'");
+			}
+			if (explicitMcpConfig != null && !explicitMcpConfig.isNull()) {
+				throw new IllegalArgumentException("provider 'codex' does not support mcpConfig");
+			}
+			if (!allowedTools.isEmpty() || !disallowedTools.isEmpty()) {
+				throw new IllegalArgumentException("provider 'codex' does not support allowedTools/disallowedTools");
+			}
+			if (thinking != null) {
+				throw new IllegalArgumentException("provider 'codex' does not support the thinking control (use effort)");
+			}
+			if (maxTurns != null) {
+				throw new IllegalArgumentException("provider 'codex' does not support maxTurns");
+			}
+			if (fallbackModel != null) {
+				throw new IllegalArgumentException("provider 'codex' does not support fallbackModel");
+			}
+			// Ecosystem/context dirs commonly come from a global default (settings.ecosystemRoot()),
+			// not explicit per-session intent, so this degrades with a visible warning rather than
+			// rejecting creation outright.
+			if (ecosystemPath != null || !contextDirs.isEmpty()) {
+				assetWarnings.add("codex provider does not support context directories — skipped");
+			}
+			ecosystemPath = null;
+			contextDirs = List.of();
+		}
+		JsonNode mcpConfig = "codex".equals(provider) ? null : withDefaultLinearMcp(explicitMcpConfig);
+
 		UUID id = UUID.randomUUID();
 		Path worktree = Path.of(props.worktreeRoot()).resolve(id.toString());
 
 		SessionEntity entity = new SessionEntity(
 				id, name,
-				text(config, "provider", "claude"),
+				provider,
 				config.get("providerConfig"),
 				repo,
-				config.has("ecosystemPath") ? nullableText(config, "ecosystemPath") : nullableIfBlank(settings.ecosystemRoot()),
-				stringList(config, "contextDirs"),
+				ecosystemPath,
+				contextDirs,
 				branch, baseBranch, worktree.toString(),
 				null, null,
 				nullableText(config, "model"),
-				text(config, "permissionMode", "default"),
-				stringList(config, "allowedTools"),
-				stringList(config, "disallowedTools"),
-				withDefaultLinearMcp(config.get("mcpConfig")),
+				permissionMode,
+				allowedTools,
+				disallowedTools,
+				mcpConfig,
 				config.get("envVars"),
 				arrayOrEmpty(config, "skillSources"),
 				arrayOrEmpty(config, "agentSources"),
 				nullableText(config, "instructions"),
-				nullableText(config, "thinking"),
+				thinking,
 				nullableText(config, "effort"),
-				config.hasNonNull("maxTurns") ? config.get("maxTurns").asInt() : null,
-				nullableText(config, "fallbackModel"),
+				maxTurns,
+				fallbackModel,
 				config.hasNonNull("costBudgetUsd") ? new BigDecimal(config.get("costBudgetUsd").asText()) : null,
 				fillPlaceholders(nullableText(config, "kickoffPrompt"), kickoffValues),
 				SessionState.CREATING, "user", nullableText(config, "ticketRef"), null, null, null, null, null, null);
@@ -426,6 +472,9 @@ public class SessionService {
 
 	private void onSidecarEvent(UUID id, JsonNode event) {
 		String type = event.path("type").asText("unknown");
+		if ("turn_complete".equals(type) && event instanceof ObjectNode turnComplete) {
+			applyCodexCostEstimate(id, turnComplete);
+		}
 		record(id, type, event);
 		switch (type) {
 			case "ready" -> {
@@ -568,6 +617,28 @@ public class SessionService {
 			sessions.deleteQueued(id, next.pos());
 			recordQueue(id);
 		});
+	}
+
+	/**
+	 * The Codex adapter always reports {@code costUsd: 0} (it has no per-turn USD figure —
+	 * see docs/plan/phase-5.13-codex-provider.md Decision 2); this rewrites the journaled
+	 * event's costUsd in place from the raw {@code usage} token counts against the
+	 * Settings-editable price table, so the cost budget guard and usage dashboard don't
+	 * need to know the number is estimated. No-op for non-Codex sessions.
+	 */
+	private void applyCodexCostEstimate(UUID id, ObjectNode turnComplete) {
+		SessionEntity session = sessions.find(id).orElse(null);
+		if (session == null || !"codex".equals(session.provider())) {
+			return;
+		}
+		try {
+			JsonNode pricing = mapper.readTree(settings.codexPricing());
+			BigDecimal estimated = CodexCostEstimator.estimate(pricing, turnComplete.path("model").asText(""),
+					turnComplete.path("usage"));
+			turnComplete.put("costUsd", estimated);
+		} catch (RuntimeException e) {
+			log.warn("codex cost estimate failed for session {}: {}", id, e.getMessage());
+		}
 	}
 
 	private boolean budgetExhausted(SessionEntity session) {
