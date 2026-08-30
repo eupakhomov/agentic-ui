@@ -168,12 +168,21 @@ round trip) — translated to the same NDJSON adapter protocol v1 the Claude sid
 speaks. `sidecar-codex/src/protocol.ts`/`stdio.ts` are synced copies of `sidecar/`'s
 shared, provider-neutral types (a plain copy, not a cross-package import, to avoid
 coupling the two packages' build order — keep both in sync if protocol v1 changes).
-Deliberately narrower capability set for this first pass (no plan mode, no skills, no
-MCP passthrough — an explicit `mcpConfig`/`plan`/`acceptEdits` on a `codex` session is
-rejected at creation time, not silently downgraded); Codex reports token counts but no
-per-turn USD, so `costUsd` is estimated backend-side (`SessionService.
-applyCodexCostEstimate`) from a Settings-editable price table (Settings dialog →
-"Codex" → Pricing). Full design rationale, the capability/permission-mode mapping, and
+Narrower capability set than Claude's: no plan mode, no `acceptEdits`, no custom
+agents (`agentSources`) — Codex has no equivalent to Claude's static subagent files at
+all, confirmed permanently infeasible, not just deferred. An explicit `plan`/
+`acceptEdits` permission mode or a non-empty `agentSources` on a `codex` session is
+rejected at creation time, not silently downgraded. Skills and MCP **are** supported
+(as of the 2026-08-30 follow-up): skills via `skills/extraRoots/set` pointing at the
+worktree's already-materialized `.claude/skills/` (Codex reads the same `SKILL.md`
+format), MCP via `thread/start`'s `config.mcp_servers` (thread-scoped, not the global
+`codex mcp add` registration) — `sidecar-codex/src/mcp.ts` translates the same
+Claude-shaped `mcpConfig` file the backend already writes, passing any bearer token as
+a named env var on the spawned child (Codex's own auth mechanism) rather than an
+inline header. Codex reports token counts but no per-turn USD, so `costUsd` is
+estimated backend-side (`SessionService.applyCodexCostEstimate`) from a
+Settings-editable price table (Settings dialog → "Codex" → Pricing). Full design
+rationale, the capability/permission-mode mapping, and
 live-confirmed protocol quirks: `docs/plan/phase-5.13-codex-provider.md`.
 
 ## Frontend (Phase 3+)

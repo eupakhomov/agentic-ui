@@ -168,10 +168,16 @@ mapping and rationale: `docs/plan/phase-5.13-codex-provider.md`. Summary: new
 `sidecar-codex/` speaks `codex app-server`'s JSON-RPC-over-stdio protocol (not `codex
 exec`, which is non-interactive and can't do the approval round-trip), translated to
 adapter protocol v1 — approval requests to `permission_request`, its thread id to
-`providerSessionId`, a reduced capabilities set (no plan mode, no skills, no MCP
-passthrough for this pass). Registered under `claude-ui.providers.codex`; the
-dashboard needs zero code that branches on the provider name — only on capabilities,
-same as the Claude adapter already requires.
+`providerSessionId`. Registered under `claude-ui.providers.codex`; the dashboard needs
+zero code that branches on the provider name — only on capabilities, same as the
+Claude adapter already requires. Reduced capabilities set vs. Claude: no plan mode, no
+`acceptEdits`, no custom agents (confirmed no Codex equivalent exists at all — not
+deferred). Skills and MCP are supported (a same-day follow-up flipped both from
+out-of-scope once confirmed live-feasible): skills via `skills/extraRoots/set`
+pointing at the same materialized `.claude/skills/` Claude sessions use; MCP via
+`thread/start`'s `config.mcp_servers`, with bearer tokens passed as a named env var on
+the spawned child rather than an inline header (Codex's own auth mechanism differs
+from Claude's).
 
 ## 5. Operational notes
 
