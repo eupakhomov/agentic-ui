@@ -98,8 +98,10 @@ public class LibraryController {
 	@GetMapping("/assets")
 	public List<LibraryRepository.AssetEntity> listAssets(@RequestParam(required = false) String kind,
 														   @RequestParam(required = false) String status,
-														   @RequestParam(required = false) String q) {
-		return assets.findAll(kind, status, q);
+														   @RequestParam(required = false) String q,
+														   @RequestParam(required = false) Integer limit,
+														   @RequestParam(required = false) Integer offset) {
+		return assets.findAll(kind, status, q, limit, offset);
 	}
 
 	@PatchMapping("/assets/{id}")
@@ -119,11 +121,12 @@ public class LibraryController {
 	}
 
 	@GetMapping("/search")
-	public List<SearchHitView> search(@RequestParam String q, @RequestParam(defaultValue = "10") int k) {
+	public List<SearchHitView> search(@RequestParam String q, @RequestParam(defaultValue = "10") int k,
+									   @RequestParam(required = false) String kind) {
 		if (q == null || q.isBlank()) {
 			throw new IllegalArgumentException("q is required");
 		}
-		return library.search(q, Math.max(1, Math.min(50, k))).stream()
+		return library.search(q, Math.max(1, Math.min(100, k)), kind).stream()
 				.map(hit -> new SearchHitView(hit.asset(), hit.distance())).toList();
 	}
 

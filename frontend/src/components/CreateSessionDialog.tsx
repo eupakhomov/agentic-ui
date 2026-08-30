@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { placeholdersOf, type ServicesResponse, type SkillInfo, type Template, type TicketSummary } from '../protocol';
+import { placeholdersOf, type AssetKind, type LibraryAsset, type ServicesResponse, type Settings, type Template, type TicketSummary } from '../protocol';
+import AssetPickerDialog from './AssetPickerDialog';
 import TicketPickerDialog from './TicketPickerDialog';
 
 export default function CreateSessionDialog({
@@ -13,7 +14,7 @@ export default function CreateSessionDialog({
   const [servicesInfo, setServicesInfo] = useState<ServicesResponse | null>(null);
   const [branches, setBranches] = useState<string[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -31,8 +32,11 @@ export default function CreateSessionDialog({
   const [effort, setEffort] = useState('');
   const [instructions, setInstructions] = useState('');
   const [ecosystemPath, setEcosystemPath] = useState('');
-  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
+  const [selectedSkillAssets, setSelectedSkillAssets] = useState<Map<string, LibraryAsset>>(new Map());
+  const [selectedAgentAssets, setSelectedAgentAssets] = useState<Map<string, LibraryAsset>>(new Map());
   const [extraSkill, setExtraSkill] = useState('');
+  const [extraAgent, setExtraAgent] = useState('');
+  const [assetPickerKind, setAssetPickerKind] = useState<AssetKind | null>(null);
   const [kickoffValues, setKickoffValues] = useState<Record<string, string>>({});
   const [advanced, setAdvanced] = useState('');
   const [initialPrompt, setInitialPrompt] = useState('');
@@ -60,7 +64,7 @@ export default function CreateSessionDialog({
       setEcosystemPath(info.ecosystemRoot);
     }).catch(() => setServicesInfo(null));
     api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
-    api.skills().then(setSkills).catch(() => setSkills([]));
+    api.getSettings().then(setSettings).catch(() => setSettings(null));
     api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
   }, []);
 
@@ -166,15 +170,18 @@ export default function CreateSessionDialog({
       if (instructions.trim()) overrides['instructions'] = instructions.trim();
       overrides['ecosystemPath'] = ecosystemPath.trim() || null;
       if (promptFromTicket && resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
+      const sniffSource = (raw: string) =>
+        raw.startsWith('http') || raw.endsWith('.git') ? { type: 'repo', ref: raw } : { type: 'dir', ref: raw };
       const skillSources = [
-        ...[...selectedSkills].map((path) => ({ type: 'dir', ref: path })),
-        ...(extraSkill.trim()
-          ? [extraSkill.trim().startsWith('http') || extraSkill.trim().endsWith('.git')
-              ? { type: 'repo', ref: extraSkill.trim() }
-              : { type: 'dir', ref: extraSkill.trim() }]
-          : []),
+        ...[...selectedSkillAssets.values()].map((a) => ({ type: 'dir', ref: a.location })),
+        ...(extraSkill.trim() ? [sniffSource(extraSkill.trim())] : []),
       ];
       if (skillSources.length > 0) overrides['skillSources'] = skillSources;
+      const agentSources = [
+        ...[...selectedAgentAssets.values()].map((a) => ({ type: 'file', ref: a.location })),
+        ...(extraAgent.trim() ? [sniffSource(extraAgent.trim())] : []),
+      ];
+      if (agentSources.length > 0) overrides['agentSources'] = agentSources;
       const draftInput = promptFromTicket ? initialPrompt.trim() : '';
       if (promptFromTicket) {
         // explicit '' (not omitted) so a template's own kickoffPrompt can't leak through the
@@ -335,33 +342,32 @@ export default function CreateSessionDialog({
               title="parent folder attached read-only so Claude can read sibling services"
             />
 
-            {skills.length > 0 && (
-              <>
-                <label>Skills</label>
-                <div className="skills-list">
-                  {skills.map((s) => (
-                    <label key={s.path} title={s.description}>
-                      <input
-                        type="checkbox"
-                        checked={selectedSkills.has(s.path)}
-                        onChange={(e) => {
-                          const next = new Set(selectedSkills);
-                          if (e.target.checked) next.add(s.path);
-                          else next.delete(s.path);
-                          setSelectedSkills(next);
-                        }}
-                      />{' '}{s.name} <span style={{ color: 'var(--muted)' }}>{s.description}</span>
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
+            <label>Skills</label>
+            <AttachedAssetsRow
+              assets={[...selectedSkillAssets.values()]}
+              onBrowse={() => setAssetPickerKind('skill')}
+              buttonLabel="Add skills…"
+            />
 
             <label>Extra skill</label>
             <input
               value={extraSkill}
               onChange={(e) => setExtraSkill(e.target.value)}
               placeholder="path or git URL of a skill source"
+            />
+
+            <label>Agents</label>
+            <AttachedAssetsRow
+              assets={[...selectedAgentAssets.values()]}
+              onBrowse={() => setAssetPickerKind('agent')}
+              buttonLabel="Add agents…"
+            />
+
+            <label>Extra agent</label>
+            <input
+              value={extraAgent}
+              onChange={(e) => setExtraAgent(e.target.value)}
+              placeholder="path or git URL of an agent source"
             />
 
             <label>Instructions</label>
@@ -413,6 +419,35 @@ export default function CreateSessionDialog({
         onClose={() => { pickerAbortRef.current?.abort('user'); setShowTicketPicker(false); }}
       />
     )}
+    {assetPickerKind && (
+      <AssetPickerDialog
+        kind={assetPickerKind}
+        semanticAvailable={!!settings?.voyageConfigured && !!settings?.libraryVectorize}
+        selected={assetPickerKind === 'skill' ? selectedSkillAssets : selectedAgentAssets}
+        onConfirm={(picked) => {
+          if (assetPickerKind === 'skill') setSelectedSkillAssets(picked); else setSelectedAgentAssets(picked);
+          setAssetPickerKind(null);
+        }}
+        onClose={() => setAssetPickerKind(null)}
+      />
+    )}
     </>
+  );
+}
+
+/** First few attached asset names as chips, a "+N more" chip, and a browse button. */
+function AttachedAssetsRow({ assets, onBrowse, buttonLabel }: {
+  assets: LibraryAsset[];
+  onBrowse: () => void;
+  buttonLabel: string;
+}) {
+  const shown = assets.slice(0, 3);
+  const rest = assets.length - shown.length;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {shown.map((a) => <span key={a.id} className="chip" title={a.description}>{a.name}</span>)}
+      {rest > 0 && <span className="chip">+{rest} more</span>}
+      <button onClick={onBrowse}>{buttonLabel}</button>
+    </div>
   );
 }

@@ -186,7 +186,6 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .drawer-meta dt { color: var(--muted); }
 .drawer-meta dd { margin: 0; }
 .drawer-content { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: calc(12px * var(--font-scale)); white-space: pre-wrap; word-break: break-word; max-height: 40vh; overflow-y: auto; }
-.skills-list { display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
 .error-text { color: var(--red); font-size: calc(13px * var(--font-scale)); white-space: pre-wrap; }
 
 .count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: var(--amber); color: var(--on-accent); font-size: calc(10px * var(--font-scale)); font-weight: 600; line-height: 1; }

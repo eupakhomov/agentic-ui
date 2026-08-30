@@ -1,4 +1,4 @@
-import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SkillInfo, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
+import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -61,7 +61,6 @@ export const api = {
   services: () => request<ServicesResponse>('GET', '/api/repo/services'),
   branches: (repo?: string) =>
     request<string[]>('GET', `/api/repo/branches${repo ? `?repo=${encodeURIComponent(repo)}` : ''}`),
-  skills: () => request<SkillInfo[]>('GET', '/api/skills'),
   listTemplates: () => request<Template[]>('GET', '/api/templates'),
   createTemplate: (body: unknown) => request<Template>('POST', '/api/templates', body),
   updateTemplate: (id: string, body: unknown) => request<Template>('PUT', `/api/templates/${id}`, body),
@@ -84,11 +83,13 @@ export const api = {
     request<ImportItemResult[]>('POST', '/api/library/import', { source, items }),
   libraryAiFill: (type: 'dir' | 'repo', ref: string, paths: string[], signal?: AbortSignal) =>
     request<FilledMeta[]>('POST', '/api/library/ai-fill', { type, ref, paths }, signal),
-  libraryAssets: (filters?: { kind?: string; status?: string; q?: string }) => {
+  libraryAssets: (filters?: { kind?: string; status?: string; q?: string; limit?: number; offset?: number }) => {
     const params = new URLSearchParams();
     if (filters?.kind) params.set('kind', filters.kind);
     if (filters?.status) params.set('status', filters.status);
     if (filters?.q) params.set('q', filters.q);
+    if (filters?.limit !== undefined) params.set('limit', String(filters.limit));
+    if (filters?.offset !== undefined) params.set('offset', String(filters.offset));
     const qs = params.toString();
     return request<LibraryAsset[]>('GET', `/api/library/assets${qs ? `?${qs}` : ''}`);
   },
@@ -96,8 +97,9 @@ export const api = {
     request<LibraryAsset>('PATCH', `/api/library/assets/${id}`, patch),
   libraryDeleteAsset: (id: string) => request<null>('DELETE', `/api/library/assets/${id}`),
   libraryAssetContent: (id: string) => request<LibraryAssetContent>('GET', `/api/library/assets/${id}/content`),
-  librarySearch: (q: string, k = 10) =>
-    request<LibrarySearchHit[]>('GET', `/api/library/search?q=${encodeURIComponent(q)}&k=${k}`),
+  librarySearch: (q: string, k = 10, kind?: AssetKind) =>
+    request<LibrarySearchHit[]>('GET',
+      `/api/library/search?q=${encodeURIComponent(q)}&k=${k}${kind ? `&kind=${kind}` : ''}`),
   librarySources: () => request<LibrarySource[]>('GET', '/api/library/sources'),
   libraryUpdateSource: (id: string, patch: { syncEnabled?: boolean }) =>
     request<LibrarySource>('PATCH', `/api/library/sources/${id}`, patch),

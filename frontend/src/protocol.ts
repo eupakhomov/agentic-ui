@@ -91,12 +91,6 @@ export interface Template {
   config: Record<string, unknown>;
 }
 
-export interface SkillInfo {
-  name: string;
-  description: string;
-  path: string;
-}
-
 export interface ServiceInfo {
   name: string;
   path: string;

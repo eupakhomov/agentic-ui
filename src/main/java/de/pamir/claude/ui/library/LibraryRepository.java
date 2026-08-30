@@ -55,6 +55,11 @@ public class LibraryRepository {
 	}
 
 	public List<AssetEntity> findAll(String kind, String status, String query) {
+		return findAll(kind, status, query, null, null);
+	}
+
+	/** limit/offset are optional — omitting both preserves the "return everything" behavior. */
+	public List<AssetEntity> findAll(String kind, String status, String query, Integer limit, Integer offset) {
 		StringBuilder sql = new StringBuilder(SELECT + " WHERE 1=1");
 		List<Object> params = new java.util.ArrayList<>();
 		if (kind != null && !kind.isBlank()) {
@@ -74,6 +79,14 @@ public class LibraryRepository {
 			params.add(like);
 		}
 		sql.append(" GROUP BY a.id ORDER BY a.name");
+		if (limit != null) {
+			sql.append(" LIMIT ?");
+			params.add(limit);
+		}
+		if (offset != null) {
+			sql.append(" OFFSET ?");
+			params.add(offset);
+		}
 		return jdbc.sql(sql.toString()).params(params).query(rowMapper).list();
 	}
 
@@ -125,15 +138,22 @@ public class LibraryRepository {
 				.params(assetId, toVectorLiteral(embedding), model).update();
 	}
 
-	public List<SearchHit> searchByEmbedding(float[] query, int limit) {
-		String sql = """
+	public List<SearchHit> searchByEmbedding(float[] query, int limit, String kind) {
+		StringBuilder sql = new StringBuilder("""
 				SELECT a.*, coalesce(array_agg(t.tag ORDER BY t.tag) FILTER (WHERE t.tag IS NOT NULL), '{}') AS tags,
 					min(e.embedding <=> ?::vector) AS distance
 				FROM asset_embedding e
 				JOIN library_asset a ON a.id = e.asset_id AND a.status = 'ACTIVE'
-				LEFT JOIN asset_tag t ON t.asset_id = a.id
-				GROUP BY a.id ORDER BY distance LIMIT ?""";
-		return jdbc.sql(sql).params(toVectorLiteral(query), limit)
+				LEFT JOIN asset_tag t ON t.asset_id = a.id""");
+		List<Object> params = new java.util.ArrayList<>();
+		params.add(toVectorLiteral(query));
+		if (kind != null && !kind.isBlank()) {
+			sql.append(" WHERE a.kind = ?");
+			params.add(kind);
+		}
+		sql.append(" GROUP BY a.id ORDER BY distance LIMIT ?");
+		params.add(limit);
+		return jdbc.sql(sql.toString()).params(params)
 				.query((rs, n) -> new SearchHit(mapRow(rs, n), rs.getDouble("distance"))).list();
 	}
 

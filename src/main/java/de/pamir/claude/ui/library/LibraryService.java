@@ -224,11 +224,11 @@ public class LibraryService {
 		}
 	}
 
-	public List<LibraryRepository.SearchHit> search(String query, int limit) {
+	public List<LibraryRepository.SearchHit> search(String query, int limit, String kind) {
 		if (!embeddings.configured()) {
 			throw new IllegalStateException("semantic search not configured (set CLAUDE_UI_VOYAGE_API_KEY)");
 		}
-		return assets.searchByEmbedding(embeddings.embed(query, true), limit);
+		return assets.searchByEmbedding(embeddings.embed(query, true), limit, kind);
 	}
 
 	/** Full text of an asset's primary file, for the library detail drawer; capped for display. */
