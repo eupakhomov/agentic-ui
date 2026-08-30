@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { placeholdersOf, type AssetKind, type LibraryAsset, type ServicesResponse, type Settings, type Template, type TicketSummary } from '../protocol';
+import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type ServicesResponse, type Settings, type Template, type TicketSummary } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import TicketPickerDialog from './TicketPickerDialog';
 
@@ -159,6 +159,16 @@ export default function CreateSessionDialog({
     ? (template.config['kickoffPrompt'] as string)
     : null;
   const placeholders = useMemo(() => (kickoffPrompt ? placeholdersOf(kickoffPrompt) : []), [kickoffPrompt]);
+
+  // pre-populate from the chosen template's own defaults; the user can still add/remove on top
+  useEffect(() => {
+    if (!template) return;
+    const tplBaseBranch = typeof template.config['baseBranch'] === 'string' ? template.config['baseBranch'] as string : null;
+    if (tplBaseBranch) setBaseBranch(tplBaseBranch);
+    setSelectedSkillAssets(new Map(template.assets.filter((a) => a.kind === 'skill').map((a) => [a.id, assetStub(a)])));
+    setSelectedAgentAssets(new Map(template.assets.filter((a) => a.kind === 'agent').map((a) => [a.id, assetStub(a)])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId]);
 
   const create = async () => {
     setError('');
@@ -436,7 +446,7 @@ export default function CreateSessionDialog({
 }
 
 /** First few attached asset names as chips, a "+N more" chip, and a browse button. */
-function AttachedAssetsRow({ assets, onBrowse, buttonLabel }: {
+export function AttachedAssetsRow({ assets, onBrowse, buttonLabel }: {
   assets: LibraryAsset[];
   onBrowse: () => void;
   buttonLabel: string;

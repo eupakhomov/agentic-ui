@@ -6,6 +6,7 @@ import tools.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -18,9 +19,21 @@ import java.util.UUID;
 @Repository
 public class TemplateRepository {
 
-	public record TemplateEntity(UUID id, String name, String description, JsonNode config,
-								 Instant createdAt, Instant updatedAt) {
+	/** A template's live reference to a library asset, resolved for display (name/location/status). */
+	public record TemplateAsset(UUID id, String kind, String name, String location, String status) {
 	}
+
+	public record TemplateEntity(UUID id, String name, String description, JsonNode config,
+								 List<TemplateAsset> assets, Instant createdAt, Instant updatedAt) {
+	}
+
+	private static final String SELECT = """
+			SELECT t.*, coalesce(json_agg(json_build_object(
+					'id', a.id, 'kind', ta.kind, 'name', a.name, 'location', a.location, 'status', a.status
+				) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') AS assets
+			FROM session_template t
+			LEFT JOIN template_asset ta ON ta.template_id = t.id
+			LEFT JOIN library_asset a ON a.id = ta.asset_id""";
 
 	private final JdbcClient jdbc;
 	private final ObjectMapper mapper;
@@ -32,14 +45,19 @@ public class TemplateRepository {
 		this.rowMapper = this::mapRow;
 	}
 
-	public TemplateEntity insert(String name, String description, JsonNode config) {
+	@Transactional
+	public TemplateEntity insert(String name, String description, JsonNode config,
+								 List<UUID> skillAssetIds, List<UUID> agentAssetIds) {
 		UUID id = UUID.randomUUID();
 		jdbc.sql("INSERT INTO session_template (id, name, description, config) VALUES (?, ?, ?, ?::jsonb)")
 				.params(id, name, description, write(config)).update();
+		linkAssets(id, skillAssetIds, agentAssetIds);
 		return get(id);
 	}
 
-	public TemplateEntity update(UUID id, String name, String description, JsonNode config) {
+	@Transactional
+	public TemplateEntity update(UUID id, String name, String description, JsonNode config,
+								 List<UUID> skillAssetIds, List<UUID> agentAssetIds) {
 		int updated = jdbc.sql("""
 						UPDATE session_template SET name = ?, description = ?, config = ?::jsonb, updated_at = now()
 						WHERE id = ?""")
@@ -47,7 +65,20 @@ public class TemplateRepository {
 		if (updated == 0) {
 			throw new NoSuchElementException("template " + id + " not found");
 		}
+		linkAssets(id, skillAssetIds, agentAssetIds);
 		return get(id);
+	}
+
+	private void linkAssets(UUID templateId, List<UUID> skillAssetIds, List<UUID> agentAssetIds) {
+		jdbc.sql("DELETE FROM template_asset WHERE template_id = ?").params(templateId).update();
+		for (UUID assetId : skillAssetIds != null ? skillAssetIds : List.<UUID>of()) {
+			jdbc.sql("INSERT INTO template_asset (template_id, asset_id, kind) VALUES (?, ?, 'skill')")
+					.params(templateId, assetId).update();
+		}
+		for (UUID assetId : agentAssetIds != null ? agentAssetIds : List.<UUID>of()) {
+			jdbc.sql("INSERT INTO template_asset (template_id, asset_id, kind) VALUES (?, ?, 'agent')")
+					.params(templateId, assetId).update();
+		}
 	}
 
 	public TemplateEntity get(UUID id) {
@@ -55,11 +86,11 @@ public class TemplateRepository {
 	}
 
 	public Optional<TemplateEntity> find(UUID id) {
-		return jdbc.sql("SELECT * FROM session_template WHERE id = ?").params(id).query(rowMapper).optional();
+		return jdbc.sql(SELECT + " WHERE t.id = ? GROUP BY t.id").params(id).query(rowMapper).optional();
 	}
 
 	public List<TemplateEntity> findAll() {
-		return jdbc.sql("SELECT * FROM session_template ORDER BY name").query(rowMapper).list();
+		return jdbc.sql(SELECT + " GROUP BY t.id ORDER BY t.name").query(rowMapper).list();
 	}
 
 	public boolean delete(UUID id) {
@@ -76,11 +107,21 @@ public class TemplateRepository {
 
 	private TemplateEntity mapRow(ResultSet rs, int rowNum) throws SQLException {
 		try {
+			List<TemplateAsset> assets = mapper.readTree(rs.getString("assets"))
+					.valueStream()
+					.map(n -> new TemplateAsset(
+							UUID.fromString(n.get("id").asText()),
+							n.get("kind").asText(),
+							n.get("name").asText(),
+							n.get("location").asText(),
+							n.get("status").asText()))
+					.toList();
 			return new TemplateEntity(
 					rs.getObject("id", UUID.class),
 					rs.getString("name"),
 					rs.getString("description"),
 					mapper.readTree(rs.getString("config")),
+					assets,
 					rs.getTimestamp("created_at").toInstant(),
 					rs.getTimestamp("updated_at").toInstant());
 		} catch (JacksonException e) {

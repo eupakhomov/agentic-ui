@@ -22,7 +22,8 @@ import java.util.UUID;
 @RequestMapping("/api/templates")
 public class TemplateController {
 
-	public record TemplateRequest(String name, String description, JsonNode config) {
+	public record TemplateRequest(String name, String description, JsonNode config,
+								  List<UUID> skillAssetIds, List<UUID> agentAssetIds) {
 	}
 
 	private final TemplateRepository templates;
@@ -45,13 +46,15 @@ public class TemplateController {
 	@ResponseStatus(HttpStatus.CREATED)
 	public TemplateEntity create(@RequestBody TemplateRequest request) {
 		validate(request);
-		return templates.insert(request.name(), request.description(), request.config());
+		return templates.insert(request.name(), request.description(), request.config(),
+				request.skillAssetIds(), request.agentAssetIds());
 	}
 
 	@PutMapping("/{id}")
 	public TemplateEntity update(@PathVariable UUID id, @RequestBody TemplateRequest request) {
 		validate(request);
-		return templates.update(id, request.name(), request.description(), request.config());
+		return templates.update(id, request.name(), request.description(), request.config(),
+				request.skillAssetIds(), request.agentAssetIds());
 	}
 
 	@DeleteMapping("/{id}")

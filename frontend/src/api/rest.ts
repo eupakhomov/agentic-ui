@@ -53,6 +53,8 @@ export const api = {
   sessionDetail: (id: string) => request<SessionDetail>('GET', `/api/sessions/${id}`),
   createSession: (body: unknown) => request<SessionEntity>('POST', '/api/sessions', body),
   resumeSession: (id: string) => request<SessionEntity>('POST', `/api/sessions/${id}/resume`),
+  duplicateSession: (id: string, body: { branch: string; name?: string; syncBaseBranch?: boolean }) =>
+    request<SessionEntity>('POST', `/api/sessions/${id}/duplicate`, body),
   closeSession: (id: string, dirty: string, commitMessage?: string) =>
     request<null>('DELETE', `/api/sessions/${id}?dirty=${dirty}${commitMessage ? `&commitMessage=${encodeURIComponent(commitMessage)}` : ''}`),
   deleteQueued: (id: string, pos: number) => request<null>('DELETE', `/api/sessions/${id}/queue/${pos}`),

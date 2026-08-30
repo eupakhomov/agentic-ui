@@ -6,6 +6,7 @@ import { useStore } from '../store/store';
 import { notify } from '../notify';
 import Transcript from './Transcript';
 import CloseDialog from './CloseDialog';
+import DuplicateDialog from './DuplicateDialog';
 import GitPanel from './GitPanel';
 
 const MODE_CYCLE: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
@@ -31,10 +32,12 @@ export default function SessionWidget({
   sessionId,
   initialInput,
   onClosed,
+  onDuplicated,
 }: {
   sessionId: string;
   initialInput?: string;
   onClosed: () => void;
+  onDuplicated: (id: string) => void;
 }) {
   const view = useStore((s) => s.views[sessionId]);
   const apply = useStore((s) => s.apply);
@@ -43,6 +46,7 @@ export default function SessionWidget({
   const [entity, setEntity] = useState<SessionEntity | null>(null);
   const [input, setInput] = useState(initialInput ?? '');
   const [closing, setClosing] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [showGit, setShowGit] = useState(false);
   const [actionError, setActionError] = useState('');
   const wsRef = useRef<WsSession | null>(null);
@@ -218,6 +222,13 @@ export default function SessionWidget({
             title="git panel"
           >⎇</button>
         )}
+        {entity?.kind !== 'system' && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setDuplicating(true)}
+            title="duplicate session"
+          >⧉</button>
+        )}
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => setClosing(true)}
@@ -283,6 +294,14 @@ export default function SessionWidget({
           sessionId={sessionId}
           onClosed={onClosed}
           onCancel={() => setClosing(false)}
+        />
+      )}
+      {duplicating && (
+        <DuplicateDialog
+          sessionId={sessionId}
+          defaultBranch={entity?.branch ?? ''}
+          onDuplicated={(id) => { setDuplicating(false); onDuplicated(id); }}
+          onCancel={() => setDuplicating(false)}
         />
       )}
     </div>

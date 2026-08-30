@@ -28,11 +28,51 @@ The reason the Postgres image ships pgvector. Design sketch (to be refined in it
 - **DoD:** ask in a fresh session about a decision made in a closed session → answer
   reflects the retrieved memory; UI search over past transcripts returns ranked hits.
 
-## 5.4 Session config templates v2
-Building on Phase 2 templates: per-template default base branch, env var sets,
-MCP server bundles, and a "duplicate session" action.
-- **DoD:** create a session from a template with MCP servers attached and verify the
-  servers appear in `system_init`.
+## 5.4 Session config templates v2 — ✅ shipped 2026-08-30
+Templates (`session_template.config` JSONB, Phase 2) always documented `skillSources`/
+`agentSources` as legal config keys and `SessionService.mergedConfig` genuinely honored
+them, but nothing wired the Phase 6 skill/agent library to templates — `TemplateManager`
+offered only a raw JSON textarea, so attaching a library asset to a template meant
+hand-typing `{"type":"dir","ref":"..."}`. This item closes that gap and finishes the
+rest of the backlog line: structured template fields, a library-backed picker, and
+"duplicate session".
+- **Schema** — `V8__template_assets.sql`: `template_asset(template_id → session_template
+  ON DELETE CASCADE, asset_id → library_asset ON DELETE CASCADE, kind CHECK IN
+  ('skill','agent'), PRIMARY KEY (template_id, asset_id))`, indexed on `asset_id`. This
+  is a **live reference** by `library_asset.id` — not a frozen copy — so editing or
+  archiving a library asset is reflected the next time the template is used. Free-form
+  `skillSources`/`agentSources` entries (non-library paths/URLs) still live in `config`
+  as before; the two are additive.
+- **Backend**: `TemplateRepository`/`TemplateController` gain `skillAssetIds`/
+  `agentAssetIds` on request/response (joined to `library_asset` for name/location/status
+  so the UI never needs a second round trip). `SessionService.create()`, when a
+  `templateId` is given and the request didn't itself override `skillSources`/
+  `agentSources`, resolves the template's linked assets into source entries, **skips any
+  `ARCHIVED`** one, and journals a `warning` event per skip (same mechanism
+  `AssetProvisioningService` already uses for a failed asset — no new UI plumbing
+  needed, it shows up in the transcript like any other provisioning warning). A
+  session's own manually-picked assets (via the create dialog) still fully override the
+  template's, matching today's "overrides win" merge. New `POST
+  /api/sessions/{id}/duplicate {branch, name?}` snapshots a session's effective config
+  (model, permission mode, tools, mcp, env, resolved skill/agent sources, base branch)
+  into a fresh `create()` call.
+- **Frontend**: `TemplateManager` replaces the config textarea with structured fields
+  (model, permission mode, base branch, kickoff prompt, instructions, MCP servers JSON,
+  env vars) plus a "Skills / Agents" section reusing the same library `AssetPickerDialog`
+  as session creation, pre-populated from the template's linked assets; an "Advanced
+  (raw JSON)" section remains for anything not promoted to a field. `CreateSessionDialog`
+  pre-populates its own asset picker from the chosen template's linked assets (today only
+  `kickoffPrompt` is special-cased off a template) so the user sees what they're getting
+  and can still add/remove on top. A new "Duplicate" action in the session widget's
+  kebab menu prompts for a branch name and calls the duplicate endpoint.
+- **DoD:** create a template with a model, base branch, MCP server, one library skill,
+  and one library agent → creating a session from it shows both assets pre-selected in
+  the picker and everything appears in `system_init`. Archive the linked skill → the next
+  session created from that template still succeeds, with a visible "skill archived,
+  skipped" warning in its transcript. Edit the template's linked assets → the next
+  session created from it reflects the change (proves live reference, not a frozen
+  copy). Duplicate a running session → the new session on a new branch starts with the
+  same model/permission-mode/MCP/skills/agents.
 
 ## 5.5 Model switching mid-session — ✅ shipped 2026-08-24
 SDK supports changing model between turns; expose a model picker in the widget header.

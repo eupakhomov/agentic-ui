@@ -200,6 +200,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
                 sessionId={id}
                 initialInput={pendingDraft?.id === id ? pendingDraft.text : undefined}
                 onClosed={() => onClosed(id)}
+                onDuplicated={onCreated}
               />
             </div>
           ))}

@@ -84,11 +84,21 @@ export interface SessionDetail {
   costToDate: number;
 }
 
+/** A template's live reference to a library asset (Phase 5.4) — resolved for display. */
+export interface TemplateAsset {
+  id: string;
+  kind: AssetKind;
+  name: string;
+  location: string;
+  status: AssetStatus;
+}
+
 export interface Template {
   id: string;
   name: string;
   description: string | null;
   config: Record<string, unknown>;
+  assets: TemplateAsset[];
 }
 
 export interface ServiceInfo {
@@ -226,4 +236,12 @@ export const LIVE_STATES: SessionState[] = ['STARTING', 'IDLE', 'RUNNING', 'WAIT
 /** Extract {{placeholders}} from a kickoff prompt template. */
 export function placeholdersOf(prompt: string): string[] {
   return [...new Set([...prompt.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))];
+}
+
+/** A template's resolved asset link, shaped as a (placeholder-filled) LibraryAsset for reuse in AssetPickerDialog. */
+export function assetStub(a: TemplateAsset): LibraryAsset {
+  return {
+    id: a.id, sourceId: null, kind: a.kind, name: a.name, description: '', location: a.location,
+    sourcePath: null, contentHash: '', status: a.status, tags: [], createdAt: '', updatedAt: '',
+  };
 }

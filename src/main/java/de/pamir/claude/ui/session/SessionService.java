@@ -2,6 +2,7 @@ package de.pamir.claude.ui.session;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.SettingsService;
@@ -83,6 +84,18 @@ public class SessionService {
 			throw new IllegalArgumentException("not a git repository: " + repo);
 		}
 		ObjectNode config = mergedConfig(templateId, overrides);
+		List<String> assetWarnings = new java.util.ArrayList<>();
+		if (templateId != null) {
+			List<TemplateRepository.TemplateAsset> templateAssets = templates.get(templateId).assets();
+			if (overrides == null || !overrides.has("skillSources")) {
+				config.set("skillSources", combineTemplateSources(config.get("skillSources"), templateAssets,
+						"skill", "dir", assetWarnings));
+			}
+			if (overrides == null || !overrides.has("agentSources")) {
+				config.set("agentSources", combineTemplateSources(config.get("agentSources"), templateAssets,
+						"agent", "file", assetWarnings));
+			}
+		}
 		UUID id = UUID.randomUUID();
 		Path worktree = Path.of(props.worktreeRoot()).resolve(id.toString());
 
@@ -113,6 +126,9 @@ public class SessionService {
 				SessionState.CREATING, "user", nullableText(config, "ticketRef"), null, null, null, null, null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
+		for (String warning : assetWarnings) {
+			record(id, "warning", mapper.createObjectNode().put("message", warning));
+		}
 
 		try {
 			transition(id, SessionState.PROVISIONING);
@@ -594,6 +610,86 @@ public class SessionService {
 		if (live >= props.maxSessions()) {
 			throw new IllegalStateException("max concurrent sessions reached (" + props.maxSessions() + ")");
 		}
+	}
+
+	/**
+	 * Merges a template's live-linked library assets (skipping ARCHIVED ones, which are reported
+	 * back via {@code warnings}) with any free-form sources already in the config's own key.
+	 */
+	private ArrayNode combineTemplateSources(JsonNode existing, List<TemplateRepository.TemplateAsset> templateAssets,
+											 String kind, String sourceType, List<String> warnings) {
+		ArrayNode combined = mapper.createArrayNode();
+		if (existing != null && existing.isArray()) {
+			combined.addAll((ArrayNode) existing);
+		}
+		for (TemplateRepository.TemplateAsset asset : templateAssets) {
+			if (!kind.equals(asset.kind())) {
+				continue;
+			}
+			if ("ARCHIVED".equals(asset.status())) {
+				warnings.add(kind + " '" + asset.name() + "' is archived and was skipped");
+				continue;
+			}
+			combined.add(mapper.createObjectNode().put("type", sourceType).put("ref", asset.location()));
+		}
+		return combined;
+	}
+
+	/** Snapshots a session's effective config into a new session on a new branch. */
+	public SessionEntity duplicate(UUID sourceId, String branch, String name, boolean syncBaseBranch) {
+		SessionEntity source = sessions.get(sourceId);
+		if ("system".equals(source.kind())) {
+			throw new IllegalArgumentException("cannot duplicate a system session");
+		}
+		ObjectNode overrides = mapper.createObjectNode();
+		if (source.model() != null) {
+			overrides.put("model", source.model());
+		}
+		overrides.put("permissionMode", source.permissionMode());
+		if (!source.allowedTools().isEmpty()) {
+			overrides.set("allowedTools", mapper.valueToTree(source.allowedTools()));
+		}
+		if (!source.disallowedTools().isEmpty()) {
+			overrides.set("disallowedTools", mapper.valueToTree(source.disallowedTools()));
+		}
+		if (source.mcpConfig() != null && !source.mcpConfig().isNull()) {
+			overrides.set("mcpConfig", source.mcpConfig());
+		}
+		if (source.envVars() != null && !source.envVars().isNull()) {
+			overrides.set("envVars", source.envVars());
+		}
+		if (source.skillSources() != null && source.skillSources().isArray() && !source.skillSources().isEmpty()) {
+			overrides.set("skillSources", source.skillSources());
+		}
+		if (source.agentSources() != null && source.agentSources().isArray() && !source.agentSources().isEmpty()) {
+			overrides.set("agentSources", source.agentSources());
+		}
+		if (source.instructions() != null) {
+			overrides.put("instructions", source.instructions());
+		}
+		if (source.ecosystemPath() != null) {
+			overrides.put("ecosystemPath", source.ecosystemPath());
+		}
+		if (!source.contextDirs().isEmpty()) {
+			overrides.set("contextDirs", mapper.valueToTree(source.contextDirs()));
+		}
+		if (source.thinking() != null) {
+			overrides.put("thinking", source.thinking());
+		}
+		if (source.effort() != null) {
+			overrides.put("effort", source.effort());
+		}
+		if (source.maxTurns() != null) {
+			overrides.put("maxTurns", source.maxTurns());
+		}
+		if (source.fallbackModel() != null) {
+			overrides.put("fallbackModel", source.fallbackModel());
+		}
+		if (source.costBudgetUsd() != null) {
+			overrides.put("costBudgetUsd", source.costBudgetUsd().toPlainString());
+		}
+		String sessionName = name != null && !name.isBlank() ? name : branch;
+		return create(sessionName, branch, source.baseBranch(), source.repoPath(), null, overrides, null, syncBaseBranch);
 	}
 
 	private ObjectNode mergedConfig(UUID templateId, JsonNode overrides) {

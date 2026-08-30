@@ -85,6 +85,18 @@ public class SessionController {
 		return service.resume(id);
 	}
 
+	public record DuplicateSessionRequest(String branch, String name, Boolean syncBaseBranch) {
+	}
+
+	@PostMapping("/{id}/duplicate")
+	@org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.CREATED)
+	public SessionEntity duplicate(@PathVariable UUID id, @RequestBody DuplicateSessionRequest request) {
+		if (request.branch() == null || request.branch().isBlank()) {
+			throw new IllegalArgumentException("branch is required");
+		}
+		return service.duplicate(id, request.branch(), request.name(), Boolean.TRUE.equals(request.syncBaseBranch()));
+	}
+
 	public record PatchSessionRequest(BigDecimal costBudgetUsd, String name) {
 	}
 
