@@ -35,7 +35,7 @@ public class ProviderController {
 
 	private static final Capabilities CODEX_CAPABILITIES = new Capabilities(
 			List.of("default", "bypassPermissions"),
-			false, true, false, true, false, false, false, true, false, false, true);
+			false, true, false, true, true, false, true, true, false, false, true);
 
 	private static final java.util.Map<String, Capabilities> KNOWN = java.util.Map.of(
 			"claude", CLAUDE_CAPABILITIES,

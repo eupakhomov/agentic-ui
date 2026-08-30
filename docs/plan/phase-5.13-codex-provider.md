@@ -87,13 +87,13 @@ pattern already used for 5.3/Phase 6.
    `docs/PROTOCOL.md`'s "malformed/unknown input" rule — cheap insurance against a
    future Codex version reverting or adding a third scheme.
 
-## Capabilities announcement (predicted — confirm in Task 1)
+## Capabilities announcement
 
 ```json
 {
   "permissionModes": ["default", "bypassPermissions"],
   "thinking": false, "effort": true, "planMode": false, "resume": true,
-  "skills": false, "agents": false, "mcp": false, "interrupt": true,
+  "skills": true, "agents": false, "mcp": true, "interrupt": true,
   "fallbackModel": false, "updatedInput": false, "modelSwitch": true
 }
 ```
@@ -103,16 +103,20 @@ pattern already used for 5.3/Phase 6.
   Codex has no separate on/off/adaptive/budget axis distinct from effort the way
   Claude does; don't invent one.
 - `acceptEdits`/`plan` are omitted, not mapped — see the permission-mode table below
-  for why forcing them onto Codex's model would be misleading.
+  for why forcing them onto Codex's model would be misleading. **Investigated again in
+  the 2026-08-30 follow-up** (below) — still not honestly mappable; staying at 2 modes
+  is a confirmed decision, not a placeholder.
 - `updatedInput: false` — Codex's `ReviewDecision`/approval-decision enums don't carry
   an edited-command payload the way Claude's `updatedInput` does (closest is
   `approved_execpolicy_amendment`, a policy-rule change, not a same-turn command edit);
   don't fake it.
-- `mcp: false`, `skills: false`, `agents: false` for this pass per Decision 1, even
-  though the protocol has real hooks for the first two — revisit once the MVP is
-  proven. The UI must already do the right thing here with zero changes, since this is
-  exactly the capabilities-gating the create dialog needs to exercise for Decision 3's
-  provider select (Task 6).
+- `skills: true`, `mcp: true` — flipped in the 2026-08-30 follow-up once both were
+  confirmed live-feasible (see below); were `false` in the original MVP pass.
+- `agents: false` — **confirmed permanent, not deferred.** Investigated in the
+  2026-08-30 follow-up: Codex has no equivalent to Claude's static subagent files at
+  all (its only adjacent concept is a live multi-agent collaboration/spawning
+  feature — a different, much bigger thing). Nothing to revisit here without a
+  fundamentally different feature.
 
 ## Permission-mode mapping
 
@@ -125,8 +129,8 @@ it doesn't decompose cleanly onto Claude's four modes. Rather than force a false
 |---|---|---|---|
 | `default` | `workspace-write` | `on-request` | model decides when to ask; matches Claude's "ask for edits & commands" closely enough — this is the one genuinely shared concept |
 | `bypassPermissions` | `danger-full-access` | `never` | mirrors the Claude adapter's existing posture: only ever set when the session itself was created with this mode (same non-switchable-into-it rule as `sidecar/src/session.ts`'s `bypassPermissions` handling) |
-| `acceptEdits` | *(not offered)* | — | Codex has no "auto-apply file edits but still ask for shell" split — `workspace-write` sandbox already lets edits through without a prompt in some approval configs, but that's a sandbox property, not a switchable mode, so presenting it as equivalent to Claude's `acceptEdits` would be a lie. Capabilities list omits it; if this turns out to feel like a real gap once the MVP is in use, revisit as a follow-up rather than fake it now. |
-| `plan` | *(not offered)* | — | No Codex equivalent. `planMode: false`. |
+| `acceptEdits` | *(not offered)* | — | Codex has no "auto-apply file edits but still ask for shell" split — `workspace-write` sandbox already lets edits through without a prompt in some approval configs, but that's a sandbox property, not a switchable mode, so presenting it as equivalent to Claude's `acceptEdits` would be a lie. **Re-investigated 2026-08-30**: Codex's one approval-policy knob applies uniformly to commands and file changes together (no independent axis), and the granular `AskForApproval` variant's axes (`sandbox_approval`/`rules`/`skill_approval`/`request_permissions`/`mcp_elicitations`) split by *risk category*, not by *edit-vs-command* — confirmed still not mappable, staying omitted. |
+| `plan` | *(not offered)* | — | No Codex equivalent. `planMode: false`. Re-investigated 2026-08-30 alongside `acceptEdits` — no read-only/plan concept found anywhere in the protocol; confirmed still omitted. |
 
 **Confirmed live:** `default` (`workspace-write` + `on-request`) does not mean "prompt
 for everything" — a harmless shell command and an in-workspace file write both ran
@@ -142,7 +146,7 @@ manual testing of a simple in-workspace edit.
 | Protocol v1 | Codex app-server | Notes |
 |---|---|---|
 | launch → `ready` | `initialize` request/response | `ready.provider = "codex"`, `pid` = the spawned process's pid. Confirmed: plain newline-delimited JSON-RPC 2.0 on stdio, no `Content-Length` framing — fits our NDJSON stdio helpers unchanged. |
-| first turn → `system_init` | `thread/start` response (`ThreadStartResponse`) | `providerSessionId` = `thread.id`; `model` comes back concrete even when unspecified (observed `gpt-5.6-terra` with no `model` param sent — Codex picks a default and resolves it, same alias-resolution UX as Claude); `cwd` straight across; `tools`/`mcpServers` empty arrays (mcp out of scope) |
+| first turn → `system_init` | `thread/start` response (`ThreadStartResponse`) | `providerSessionId` = `thread.id`; `model` comes back concrete even when unspecified (observed `gpt-5.6-terra` with no `model` param sent — Codex picks a default and resolves it, same alias-resolution UX as Claude); `cwd` straight across; `tools` empty array (Codex has no static tool-name enumeration analogous to Claude's); `mcpServers` — see the MCP follow-up section below for what's reported now that `mcp: true` |
 | `user_message` | `turn/start` (`TurnStartParams.input = [{type:"text", text, text_elements:[]}]`) | queued the same way `sidecar/src/session.ts`'s `AsyncQueue` does today — Codex has its own `thread/queue/*` methods but reusing our existing single-turn-in-flight queueing keeps both adapters behaviorally identical from the backend's point of view |
 | `permission_response` | JSON-RPC response to the pending `item/commandExecution/requestApproval` / `item/fileChange/requestApproval` request, `result: { decision }` | **`decision` must be chosen from that specific request's `params.availableDecisions`** (confirmed non-constant across requests — see "Deny semantics differ by item kind" below), not a fixed enum value. Allow → `"accept"`. Deny → prefer `"decline"` if listed, else `"cancel"`; if `availableDecisions` is absent (observed for a `fileChange` request — the field is optional), any non-`accept` string is treated as a decline server-side, but the adapter should still only ever send `"decline"` in that case, not rely on that leniency. |
 | `interrupt` | `turn/interrupt` | not exercised live yet — low risk, standard JSON-RPC request |
@@ -188,6 +192,111 @@ Live-tested both deny paths and they are **not equivalent**:
   arrive with no intervening `assistant_message` after a deny, not a Codex-specific
   branch. Revisit once Task 2/3 are wired and this can be felt end-to-end rather than
   reasoned about from four spike runs.
+
+## Follow-up: skills, MCP, agents, permission modes (2026-08-30)
+
+The original MVP shipped with `skills: false`, `agents: false`, `mcp: false`, and 2
+permission modes, each flagged "out of scope for this pass" rather than "impossible."
+This follow-up re-investigated each one empirically (five more live spikes against
+codex-cli 0.151.0) before deciding what to actually build.
+
+### Skills — feasible, cheap, now in scope
+
+**Confirmed live:** Codex reads the exact same `SKILL.md` format Claude does
+(`SkillMetadata`'s doc comment literally says "Legacy `short_description` from
+`SKILL.md`"). It does **not** auto-discover `.claude/skills/` from `cwd` — a
+`skills/list` call with `cwds: [workspace]` before any extra roots were set returned
+only Codex's own 6 built-in system skills (`imagegen`, `openai-docs`,
+`plugin-creator`, `review-agent`, `skill-creator`, `skill-installer`), missing a test
+skill placed at `<workspace>/.claude/skills/hello-skill/SKILL.md`. But calling
+**`skills/extraRoots/set`** with `[<worktree>/.claude/skills]` immediately made it
+discoverable (`scope: "user"`) on the next `skills/list`. This means our *existing*
+skill materialization (`AssetProvisioningService` symlinking `skillSources` into
+`<worktree>/.claude/skills/`, already provider-agnostic — it doesn't check
+`session.provider()`) is directly reusable: no new materialization path, no backend
+changes, just one RPC call from `sidecar-codex` itself using the `--cwd` it already
+has. `skills: true`.
+
+### MCP — feasible, needs an adapter-side auth translation
+
+**Confirmed live:** `thread/start`'s generic `config: {[key]: JsonValue}` field
+accepts a `mcp_servers` override that spins up a **thread-scoped** MCP server — not
+just the host-wide registration `codex mcp add` writes to `~/.codex/config.toml`. A
+fake stdio server (`config: {mcp_servers: {spiketest: {command: "cat"}}}`) produced a
+real `mcpServer/startupStatus/updated {name:"spiketest", status:"starting"}`
+notification for that thread, then `"failed"` after Codex's 30s handshake timeout
+(expected — `cat` doesn't speak MCP; the point was proving the spawn attempt, not a
+working server). This is the per-session scoping our multi-tenant backend needs —
+confirmed it's not a global, cross-session side effect.
+
+**The auth shape differs from Claude's, though.** Inspected what `codex mcp add`
+actually writes to `config.toml`:
+- stdio: `{command, args, env: {K:V}}` — identical shape to Claude's, direct passthrough.
+- HTTP: `{url, bearer_token_env_var: "SOME_ENV_VAR_NAME"}` — Codex reads the bearer
+  token from a **named environment variable** on the `codex app-server` process, not
+  from an inline header value. Claude's mcp config (and our existing
+  `SessionService.linearMcpServer()`) embeds the token directly:
+  `{"linear": {"type":"http", "url":"...", "headers": {"Authorization": "Bearer <key>"}}}`.
+
+So wiring this is real adapter work, not a pure pass-through: `sidecar-codex` needs to
+parse the same Claude-shaped `mcpConfig` file the backend already writes
+(`SessionEntity.mcpConfig()` → `mcpConfigPath(id)`, currently gated to `!codex` in
+`SidecarManager.buildArgs`), and for each entry with a `url` + `headers.Authorization:
+Bearer <token>`, generate an env var name, set it in the `codex app-server` child's
+own spawn environment (`child_process.spawn(..., {env: {...process.env, [varName]:
+token}})`), and emit `{url, bearer_token_env_var: varName}` in `thread/start.config`.
+Stdio entries (`command` present) pass through unchanged.
+
+**Known gap, accepted per Decision 11 below:** the Linear MCP OAuth fallback (no
+explicit `CLAUDE_UI_LINEAR_API_KEY`, relying on the `claude` CLI's own cached OAuth
+credential) has no Codex analog — Codex's own OAuth (`mcpServer/oauth/login`) is tied
+to a *globally-registered-by-name* server, not an inline per-thread one. A Codex
+session only gets the default Linear MCP layering when an explicit API key is
+configured; the OAuth-only case silently gets no Linear MCP for Codex sessions
+specifically (Claude sessions are unaffected). `mcp: true`.
+
+### Agents — confirmed infeasible, not a "later"
+
+Searched the full non-experimental method list and every `Agent`/`Collab`-named type:
+no `agents/list`, no static-definition-file concept anywhere. The only "agent" surface
+Codex has is live multi-agent collaboration (`CollabAgentTool`: `spawnAgent`,
+`sendInput`, `resumeAgent`, `sendMessage`, …) — spawning and messaging *other live
+Codex conversations* at runtime, not loading a markdown persona file the way Claude's
+`.claude/agents/*.md` works. There's no artifact to materialize `agentSources` into.
+`agents: false` stays permanent for this feature as it exists today; the only way to
+"add" agents for Codex would be building an entirely different feature around its
+collaboration tools, which is out of scope here.
+
+### Permission modes — re-investigated, still 2 modes
+
+Looked specifically for a way to approximate `acceptEdits` via the granular
+`AskForApproval` variant (`{granular: {sandbox_approval, rules, skill_approval,
+request_permissions, mcp_elicitations}}`). All five axes are risk-category splits
+(sandbox escape / policy-rule change / skill approval / permission request / MCP
+elicitation) — none separate "file edit" from "shell command" the way `acceptEdits`
+needs, and approval policy is one setting per thread applied uniformly to both
+`item/commandExecution/requestApproval` and `item/fileChange/requestApproval`. No
+read-only "plan" concept exists anywhere in the protocol either. Decision: **stay at 2
+modes** (`default`, `bypassPermissions`) — confirmed, not deferred.
+
+### New decisions (11–13)
+
+11. **MCP auth translation lives in `sidecar-codex`, not the backend.** The backend
+    keeps writing the same Claude-shaped mcp config file it always has (no format
+    change, no new Java code needed for the token itself — same trust boundary as
+    today); `sidecar-codex` does the Codex-specific translation, matching this doc's
+    existing "provider-specific behavior stays inside the adapter" principle. The
+    OAuth-only gap (above) is accepted, not solved.
+12. **Skills need zero backend changes.** `AssetProvisioningService`'s materialization
+    is already provider-agnostic; the only new code is `sidecar-codex` calling
+    `skills/extraRoots/set` once per process, after `initialize` and before
+    `thread/start`/`thread/resume`, pointing at `<cwd>/.claude/skills` if it exists.
+13. **Permission-mode chip UI unified across providers.** The create dialog's
+    Permissions control changes from a `<select>` to a row of clickable chips (same
+    visual language as the running widget's mode chip), rendered from
+    `activeCapabilities.permissionModes` — 2 chips for Codex, 4 for Claude, same
+    component, no provider-name branching. (Implemented ahead of the rest of this
+    follow-up, on direct request — see Task 14.)
 
 ## Tasks
 
@@ -280,23 +389,110 @@ from `AppProperties.providers().keySet()` so it only lists configured providers.
 `docs/PROTOCOL.md` ("Behavioral notes (Codex adapter)", parallel to the Claude one),
 `docs/ARCHITECTURE.md` §5.13 (points here), `docs/plan/README.md` (decision-log row).
 
-## Out of scope (this pass)
+### 9. Skills wiring — done
+`sidecar-codex/src/session.ts`: after `initialize`, before `thread/start`/
+`thread/resume`, checks whether `<cwd>/.claude/skills` exists and if so calls
+`skills/extraRoots/set({extraRoots: [that path]})`. `skills: true` in both
+`sidecar-codex/src/protocol.ts`'s `CODEX_CAPABILITIES` and
+`ProviderController.java`'s Java-side constant. No backend changes needed, as
+predicted. **Verified live end-to-end**: a session with `skillSources` pointing at a
+custom `pun-generator` skill correctly discovered and autonomously invoked it (the
+model read the `SKILL.md` via a shell command entirely on its own — no explicit
+mention of the skill was needed in the prompt beyond "tell me a pun" matching the
+skill's `description`) and returned the skill's exact scripted text, both standalone
+against `sidecar-codex` and through the full backend (create → provision → WS turn).
 
-- Skills/agents for Codex sessions (`skills: false`, `agents: false`) — Codex's
-  `skills/list` surface exists but its discovery convention/format hasn't been
-  checked against our `.claude/skills`-style materialization; a follow-up once the
-  MVP is proven.
-- MCP config passthrough (`mcp: false`) — means Codex sessions don't get the default
-  Linear MCP layering (`SessionService.withDefaultLinearMcp()`) other sessions get.
-  Acceptable capability gap for this pass; the create dialog must not silently drop an
-  explicit `mcpConfig` the user set for a Codex-provider session — it should surface as
-  a validation error at creation time instead of being ignored.
-- `acceptEdits`/`plan` permission modes (see mapping table above).
-- Prompt fan-out (5.11) across providers, i.e. "try this in both Claude and Codex" —
-  not precluded by this design (provider is just another per-session field the fan-out
-  create-batch could vary) but not built here.
-- Reconciling estimated Codex cost against real billing — Decision 2's table is a
-  manually-maintained estimate, not tied to any Codex/OpenAI billing API.
+### 10. MCP wiring — done
+- `sidecar-codex`: new `--mcp-config <path>` flag (mirrors Claude's), `src/mcp.ts`
+  parses the same tolerant shape `sidecar/src/session.ts`'s `loadMcpServers` does
+  (bare server map or `{mcpServers: {...}}`). `command` entries pass through as
+  `{command, args, env}`; `url` entries extract `headers.Authorization: Bearer <token>`
+  if present, generate an env var name (`CODEX_MCP_TOKEN_<NAME>`), pass it to
+  `CodexRpc`'s new `extraEnv` constructor param (merged onto the spawned `codex
+  app-server` child's environment — `rpc.ts`), and emit `{url,
+  bearer_token_env_var}`; no-auth `url` entries emit `{url}` alone (still untested —
+  the ambient-OAuth gap noted above). Assembled map goes into
+  `thread/start`/`thread/resume`'s `config.mcp_servers`. `system_init.mcpServers`
+  reports configured names with a static `"configuring"` status, as planned. Also
+  fixed a real gap found during verification: `item/started`/`item/completed` for
+  `mcpToolCall` items weren't mapped to `tool_started`/`tool_result` at all (MCP calls
+  were invisible in the transcript, only the model's final text showed) — added,
+  named `mcp__<server>__<tool>` to match the Claude Agent SDK's own MCP tool naming
+  convention so the widget needs no branching.
+- Backend: `SessionService.create()` no longer hard-rejects an explicit `mcpConfig`
+  for `provider: "codex"` — it gets the same `withDefaultLinearMcp()` treatment every
+  other session does. `SidecarManager.buildArgs` un-gated `--mcp-config` for codex.
+  `mcp: true` in both capability constants.
+- **Verified live end-to-end** (stdio path — the HTTP+bearer-token path's config
+  shape was directly confirmed against `codex mcp add`'s own output, per the earlier
+  research, but not live-tested with a real remote server; no Linear API key is
+  configured in this dev environment to test that specific path for real): a real
+  `@modelcontextprotocol/server-everything` stdio server, both driven directly against
+  `sidecar-codex` and through the full backend (an explicit `mcpConfig` override on a
+  `codex`-provider session) — the model genuinely called its `echo` tool (confirmed via
+  raw protocol inspection: `item/started`/`item/completed` with `type:"mcpToolCall"`,
+  `server:"everything"`, real arguments and result, not a hallucinated response) and
+  the journal correctly showed `tool_started`/`tool_result` for it after the fix above.
+  Also confirmed a single turn can use an MCP tool and a skill together correctly.
+
+### 11. Permission-mode chip UI — done
+`CreateSessionDialog.tsx`'s Permissions control changed from a `<select>` to a row of
+clickable `.chip` buttons (reusing `MODE_LABEL`/`MODE_CYCLE`, now exported from
+`SessionWidget.tsx`), filtered by `activeCapabilities.permissionModes` — same
+component and markup regardless of provider, 2 chips for Codex / 4 for Claude. New
+`.chip.selected` / `.chip-row` styles in `styles.css`. Confirmed live in a browser:
+4 chips for `claude`, exactly 2 for `codex`, click-to-select updates the highlighted
+chip correctly. `TemplateManager.tsx`'s Permissions control was deliberately left as a
+`<select>` — it has an extra "provider default" (null) option that doesn't fit a chip
+row as naturally, and this wasn't asked for there.
+
+### 12. `agentSources` rejection for codex — done (not in the original follow-up plan)
+Noticed while implementing Task 10 that `agentSources` was never actually rejected for
+`provider: "codex"` in the original MVP pass (only `allowedTools`/`disallowedTools`/
+`thinking`/`maxTurns`/`fallbackModel`/`mcpConfig` were) — it would have silently
+materialized into `.claude/agents/` and then been silently ignored by `sidecar-codex`
+forever, since Codex has no mechanism to read it (confirmed permanently infeasible,
+see the follow-up section above). That's exactly the "never silently ignored"
+violation this doc's own principle exists to prevent, so `SessionService.create()`
+now hard-rejects a non-empty `agentSources` for codex the same way as the other
+unsupported fields. `CreateSessionDialog.tsx`'s Agents section (attached assets +
+extra-agent input) is now hidden when `!activeCapabilities.agents`, and switching to
+a provider without agent support clears any already-selected agent assets so a
+template-inherited selection can't cause a surprise 400 at creation time. Verified via
+REST: `agentSources` on a `codex` session → 400 `"provider 'codex' does not support
+agentSources"`.
+
+### 13. Updated DoD / manual test script additions — done
+Added to this doc's DoD (below): a Codex session with an attached skill actually
+invokes it; a Codex session with an explicit `mcpConfig` (stdio path) can call an MCP
+tool end-to-end; `agentSources` on a Codex session is rejected at creation, not
+silently dropped. All three verified live as part of implementing Tasks 9–10 (see
+their "Verified live end-to-end" notes above) — not just written down.
+
+### 14. Docs — done
+This doc's own capabilities/permission-mode sections (updated above), `docs/
+PROTOCOL.md`'s "Behavioral notes (Codex adapter)" section (skills/MCP notes added,
+including the `mcpToolCall` mapping gap found and fixed during verification).
+
+## Also out of scope (unchanged, or newly confirmed)
+
+- **Agents for Codex sessions** — confirmed infeasible this pass, not deferred; see
+  the follow-up section above. Would need an entirely different feature built around
+  Codex's live multi-agent collaboration tools, not a materialization fix.
+- **`acceptEdits`/`plan` permission modes** — re-investigated 2026-08-30, confirmed
+  still not honestly mappable onto Codex's single global approval-policy knob.
+- **Streaming per-server MCP status into the journal** — `mcpServer/startupStatus/
+  updated` notifications exist and could drive a live "MCP connecting/connected/failed"
+  indicator, but `system_init.mcpServers` reports a static snapshot for this pass
+  (Task 10); wiring live updates is additional scope, not required for MCP tool calls
+  to actually work.
+- **Prompt fan-out (5.11) across providers** — i.e. "try this in both Claude and
+  Codex." Not precluded by this design (provider is just another per-session field the
+  fan-out create-batch could vary) but not built here — reaffirmed out of scope
+  2026-08-30.
+- **Reconciling estimated Codex cost against real billing** — Decision 2's table is a
+  manually-maintained estimate, not tied to any Codex/OpenAI billing API — reaffirmed
+  out of scope 2026-08-30.
 
 ## Verification status (2026-08-30)
 
@@ -321,6 +517,22 @@ widget code path a Claude session already exercises, gated only by
 those specific DoD lines below as design-verified, not UI-verified, until someone
 drives them by hand once.
 
+**2026-08-30 follow-up (skills, MCP, agentSources rejection, permission-mode chips)**:
+confirmed live at every layer, not just this doc. Skills: a custom skill was
+autonomously discovered and invoked (exact scripted output came back), both standalone
+against `sidecar-codex` and through the full backend. MCP: a real
+`@modelcontextprotocol/server-everything` stdio server was genuinely called (verified
+via raw protocol inspection that it wasn't a hallucinated response —
+`item/started`/`item/completed` with `type:"mcpToolCall"` and real arguments/result),
+both standalone and through the full backend with an explicit `mcpConfig` override; a
+single turn using both a skill and an MCP tool together was confirmed. `agentSources`
+rejection confirmed via direct REST (400). The permission-mode chip UI was clicked
+through in a real browser: 4 chips for `claude`, exactly 2 for `codex`, click-to-select
+updates correctly. The HTTP+bearer-token MCP auth path remains **un-tested with a real
+remote server** (no Linear API key in this dev environment) — its config shape was
+directly confirmed against `codex mcp add`'s own output, which is strong but not the
+same as a live call.
+
 ## Definition of Done
 
 - A `provider: codex` session created from the dashboard runs a prompt end-to-end：
@@ -333,16 +545,24 @@ drives them by hand once.
 - Interrupt mid-turn works and leaves the session usable for the next turn.
 - Closing/resuming a Codex session round-trips via `providerSessionId` (`thread/
   resume`).
-- Creating a Codex session with `plan` permission mode or an explicit `mcpConfig` is
-  rejected at creation time with a clear error, not silently downgraded.
+- Creating a Codex session with `plan` permission mode or a non-empty `agentSources`
+  is rejected at creation time with a clear error, not silently downgraded. An
+  explicit `mcpConfig` is **not** rejected — it works the same as a Claude session's.
 - The create dialog and template editor, with `codex` selected, don't render "plan
-  mode" or "acceptEdits" as options — driven by `GET /api/providers`, not a
-  `provider === 'codex'` check anywhere in the frontend.
+  mode" or "acceptEdits" as permission-mode chips, and hide the Agents section —
+  driven by `GET /api/providers`, not a `provider === 'codex'` check anywhere in the
+  frontend.
 - A Claude session created before/after/alongside a Codex session is unaffected —
   same widget behavior, same capabilities, run concurrently without interference.
 - Settings dialog: changing "Codex pricing" changes `costUsd` on the *next* completed
   Codex turn without a backend restart; changing "Default provider" changes what a
   fresh create-dialog open pre-selects.
+- A skill attached to a Codex session (`skillSources`) is autonomously discovered and
+  invoked by the model, same UX as a Claude session, with no explicit mention needed
+  beyond matching the skill's own description.
+- An MCP server attached to a Codex session (`mcpConfig`) can be called by the model
+  as a real tool, with `tool_started`/`tool_result` visible in the transcript
+  (`mcp__<server>__<tool>` naming) exactly like a Claude session's MCP tool calls.
 
 ## Manual test script
 
@@ -384,3 +604,19 @@ drives them by hand once.
     prompt, confirm the new `costUsd` reflects the change.
 13. Open a second, Claude-provider session concurrently; confirm both run
     side by side with no cross-talk (each in `logs/sidecar/<sessionId>.log`).
+14. Create a Codex session with a skill attached (Advanced options → Skills → Add
+    skills…, or an `extraSkill` path to any `SKILL.md`-containing directory). Send a
+    prompt matching the skill's description without naming it explicitly — confirm the
+    model discovers and uses it (visible as a `tool_started`/`tool_result` reading the
+    `SKILL.md`, then a response reflecting the skill's content).
+15. Create a Codex session with an explicit `mcpConfig` (a real stdio MCP server is
+    easiest to test with no extra setup — e.g. `npx -y
+    @modelcontextprotocol/server-everything` via the raw-overrides JSON field: `{"mcp
+    Config": {"everything": {"command": "npx", "args": ["-y",
+    "@modelcontextprotocol/server-everything"]}}}`). Ask it to call one of the
+    server's tools — confirm a `tool_started`/`tool_result` named `mcp__everything__
+    <tool>` appears with a real result, not just narrated text.
+16. Try to create a Codex session with a non-empty `agentSources` (raw overrides:
+    `{"agentSources": [{"type":"file","ref":"/any/path.md"}]}`) — confirm it's
+    rejected with a clear 400, and that the Agents section doesn't even render in the
+    create dialog once `codex` is selected as the provider.

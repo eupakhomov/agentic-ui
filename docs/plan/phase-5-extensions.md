@@ -142,9 +142,14 @@ Provider is already a wired-through per-session field (`SessionEntity.provider`)
 no schema change needed; this item is the adapter + a UI picker (create dialog +
 template, defaulting from a new Settings entry) that didn't exist yet. Cost is
 estimated from Codex's token counts against a Settings-editable per-model price table
-(Codex reports no per-turn USD). First-pass scope is deliberately an MVP (no skills,
-no MCP passthrough, no plan/acceptEdits modes) — see the design doc for the full
-capability/permission-mode mapping and why.
+(Codex reports no per-turn USD). First-pass scope was deliberately an MVP (no skills,
+no MCP passthrough, no plan/acceptEdits modes); a same-day follow-up added skills
+(`skills/extraRoots/set` pointing at the already-materialized `.claude/skills/`) and
+MCP (`thread/start.config.mcp_servers`, thread-scoped) after confirming both live —
+agents stayed out (confirmed permanently infeasible, no Codex equivalent to Claude's
+subagent files exists) and `acceptEdits`/`plan` stayed unmapped (re-investigated,
+still no honest equivalent). See the design doc for the full capability/
+permission-mode mapping and why.
 - **DoD:** a `provider: codex` session runs a prompt with tool approval end-to-end in
   the same dashboard; unsupported controls (e.g. plan mode) simply don't render;
   Claude sessions are entirely unaffected side by side.

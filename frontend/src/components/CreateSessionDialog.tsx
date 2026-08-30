@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type ProviderView, type ServicesResponse, type Settings, type Template, type TicketSummary } from '../protocol';
+import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type ProviderView, type ServicesResponse, type Settings, type Template, type TicketSummary } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
+import { MODE_CYCLE, MODE_LABEL } from './SessionWidget';
 import TicketPickerDialog from './TicketPickerDialog';
+
+const MODE_DESCRIPTION: Record<PermissionMode, string> = {
+  default: 'ask for edits & commands',
+  acceptEdits: 'auto-accept edits, still ask for commands',
+  plan: 'plan first, no edits or commands without approval',
+  bypassPermissions: 'bypass all approval (including Bash) — no prompts at all',
+};
 
 export default function CreateSessionDialog({
   onCreated,
@@ -81,6 +89,10 @@ export default function CreateSessionDialog({
       setPermissionMode(activeCapabilities.permissionModes.includes('acceptEdits') ? 'acceptEdits' : 'default');
     }
     if (!activeCapabilities.thinking) setThinking('');
+    if (!activeCapabilities.agents) {
+      setSelectedAgentAssets(new Map());
+      setExtraAgent('');
+    }
     if (provider !== 'claude' && ['sonnet', 'opus', 'haiku'].includes(model)) setModel('');
     if (provider === 'claude' && model === '') setModel('sonnet');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -329,26 +341,18 @@ export default function CreateSessionDialog({
           )}
 
           <label>Permissions</label>
-          <select
-            value={permissionMode}
-            onChange={(e) => setPermissionMode(e.target.value)}
-            title={permissionMode === 'bypassPermissions'
-              ? 'ALL tool calls auto-approve, including Bash — no approval prompts at all'
-              : undefined}
-          >
-            {(!activeCapabilities || activeCapabilities.permissionModes.includes('default')) && (
-              <option value="default">ask for edits & commands</option>
-            )}
-            {(!activeCapabilities || activeCapabilities.permissionModes.includes('acceptEdits')) && (
-              <option value="acceptEdits">auto-accept edits</option>
-            )}
-            {(!activeCapabilities || activeCapabilities.permissionModes.includes('plan')) && (
-              <option value="plan">plan first</option>
-            )}
-            {(!activeCapabilities || activeCapabilities.permissionModes.includes('bypassPermissions')) && (
-              <option value="bypassPermissions">bypass all approval (including Bash) — no prompts at all</option>
-            )}
-          </select>
+          <div className="chip-row full" style={{ gridColumn: '2 / -1' }}>
+            {(activeCapabilities?.permissionModes ?? MODE_CYCLE).map((m) => (
+              <span
+                key={m}
+                className={`chip clickable mode-${m}${permissionMode === m ? ' selected' : ''}`}
+                title={MODE_DESCRIPTION[m]}
+                onClick={() => setPermissionMode(m)}
+              >
+                {MODE_LABEL[m]}
+              </span>
+            ))}
+          </div>
         </div>
 
         <details
@@ -412,19 +416,23 @@ export default function CreateSessionDialog({
               placeholder="path or git URL of a skill source"
             />
 
-            <label>Agents</label>
-            <AttachedAssetsRow
-              assets={[...selectedAgentAssets.values()]}
-              onBrowse={() => setAssetPickerKind('agent')}
-              buttonLabel="Add agents…"
-            />
+            {(!activeCapabilities || activeCapabilities.agents) && (
+              <>
+                <label>Agents</label>
+                <AttachedAssetsRow
+                  assets={[...selectedAgentAssets.values()]}
+                  onBrowse={() => setAssetPickerKind('agent')}
+                  buttonLabel="Add agents…"
+                />
 
-            <label>Extra agent</label>
-            <input
-              value={extraAgent}
-              onChange={(e) => setExtraAgent(e.target.value)}
-              placeholder="path or git URL of an agent source"
-            />
+                <label>Extra agent</label>
+                <input
+                  value={extraAgent}
+                  onChange={(e) => setExtraAgent(e.target.value)}
+                  placeholder="path or git URL of an agent source"
+                />
+              </>
+            )}
 
             <label>Instructions</label>
             <textarea

@@ -109,15 +109,13 @@ public class SessionService {
 		List<String> contextDirs = stringList(config, "contextDirs");
 		if ("codex".equals(provider)) {
 			// See docs/plan/phase-5.13-codex-provider.md's DoD: unsupported controls must be
-			// rejected at creation time, not silently downgraded. An explicit mcpConfig is
-			// rejected; the automatic default-Linear-MCP layering below is simply skipped for
-			// this provider instead (that's an ambient convenience, not explicit user intent).
+			// rejected at creation time, not silently downgraded. mcpConfig is NOT rejected
+			// here (unlike the other codex-unsupported fields below) — the 2026-08-30 MCP
+			// follow-up confirmed sidecar-codex can translate the same Claude-shaped config
+			// every other session already gets, including the default Linear MCP layering.
 			if (!"default".equals(permissionMode) && !"bypassPermissions".equals(permissionMode)) {
 				throw new IllegalArgumentException(
 						"provider 'codex' does not support permission mode '" + permissionMode + "'");
-			}
-			if (explicitMcpConfig != null && !explicitMcpConfig.isNull()) {
-				throw new IllegalArgumentException("provider 'codex' does not support mcpConfig");
 			}
 			if (!allowedTools.isEmpty() || !disallowedTools.isEmpty()) {
 				throw new IllegalArgumentException("provider 'codex' does not support allowedTools/disallowedTools");
@@ -131,6 +129,13 @@ public class SessionService {
 			if (fallbackModel != null) {
 				throw new IllegalArgumentException("provider 'codex' does not support fallbackModel");
 			}
+			if (arrayOrEmpty(config, "agentSources").size() > 0) {
+				// Confirmed (docs/plan/phase-5.13-codex-provider.md's follow-up): Codex has no
+				// equivalent to Claude's static subagent files at all, so unlike skillSources
+				// (silently materialized and now genuinely used, see Task 9) this can't be
+				// quietly downgraded to a no-op — reject it instead.
+				throw new IllegalArgumentException("provider 'codex' does not support agentSources");
+			}
 			// Ecosystem/context dirs commonly come from a global default (settings.ecosystemRoot()),
 			// not explicit per-session intent, so this degrades with a visible warning rather than
 			// rejecting creation outright.
@@ -140,7 +145,7 @@ public class SessionService {
 			ecosystemPath = null;
 			contextDirs = List.of();
 		}
-		JsonNode mcpConfig = "codex".equals(provider) ? null : withDefaultLinearMcp(explicitMcpConfig);
+		JsonNode mcpConfig = withDefaultLinearMcp(explicitMcpConfig);
 
 		UUID id = UUID.randomUUID();
 		Path worktree = Path.of(props.worktreeRoot()).resolve(id.toString());

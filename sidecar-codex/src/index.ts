@@ -9,18 +9,17 @@ const EFFORT_LEVELS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 /**
  * Deliberately narrower than sidecar/'s flag set — Codex has no analog for
- * --thinking, --mcp-config, --allowed-tools/--disallowed-tools,
- * --append-system-prompt, --context-dir, --fallback-model, or --max-turns for this
- * MVP pass (see docs/plan/phase-5.13-codex-provider.md "Out of scope"). Passing any
- * of them is a usage error, not a silently-ignored no-op — SessionService must not
- * pass flags this adapter can't honor.
+ * --thinking, --allowed-tools/--disallowed-tools, --context-dir, --fallback-model, or
+ * --max-turns (see docs/plan/phase-5.13-codex-provider.md "Also out of scope").
+ * Passing any of them is a usage error, not a silently-ignored no-op —
+ * SessionService must not pass flags this adapter can't honor.
  */
 function usage(): never {
   console.error(
     `usage: sidecar-codex --cwd <dir> [--resume <thread-id>] [--model <m>]
        [--permission-mode ${PERMISSION_MODES.join('|')}]
        [--effort ${EFFORT_LEVELS.join('|')}]
-       [--append-system-prompt <text>]`,
+       [--append-system-prompt <text>] [--mcp-config <path.json>]`,
   );
   process.exit(2);
 }
@@ -59,6 +58,9 @@ function parseArgs(argv: string[]): SidecarConfig {
       }
       case '--append-system-prompt':
         config.appendSystemPrompt = need();
+        break;
+      case '--mcp-config':
+        config.mcpConfigPath = resolve(need());
         break;
       default:
         usage();

@@ -121,9 +121,11 @@ public class SidecarManager {
 
 	private List<String> buildArgs(SessionEntity s, Path mcpConfigFile, boolean resume) {
 		// The codex adapter (sidecar-codex) only understands a subset of these flags — see
-		// docs/plan/phase-5.13-codex-provider.md "Out of scope". SessionService.create()
+		// docs/plan/phase-5.13-codex-provider.md "Also out of scope". SessionService.create()
 		// already rejects a codex session that explicitly set one of the unsupported fields,
-		// so these guards are defense-in-depth, not the primary enforcement point.
+		// so these guards are defense-in-depth, not the primary enforcement point. --mcp-config
+		// and --append-system-prompt ARE supported by sidecar-codex (see the MCP/skills
+		// follow-up), so they're passed through unconditionally below.
 		boolean codex = "codex".equals(s.provider());
 
 		List<String> args = new ArrayList<>(List.of("--cwd", s.worktreePath()));
@@ -145,7 +147,7 @@ public class SidecarManager {
 		if (!codex && !s.disallowedTools().isEmpty()) {
 			args.addAll(List.of("--disallowed-tools", String.join(",", s.disallowedTools())));
 		}
-		if (!codex && mcpConfigFile != null && Files.exists(mcpConfigFile)) {
+		if (mcpConfigFile != null && Files.exists(mcpConfigFile)) {
 			args.addAll(List.of("--mcp-config", mcpConfigFile.toString()));
 		}
 		if (s.instructions() != null && !s.instructions().isBlank()) {

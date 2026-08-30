@@ -9,8 +9,8 @@ import CloseDialog from './CloseDialog';
 import DuplicateDialog from './DuplicateDialog';
 import GitPanel from './GitPanel';
 
-const MODE_CYCLE: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-const MODE_LABEL: Record<PermissionMode, string> = {
+export const MODE_CYCLE: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+export const MODE_LABEL: Record<PermissionMode, string> = {
   default: 'Ask edits',
   acceptEdits: 'Auto-accept',
   plan: 'Plan',

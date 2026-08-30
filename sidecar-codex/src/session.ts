@@ -5,8 +5,11 @@ import {
   type EffortLevel,
   type PermissionResponseCommand,
 } from './protocol.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { CodexRpc } from './rpc.js';
 import { allowDecision, denyDecision } from './approvals.js';
+import { translateMcpConfig } from './mcp.js';
 import { log, readLines, writeEvent } from './stdio.js';
 
 /** Codex only offers a real analog for two of Claude's four permission modes — see
@@ -21,6 +24,8 @@ export interface SidecarConfig {
   effort?: EffortLevel;
   /** maps to Codex's thread-level developerInstructions (ThreadStartParams/ThreadResumeParams) */
   appendSystemPrompt?: string;
+  /** same Claude-shaped file the backend already writes; translated per mcp.ts */
+  mcpConfigPath?: string;
   /** override for testing; defaults to the `codex` binary on PATH */
   codexBin?: string;
 }
@@ -79,7 +84,21 @@ interface PendingApproval {
 }
 
 export async function runSession(config: SidecarConfig): Promise<never> {
-  const rpc = new CodexRpc(config.codexBin ?? 'codex', ['app-server']);
+  // Must happen before spawning: the bearer-token env vars this produces need to be
+  // set on the codex app-server child's own environment at spawn time (see rpc.ts).
+  let mcpServers: Record<string, unknown> = {};
+  let mcpExtraEnv: Record<string, string> = {};
+  if (config.mcpConfigPath) {
+    try {
+      const translated = await translateMcpConfig(config.mcpConfigPath);
+      mcpServers = translated.mcpServers;
+      mcpExtraEnv = translated.extraEnv;
+    } catch (e) {
+      log(`failed to load/translate --mcp-config ${config.mcpConfigPath}: ${String(e)}`);
+    }
+  }
+
+  const rpc = new CodexRpc(config.codexBin ?? 'codex', ['app-server'], mcpExtraEnv);
   const inputQueue = new AsyncQueue<string>();
   const itemsCache = new Map<string, Record<string, unknown>>();
   const pendingApprovals = new Map<string, PendingApproval>();
@@ -181,6 +200,15 @@ export async function runSession(config: SidecarConfig): Promise<never> {
             name: 'Edit',
             input: { changes: item['changes'] },
           });
+        } else if (item['type'] === 'mcpToolCall') {
+          // mcp__<server>__<tool> matches the Claude Agent SDK's own MCP tool naming
+          // convention, so the widget's tool-call rendering needs no provider branch.
+          writeEvent({
+            type: 'tool_started',
+            toolUseId: String(item['id']),
+            name: `mcp__${item['server']}__${item['tool']}`,
+            input: (item['arguments'] as Record<string, unknown>) ?? {},
+          });
         }
         break;
       }
@@ -203,6 +231,15 @@ export async function runSession(config: SidecarConfig): Promise<never> {
           const changes = (item['changes'] as { path: string; diff: string }[] | undefined) ?? [];
           const output = status === 'declined' ? 'Denied by user.' : changes.map((c) => `${c.path}:\n${c.diff}`).join('\n\n');
           writeEvent({ type: 'tool_result', toolUseId: id, isError, output: truncate(output), truncated: output.length > TOOL_OUTPUT_LIMIT });
+        } else if (item['type'] === 'mcpToolCall') {
+          const error = item['error'] as { message?: string } | null | undefined;
+          const result = item['result'] as { content?: { type: string; text?: string }[] } | null | undefined;
+          const output = error
+            ? (error.message ?? 'MCP tool call failed')
+            : (result?.content ?? [])
+                .map((b) => (b.type === 'text' && typeof b.text === 'string' ? b.text : JSON.stringify(b)))
+                .join('\n');
+          writeEvent({ type: 'tool_result', toolUseId: id, isError: !!error, output: truncate(output), truncated: output.length > TOOL_OUTPUT_LIMIT });
         } else if (item['type'] === 'agentMessage' && typeof item['text'] === 'string' && item['text']) {
           writeEvent({ type: 'assistant_message', content: [{ type: 'text', text: item['text'] }] });
         }
@@ -340,12 +377,26 @@ export async function runSession(config: SidecarConfig): Promise<never> {
       capabilities: null,
     });
 
+    // Reuse the worktree's existing skill materialization (AssetProvisioningService
+    // already writes it for every provider) — Codex reads the same SKILL.md format
+    // but only discovers it via an explicit extra root, confirmed live (see
+    // docs/plan/phase-5.13-codex-provider.md's skills follow-up).
+    const skillsDir = join(config.cwd, '.claude', 'skills');
+    if (existsSync(skillsDir)) {
+      try {
+        await rpc.call('skills/extraRoots/set', { extraRoots: [skillsDir] });
+      } catch (e) {
+        writeEvent({ type: 'error', message: `skills/extraRoots/set failed: ${String(e)}`, fatal: false });
+      }
+    }
+
     const startMethod = config.resume ? 'thread/resume' : 'thread/start';
     const startParams: Record<string, unknown> = config.resume
       ? { threadId: config.resume, approvalPolicy: approvalPolicyFor(currentPermissionMode), sandbox: sandboxModeFor(currentPermissionMode) }
       : { cwd: config.cwd, approvalPolicy: approvalPolicyFor(currentPermissionMode), sandbox: sandboxModeFor(currentPermissionMode) };
     if (config.model) startParams['model'] = config.model;
     if (config.appendSystemPrompt) startParams['developerInstructions'] = config.appendSystemPrompt;
+    if (Object.keys(mcpServers).length > 0) startParams['config'] = { mcp_servers: mcpServers };
 
     const started = await rpc.call<{ thread: { id: string }; model: string; cwd: string }>(startMethod, startParams);
     threadId = started.thread.id;
@@ -357,7 +408,11 @@ export async function runSession(config: SidecarConfig): Promise<never> {
       model: currentModel,
       cwd: started.cwd,
       tools: [],
-      mcpServers: [],
+      // Real per-server lifecycle arrives async via mcpServer/startupStatus/updated
+      // notifications, which this adapter doesn't stream into the journal for this
+      // pass (see the plan doc's "Also out of scope" note) — this is a static
+      // snapshot of what was configured, not a live connection state.
+      mcpServers: Object.keys(mcpServers).map((name) => ({ name, status: 'configuring' })),
       permissionMode: currentPermissionMode,
     });
 

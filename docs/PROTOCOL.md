@@ -137,6 +137,26 @@ approval round-trip. Full mapping tables and rationale:
   `turn/started`, `turn/diff/updated`, `serverRequest/resolved`, …) is expected and
   dropped silently — roughly 15 notification types beyond the ones this adapter maps,
   in a single two-tool-call turn.
+- **Skills** (`skills: true`, 2026-08-30 follow-up): Codex reads the same `SKILL.md`
+  format Claude does, but doesn't auto-discover `<cwd>/.claude/skills` — the adapter
+  calls `skills/extraRoots/set({extraRoots:[...]})` once, before `thread/start`/
+  `thread/resume`, pointing at that already-materialized directory. Confirmed live
+  that the model then discovers and invokes a skill autonomously (matching its
+  `description`), same UX as Claude — no explicit per-turn skill reference needed.
+- **MCP** (`mcp: true`, 2026-08-30 follow-up): `thread/start`/`thread/resume`'s generic
+  `config: {mcp_servers: {...}}` field spins up a **thread-scoped** MCP server (not a
+  global `codex mcp add` registration) — confirmed via a real stdio server's full
+  `starting`→`ready` lifecycle and a genuine tool call. The adapter translates the same
+  Claude-shaped mcp config file the backend already writes; the one real shape
+  difference is HTTP auth — Codex reads a bearer token from a **named env var**
+  (`bearer_token_env_var`) on the `codex app-server` process, not an inline header, so
+  the adapter extracts a `Bearer <token>` from the Claude-shaped config's
+  `headers.Authorization` and sets it as an env var on the child it spawns. MCP tool
+  calls surface as `item/started`/`item/completed` with `type: "mcpToolCall"`, mapped
+  to `tool_started`/`tool_result` named `mcp__<server>__<tool>` — matching the Claude
+  Agent SDK's own MCP tool naming convention. Live per-server connection status
+  (`mcpServer/startupStatus/updated`) is not streamed into the journal; `system_init.
+  mcpServers` reports a static `"configuring"` snapshot of what was configured.
 
 ## WebSocket contract (backend ↔ UI)
 

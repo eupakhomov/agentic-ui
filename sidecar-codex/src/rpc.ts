@@ -21,8 +21,14 @@ export class CodexRpc {
   private serverRequestHandler: ServerRequestHandler = () => {};
   private notificationHandler: NotificationHandler = () => {};
 
-  constructor(codexBin: string, args: string[]) {
-    this.child = spawn(codexBin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  /** `extraEnv` is merged onto the child's inherited environment — used to pass MCP
+   * bearer tokens via a named env var (Codex's own mechanism; see approvals.ts's
+   * sibling `mcp.ts` for the translation that produces these). */
+  constructor(codexBin: string, args: string[], extraEnv?: Record<string, string>) {
+    this.child = spawn(codexBin, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+    });
     readLines(this.child.stdout, (line) => this.onLine(line), () => log('codex app-server stdout closed'));
     this.child.stderr.setEncoding('utf8');
     this.child.stderr.on('data', (d: string) => log('codex:', d.trimEnd()));

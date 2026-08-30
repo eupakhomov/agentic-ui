@@ -202,10 +202,12 @@ export type Event =
   | ExitingEvent;
 
 /**
- * Codex has no plan mode, no skills/agents discovery, and (for this MVP pass) no MCP
- * config passthrough or thinking-budget axis distinct from reasoning effort. See
+ * Codex has no plan mode, no static subagent-file equivalent, and no thinking-budget
+ * axis distinct from reasoning effort. skills/mcp were flipped true in the
+ * 2026-08-30 follow-up once both were confirmed live-feasible. See
  * docs/plan/phase-5.13-codex-provider.md "Capabilities announcement" for the
- * live-confirmed rationale behind each false value.
+ * live-confirmed rationale behind each value — must stay in sync with
+ * ProviderController.java's Java-side constant.
  */
 export const CODEX_CAPABILITIES: Capabilities = {
   permissionModes: ['default', 'bypassPermissions'],
@@ -213,9 +215,9 @@ export const CODEX_CAPABILITIES: Capabilities = {
   effort: true,
   planMode: false,
   resume: true,
-  skills: false,
+  skills: true,
   agents: false,
-  mcp: false,
+  mcp: true,
   interrupt: true,
   fallbackModel: false,
   updatedInput: false,
