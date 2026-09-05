@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/rest';
 import type { AssetKind, LibraryAsset, LibraryAssetContent, LibrarySource, ScanCandidate, ScanResult, Settings } from '../protocol';
+import { AgentAsset, AiSuggest, Close, LocalSource, RemoteSource, SkillAsset } from '../icons';
 
 const PAGE_SIZE = 20;
 
@@ -291,7 +292,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
   const assetPage = shownAssets.slice(libraryPage * PAGE_SIZE, (libraryPage + 1) * PAGE_SIZE);
   const awaitingSemanticSearch = semantic && !semanticHits && textFilter.trim().length > 0;
   const candidatePage = (scan?.candidates ?? []).slice(importPage * PAGE_SIZE, (importPage + 1) * PAGE_SIZE);
-  const kindIcon = (kind: AssetKind) => (kind === 'skill' ? '📖' : '🤖');
+  const kindIcon = (kind: AssetKind) => (kind === 'skill' ? <SkillAsset /> : <AgentAsset />);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -452,7 +453,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                   </label>
                   {aiProgress
                     ? <button onClick={() => aiAbortRef.current?.abort('user')}>Cancel — {aiProgress}</button>
-                    : <button disabled={selectedPaths.length === 0} onClick={() => aiFill(selectedPaths)}>✨ AI-fill selected</button>}
+                    : <button className="with-icon" disabled={selectedPaths.length === 0} onClick={() => aiFill(selectedPaths)}><AiSuggest />AI-fill selected</button>}
                   <label style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--muted)', marginLeft: 'auto' }}>
                     <input type="checkbox" checked={syncSource} onChange={(e) => setSyncSource(e.target.checked)} />
                     keep source synced
@@ -492,7 +493,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                               title="fill name/description/tags with AI"
                               disabled={!!aiProgress || c.alreadyImported}
                               onClick={() => aiFill([c.path])}
-                            >✨</button>
+                            ><AiSuggest /></button>
                           </span>
                         </div>
                         {!c.alreadyImported && (
@@ -537,7 +538,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
               {(sources ?? []).map((s) => (
                 <div key={s.id} style={{ background: 'var(--panel2)', borderRadius: 6, padding: '8px 10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span title={s.type}>{s.type === 'repo' ? '🌐' : '📁'}</span>
+                    <span title={s.type}>{s.type === 'repo' ? <RemoteSource /> : <LocalSource />}</span>
                     <span className="name" style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.ref}>{s.ref}</span>
                     <span className="chip">{s.assetCount} asset{s.assetCount === 1 ? '' : 's'}</span>
                     {s.lastSyncStatus && (
@@ -594,7 +595,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                   {detailAsset.status === 'ARCHIVED' && <span className="chip" style={{ marginLeft: 6, color: 'var(--amber)', borderColor: 'var(--amber)' }}>archived</span>}
                 </div>
               </div>
-              <button onClick={closeDetails}>✕</button>
+              <button className="icon-btn" title="close" onClick={closeDetails}><Close /></button>
             </div>
 
             {detailAsset.description && (
@@ -615,7 +616,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                 <>
                   <dt>Source</dt>
                   <dd title={detailSource.ref} style={{ wordBreak: 'break-all' }}>
-                    {detailSource.type === 'repo' ? '🌐' : '📁'} {detailSource.ref}
+                    {detailSource.type === 'repo' ? <RemoteSource /> : <LocalSource />} {detailSource.ref}
                     {detailAsset.sourcePath && detailAsset.sourcePath !== '.' ? ` (${detailAsset.sourcePath})` : ''}
                   </dd>
                 </>

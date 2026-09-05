@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/rest';
+import { Close } from '../icons';
 import { assetStub, type AssetKind, type LibraryAsset, type ProviderView, type Settings, type Template } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import { AttachedAssetsRow } from './CreateSessionDialog';
@@ -222,7 +223,7 @@ export default function TemplateManager({ onClose }: { onClose: () => void }) {
                   placeholder="value"
                   onChange={(e) => setEnvRows(envRows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))}
                 />
-                <button onClick={() => setEnvRows(envRows.filter((_, j) => j !== i))}>✕</button>
+                <button className="icon-btn" title="remove" onClick={() => setEnvRows(envRows.filter((_, j) => j !== i))}><Close /></button>
               </div>
             ))}
             <button onClick={() => setEnvRows([...envRows, { key: '', value: '' }])}>+ Add env var</button>

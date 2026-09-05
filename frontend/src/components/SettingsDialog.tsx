@@ -324,7 +324,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
               <label>Require approval</label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
                 <input type="checkbox" checked={settings.memoryReflectionApprovalRequired} onChange={toggleApprovalRequired} />
-                a reflection is held for explicit approve/discard (🧠 → Pending) instead of writing immediately
+                a reflection is held for explicit approve/discard (Memory → Pending) instead of writing immediately
               </label>
 
               <label>Reflection model</label>

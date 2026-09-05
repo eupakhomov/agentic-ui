@@ -1,10 +1,11 @@
 import type { SessionView, TranscriptItem } from '../store/store';
+import { Close, MinimizeToDock } from '../icons';
 
 function previewLine(item: TranscriptItem): string | null {
   switch (item.kind) {
     case 'user': return `you: ${item.text}`;
     case 'text': return item.done ? item.text : null;
-    case 'tool': return `🔧 ${item.name}`;
+    case 'tool': return `${item.name}()`;
     case 'note': return item.text;
     default: return null;
   }
@@ -39,7 +40,7 @@ export default function ExposeOverlay({
 }) {
   return (
     <div className="expose-backdrop" onClick={onClose}>
-      <button className="expose-close" onClick={onClose} title="close (Esc)">✕</button>
+      <button className="expose-close icon-btn" onClick={onClose} title="close (Esc)"><Close /></button>
       <div className="expose-grid" onClick={(e) => e.stopPropagation()}>
         {ids.map((id) => {
           const v = views[id];
@@ -54,7 +55,7 @@ export default function ExposeOverlay({
               <div className="expose-head">
                 <span className={`dot ${v?.state ?? 'CREATING'}`} title={v?.state} />
                 <span className="expose-name">{v?.name ?? id.slice(0, 8)}</span>
-                {minimized && <span className="chip" title="minimized">🗕</span>}
+                {minimized && <span className="chip" title="minimized"><MinimizeToDock /></span>}
               </div>
               <div className="chip-row" style={{ marginTop: 4 }}>
                 {v?.branch && <span className="chip">{v.branch}</span>}

@@ -179,6 +179,25 @@ function reduce(view: SessionView, e: Envelope): SessionView {
     case 'interrupt':
       t.push({ kind: 'note', level: 'info', text: 'interrupted by user' });
       break;
+    case 'reflection_proposed':
+      t.push({ kind: 'note', level: 'info', text: `reflection proposed — pending approval: ${p['episode']}` });
+      break;
+    case 'reflection_complete': {
+      const created = (p['created'] as string[]) ?? [];
+      const updated = (p['updated'] as string[]) ?? [];
+      const archived = (p['archived'] as string[]) ?? [];
+      const parts = [
+        created.length ? `${created.length} created` : null,
+        updated.length ? `${updated.length} updated` : null,
+        archived.length ? `${archived.length} archived` : null,
+      ].filter(Boolean);
+      const detail = parts.length ? ` (${parts.join(', ')})` : '';
+      t.push({ kind: 'note', level: 'info', text: `reflection applied${detail}: ${p['episode']}` });
+      break;
+    }
+    case 'reflection_discarded':
+      t.push({ kind: 'note', level: 'info', text: 'reflection discarded' });
+      break;
     case 'session_renamed':
       v.name = p['name'] as string;
       break;

@@ -5,6 +5,10 @@ import type { Envelope, PermissionMode, SessionEntity } from '../protocol';
 import { useStore } from '../store/store';
 import { notify } from '../notify';
 import { registerWidget, unregisterWidget } from '../hotkeys/widgetRegistry';
+import {
+  ChildOf, Close, ContinuedFrom, DownloadIcon, Duplicate, EcosystemContext, GitPanelIcon,
+  Interrupt, LinkedTicket, Maximize, Memory, MinimizeToDock, PullRequest, Restore, SystemSession,
+} from '../icons';
 import Transcript from './Transcript';
 import CloseDialog from './CloseDialog';
 import DuplicateDialog from './DuplicateDialog';
@@ -20,13 +24,15 @@ export const MODE_LABEL: Record<PermissionMode, string> = {
 
 const MODEL_CYCLE = ['sonnet', 'opus', 'haiku'];
 
-const PR_STATUS_ICON: Record<NonNullable<SessionEntity['prCheckStatus']>, string> = {
-  PENDING: '⏳',
-  SUCCESS: '✅',
-  FAILURE: '❌',
-  MERGED: '🟣',
-  CLOSED: '⚪',
-  ERROR: '⚠️',
+// one glyph for every PR state — the *colour* carries the status (see .chip.pr-* in
+// styles.css), instead of six differently-coloured emoji competing in the header
+const PR_STATUS_LABEL: Record<NonNullable<SessionEntity['prCheckStatus']>, string> = {
+  PENDING: 'checks running',
+  SUCCESS: 'checks passed',
+  FAILURE: 'checks failed',
+  MERGED: 'merged',
+  CLOSED: 'closed',
+  ERROR: 'check error',
 };
 
 export default function SessionWidget({
@@ -60,6 +66,7 @@ export default function SessionWidget({
   const [duplicating, setDuplicating] = useState(false);
   const [showGit, setShowGit] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [reflecting, setReflecting] = useState(false);
   const wsRef = useRef<WsSession | null>(null);
   const nameRef = useRef<string>('');
   const liveRef = useRef(false);
@@ -214,7 +221,9 @@ export default function SessionWidget({
         >
           {view.name ?? entity?.name ?? sessionId.slice(0, 8)}
         </span>
-        {entity?.kind === 'system' && <span className="chip" title="backend-initiated system session">🤖 system</span>}
+        {entity?.kind === 'system' && (
+          <span className="chip" title="backend-initiated system session"><SystemSession />system</span>
+        )}
         {entity?.kind !== 'system' && entity?.repoPath && (
           <span className="chip" title={entity.repoPath}>
             {entity.repoPath.split('/').pop()}
@@ -231,28 +240,32 @@ export default function SessionWidget({
             {view.model ?? entity?.model}
           </span>
         )}
-        {entity?.ecosystemPath && <span className="chip" title={`context: ${entity.ecosystemPath}`}>🌐</span>}
-        {entity?.ticketRef && <span className="chip" title="linked ticket">🎫 {entity.ticketRef}</span>}
+        {entity?.ecosystemPath && (
+          <span className="chip" title={`read-only context: ${entity.ecosystemPath}`}><EcosystemContext /></span>
+        )}
+        {entity?.ticketRef && (
+          <span className="chip" title="linked ticket"><LinkedTicket />{entity.ticketRef}</span>
+        )}
         {entity?.continuedFromId && (
           <span className="chip" title={`continued from: ${continuedFromName ?? entity.continuedFromId}`}>
-            ↩ {continuedFromName ?? 'continued'}
+            <ContinuedFrom />{continuedFromName ?? 'continued'}
           </span>
         )}
         {entity?.parentSessionId && (
           <span className="chip" title={`child of: ${parentName ?? entity.parentSessionId}`}>
-            ⑂ {parentName ?? 'parent'}
+            <ChildOf />{parentName ?? 'parent'}
           </span>
         )}
         {entity?.prUrl && (
           <a
-            className="chip clickable"
+            className={`chip clickable pr-${entity.prCheckStatus ?? 'PENDING'}`}
             href={entity.prUrl}
             target="_blank"
             rel="noreferrer"
-            title={`PR ${entity.prCheckStatus ?? 'PENDING'} — click to open on GitHub`}
+            title={`PR — ${PR_STATUS_LABEL[entity.prCheckStatus ?? 'PENDING']}; click to open on GitHub`}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            {PR_STATUS_ICON[entity.prCheckStatus ?? 'PENDING']} PR
+            <PullRequest />PR
           </a>
         )}
         <span className="spacer" />
@@ -281,52 +294,64 @@ export default function SessionWidget({
           ${view.costToDate.toFixed(3)}{budget !== null ? ` / $${budget}` : ''}
         </span>
         {state === 'CRASHED' && (
+          // a rare recovery action: keeps its label rather than becoming another glyph
           <button onMouseDown={(e) => e.stopPropagation()} onClick={() => void resume()}>Resume</button>
         )}
         <button
+          className="icon-btn"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={onToggleMaximize}
           title={isMaximized ? 'restore (f)' : 'maximize (f)'}
-        >{isMaximized ? '🗗' : '🗖'}</button>
+        >{isMaximized ? <Restore /> : <Maximize />}</button>
         <button
+          className="icon-btn"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={onToggleMinimize}
           title="minimize (x)"
-        >🗕</button>
+        ><MinimizeToDock /></button>
         {entity?.kind !== 'system' && (
           <button
+            className={`icon-btn${showGit ? ' active' : ''}`}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setShowGit((v) => !v)}
-            title="git panel"
-          >⎇</button>
+            title="git panel (g)"
+          ><GitPanelIcon /></button>
         )}
         {entity?.kind !== 'system' && (
           <button
+            className="icon-btn"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setDuplicating(true)}
             title="duplicate session"
-          >⧉</button>
+          ><Duplicate /></button>
         )}
         {entity?.kind !== 'system' && (
           <button
+            className={`icon-btn${reflecting ? ' pulse' : ''}`}
+            disabled={reflecting}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => {
               setActionError('');
-              void api.reflectSession(sessionId).catch((e) => setActionError(e instanceof ApiError ? e.message : String(e)));
+              setReflecting(true);
+              api.reflectSession(sessionId)
+                .catch((e) => setActionError(e instanceof ApiError ? e.message : String(e)))
+                .finally(() => setReflecting(false));
             }}
-            title="reflect now — distill this conversation into long-term memory"
-          >🧠</button>
+            title={reflecting ? 'reflecting — distilling this conversation (can take up to 45s)…' : 'reflect now — distill this conversation into long-term memory'}
+          ><Memory /></button>
         )}
         <button
+          className="icon-btn"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => void downloadTranscript()}
           title="download transcript (Markdown)"
-        >⬇</button>
+        ><DownloadIcon /></button>
         <button
+          className="icon-btn"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => setClosing(true)}
           title="close session"
-        >✕</button>
+        ><Close /></button>
       </div>
       <div className="widget-body">
         {view.wsStatus !== 'open' && state !== 'CLOSED' && (
@@ -350,13 +375,13 @@ export default function SessionWidget({
             <div className="queue-chips">
               {state === 'WAITING_INPUT' && (
                 <div className="t-note warn" style={{ width: '100%' }}>
-                  ⏳ waiting for your approval above — queued messages send once you respond
+                  waiting for your approval above — queued messages send once you respond
                 </div>
               )}
               {view.queued.map((q) => (
                 <span key={q.pos} className="queue-chip" title={q.text}>
                   {q.text.length > 40 ? q.text.slice(0, 40) + '…' : q.text}
-                  <button title="remove from queue" onClick={() => void api.deleteQueued(sessionId, q.pos)}>✕</button>
+                  <button className="icon-btn" title="remove from queue" onClick={() => void api.deleteQueued(sessionId, q.pos)}><Close size={12} /></button>
                 </span>
               ))}
             </div>
@@ -377,7 +402,9 @@ export default function SessionWidget({
               disabled={state === 'CRASHED' || state === 'FAILED' || state === 'CLOSED'}
             />
             {running && view.capabilities?.interrupt !== false && (
-              <button className="danger" title="interrupt" onClick={() => send({ type: 'interrupt' })}>⏹</button>
+              <button className="danger with-icon" title="interrupt" onClick={() => send({ type: 'interrupt' })}>
+                <Interrupt fill="currentColor" />
+              </button>
             )}
             <button className="primary" onClick={submit} disabled={state === 'CRASHED' || state === 'FAILED'}>Send</button>
           </div>

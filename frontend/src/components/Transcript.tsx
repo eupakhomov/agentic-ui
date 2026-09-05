@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { TranscriptItem } from '../store/store';
 import PermissionCard, { type PermissionResponse } from './PermissionCard';
+import { ToolFailed, ToolOk, ToolRunning } from '../icons';
 
 const Markdown = memo(function Markdown({ text }: { text: string }) {
   return <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>;
@@ -59,7 +60,9 @@ export default function Transcript({
                 <summary>
                   <span className="tname">{item.name}</span>{' '}
                   {summarizeInput(item.input)}
-                  {item.output === undefined ? ' ⏳' : item.isError ? ' ✗' : ' ✓'}
+                  <span className={`tool-status ${item.output === undefined ? 'run' : item.isError ? 'err' : 'ok'}`}>
+                    {item.output === undefined ? <ToolRunning size={13} /> : item.isError ? <ToolFailed size={13} /> : <ToolOk size={13} />}
+                  </span>
                 </summary>
                 <pre>
                   {JSON.stringify(item.input, null, 2)}

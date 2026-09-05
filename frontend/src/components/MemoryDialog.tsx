@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/rest';
 import type { MemoryDoc, MemoryDocDetail, MemoryProposal, MemoryProposedOp, MemorySearchHit } from '../protocol';
+import { MemoryDoc as MemoryDocIcon, MemoryDocEditable as MemoryDocEditableIcon } from '../icons';
 
 function splitTags(text: string): string[] {
   return text.split(',').map((t) => t.trim()).filter(Boolean);
@@ -180,7 +181,7 @@ export default function MemoryDialog({ onClose }: { onClose: () => void }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2 style={{ display: 'flex', alignItems: 'center' }}>
-          🧠 Memory
+          Memory
           <div className="grouping-toggle">
             <button className={view === 'browse' ? 'active' : ''} onClick={() => setView('browse')}>Browse</button>
             <button className={view === 'pending' ? 'active' : ''} onClick={() => setView('pending')}>
@@ -281,7 +282,7 @@ export default function MemoryDialog({ onClose }: { onClose: () => void }) {
                 onClick={() => h.kind === 'semantic' && openDoc(h.id)}
               >
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
-                  <span title={h.kind}>{h.kind === 'semantic' ? '📄' : '📝'}</span>
+                  <span title={h.kind}>{h.kind === 'semantic' ? <MemoryDocIcon /> : <MemoryDocEditableIcon />}</span>
                   <span className="name">{h.name ?? h.sessionName ?? '(episode)'}</span>
                   {h.scope && <span className="chip">{h.scope}</span>}
                   {h.ts && <span className="idle">{new Date(h.ts).toLocaleString()}</span>}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import type { StaleSession, TurnUsage } from '../protocol';
 import CloseDialog from './CloseDialog';
+import { Cleanup, Warning } from '../icons';
 
 type Grouping = 'day' | 'month';
 
@@ -106,7 +107,7 @@ export default function UsageDashboard({ onClose }: { onClose: () => void }) {
 
           {stale && stale.length > 0 && (
             <div className="housekeeping">
-              <div className="head">🧹 {stale.length} idle session{stale.length > 1 ? 's' : ''} still {stale.length > 1 ? 'have' : 'has'} a worktree on disk</div>
+              <div className="head with-icon"><Cleanup />{stale.length} idle session{stale.length > 1 ? 's' : ''} still {stale.length > 1 ? 'have' : 'has'} a worktree on disk</div>
               <div className="stale-list">
                 {stale.map((s) => (
                   <div className="stale-row" key={s.id}>
@@ -115,7 +116,7 @@ export default function UsageDashboard({ onClose }: { onClose: () => void }) {
                     <span className="branch">{s.branch}</span>
                     <span className="idle">idle {Math.max(0, Math.floor((Date.now() - new Date(s.updatedAt).getTime()) / 86400000))}d</span>
                     {!s.worktreeExists && <span className="note">worktree already gone</span>}
-                    {s.worktreeExists && s.dirty && <span className="note warn">⚠️ uncommitted changes</span>}
+                    {s.worktreeExists && s.dirty && <span className="note warn with-icon"><Warning />uncommitted changes</span>}
                     <button onClick={() => setClosingId(s.id)}>Close…</button>
                   </div>
                 ))}

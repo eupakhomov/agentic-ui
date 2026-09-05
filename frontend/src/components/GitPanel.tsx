@@ -2,14 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import type { PrCheckStatus } from '../protocol';
 import PrDialog from './PrDialog';
+import { AiSuggest, Close, GitPanelIcon, Refresh } from '../icons';
 
 const PR_STATUS_LABEL: Record<PrCheckStatus, string> = {
-  PENDING: '⏳ checks pending',
-  SUCCESS: '✅ checks passed',
-  FAILURE: '❌ checks failed',
-  MERGED: '🟣 merged',
-  CLOSED: '⚪ closed',
-  ERROR: '⚠️ status check failed — will retry',
+  PENDING: 'checks pending',
+  SUCCESS: 'checks passed',
+  FAILURE: 'checks failed',
+  MERGED: 'merged',
+  CLOSED: 'closed',
+  ERROR: 'status check failed — will retry',
 };
 
 interface GitStatus {
@@ -79,13 +80,13 @@ export default function GitPanel({ sessionId, onClose, prUrl, prCheckStatus, onP
     <>
     <div className="git-panel">
       <div className="git-head">
-        <strong>⎇ {status?.branch ?? '…'}</strong>
+        <strong className="with-icon"><GitPanelIcon />{status?.branch ?? '…'}</strong>
         {status?.upstream && (
           <span className="chip">{status.upstream} {status.ahead > 0 ? `↑${status.ahead}` : ''}{status.behind > 0 ? ` ↓${status.behind}` : ''}</span>
         )}
         <span className="spacer" />
-        <button onClick={() => void refresh()}>↻</button>
-        <button onClick={onClose}>✕</button>
+        <button className="icon-btn" title="refresh" onClick={() => void refresh()}><Refresh /></button>
+        <button className="icon-btn" title="close panel" onClick={onClose}><Close /></button>
       </div>
       {error && <div className="error-text">{error}</div>}
       {prUrl && (
@@ -119,7 +120,7 @@ export default function GitPanel({ sessionId, onClose, prUrl, prCheckStatus, onP
                   setCommitMessage(r.message);
                 })}
               >
-                {busy === 'suggest-commit' ? '…' : '✨'}
+                {busy === 'suggest-commit' ? '…' : <AiSuggest />}
               </button>
               <button
                 className="primary"

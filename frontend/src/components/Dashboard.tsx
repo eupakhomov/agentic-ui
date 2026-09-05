@@ -15,6 +15,10 @@ import ExposeOverlay from './ExposeOverlay';
 import { useStore } from '../store/store';
 import { notificationsEnabled, notify, toggleNotifications } from '../notify';
 import { useHotkeys } from '../hotkeys/useHotkeys';
+import {
+  Expose, Memory, New, NotifyOff, NotifyOn, Refresh, SettingsIcon, Shortcuts, SkillLibrary,
+  SystemSession, Templates, Usage,
+} from '../icons';
 
 const LAYOUT_KEY = 'claude-ui.layout';
 const MINIMIZED_KEY = 'claude-ui.minimized';
@@ -32,10 +36,11 @@ function NotifyToggle() {
   const [on, setOn] = useState(notificationsEnabled());
   return (
     <button
+      className={`icon-btn${on ? ' active' : ''}`}
       title={on ? 'desktop notifications on (finished / needs input / crashed)' : 'enable desktop notifications'}
       onClick={() => void toggleNotifications().then(setOn)}
     >
-      {on ? '🔔' : '🔕'}
+      {on ? <NotifyOn /> : <NotifyOff />}
     </button>
   );
 }
@@ -253,49 +258,50 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
       <div className="topbar">
         <h1>claude-ui</h1>
         <NotifyToggle />
-        <button onClick={() => void refresh()}>Refresh</button>
-        <button onClick={() => setShowTemplates(true)}>Templates</button>
+        <button className="icon-btn" title="Refresh session list" onClick={() => void refresh()}><Refresh /></button>
+        <button className="icon-btn" title="Templates (t)" onClick={() => setShowTemplates(true)}><Templates /></button>
         <button
+          className={`icon-btn with-badge${showSystem ? ' active' : ''}`}
           disabled={systemSessions.length === 0}
           title={
             systemSessions.length === 0
               ? 'no system session yet (created by backend tasks like ticket import)'
               : showSystem ? 'hide system session' : `show system session (${systemState!.toLowerCase()})`
           }
-          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
           onClick={() => setShowSystem((v) => {
             const next = !v;
             localStorage.setItem('claude-ui.showSystem', next ? '1' : '0');
             return next;
           })}
         >
-          🤖{systemState && <span className={`dot ${systemState}`} />}
+          <SystemSession />{systemState && <span className={`dot ${systemState}`} />}
         </button>
         <button
-          title={staleCount > 0 ? `Usage — ${staleCount} idle session${staleCount > 1 ? 's' : ''} to clean up` : 'Usage'}
-          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+          className="icon-btn with-badge"
+          title={staleCount > 0 ? `Usage (u) — ${staleCount} idle session${staleCount > 1 ? 's' : ''} to clean up` : 'Usage (u)'}
           onClick={() => setShowUsage(true)}
         >
-          📊{staleCount > 0 && <span className="count-badge">{staleCount}</span>}
+          <Usage />{staleCount > 0 && <span className="count-badge">{staleCount}</span>}
         </button>
         <button
-          title={discoveryCount > 0 ? `Skill library — ${discoveryCount} new file(s) in synced sources` : 'Skill library'}
-          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+          className="icon-btn with-badge"
+          title={discoveryCount > 0 ? `Skill library (l) — ${discoveryCount} new file(s) in synced sources` : 'Skill library (l)'}
           onClick={() => setShowLibrary(true)}
         >
-          📚{discoveryCount > 0 && <span className="count-badge">{discoveryCount}</span>}
+          <SkillLibrary />{discoveryCount > 0 && <span className="count-badge">{discoveryCount}</span>}
         </button>
         <button
-          title={pendingMemoryCount > 0 ? `Memory — ${pendingMemoryCount} reflection(s) awaiting approval` : 'Memory'}
-          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+          className="icon-btn with-badge"
+          title={pendingMemoryCount > 0 ? `Memory (m) — ${pendingMemoryCount} reflection(s) awaiting approval` : 'Memory (m)'}
           onClick={() => setShowMemory(true)}
         >
-          🧠{pendingMemoryCount > 0 && <span className="count-badge">{pendingMemoryCount}</span>}
+          <Memory />{pendingMemoryCount > 0 && <span className="count-badge">{pendingMemoryCount}</span>}
         </button>
-        <button title="keyboard shortcuts (?)" onClick={() => setShowCheatsheet(true)}>⌨</button>
-        <button title="Exposé — all sessions (e)" onClick={() => setShowExpose(true)}>▦</button>
-        <button title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
-        <button className="primary" onClick={() => setShowCreate(true)}>+ New Session</button>
+        <button className="icon-btn" title="Keyboard shortcuts (?)" onClick={() => setShowCheatsheet(true)}><Shortcuts /></button>
+        <button className="icon-btn" title="Exposé — all sessions (e)" onClick={() => setShowExpose(true)}><Expose /></button>
+        <button className="icon-btn" title="Settings (,)" onClick={() => setShowSettings(true)}><SettingsIcon /></button>
+        {/* the one deliberate accent in the topbar: the primary action keeps its label */}
+        <button className="primary with-icon" onClick={() => setShowCreate(true)}><New />New Session</button>
       </div>
       <div className="grid-wrap">
         <GridLayout

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api/rest';
+import { AiSuggest } from '../icons';
 
 async function gitApi<T>(id: string, path: string, method = 'GET', body?: unknown): Promise<T> {
   return api.raw<T>(method, `/api/sessions/${id}/git/${path}`, body);
@@ -74,7 +75,7 @@ export default function PrDialog({
         {error && <div className="error-text" style={{ marginTop: 10 }}>{error}</div>}
         <div className="actions">
           <button disabled={busy !== ''} onClick={() => void suggest()}>
-            {busy === 'suggest' ? '…' : '✨ Suggest'}
+            {busy === 'suggest' ? '…' : <><AiSuggest />Suggest</>}
           </button>
           <span className="spacer" />
           <button disabled={busy !== ''} onClick={onClose}>Cancel</button>

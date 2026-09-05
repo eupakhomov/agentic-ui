@@ -5,6 +5,7 @@ import AssetPickerDialog from './AssetPickerDialog';
 import { MODE_CYCLE, MODE_LABEL } from './SessionWidget';
 import TicketPickerDialog from './TicketPickerDialog';
 import ContinuationPickerDialog from './ContinuationPickerDialog';
+import { Close, ContinuedFrom } from '../icons';
 
 const MODE_DESCRIPTION: Record<PermissionMode, string> = {
   default: 'ask for edits & commands',
@@ -379,11 +380,11 @@ export default function CreateSessionDialog({
             </button>
             {continuedFromName && (
               <span className="chip" title="clear">
-                ↩ {continuedFromName}
+                <ContinuedFrom />{continuedFromName}
                 <button
                   style={{ marginLeft: 6, border: 'none', background: 'none', padding: 0, color: 'inherit' }}
                   onClick={() => { setContinuedFromId(null); setContinuedFromName(null); setPromptFromContinuation(false); }}
-                >✕</button>
+                ><Close /></button>
               </span>
             )}
           </div>
@@ -490,7 +491,7 @@ export default function CreateSessionDialog({
             <label>Reflection</label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
               <input type="checkbox" checked={reflectionEnabled} onChange={(e) => setReflectionEnabled(e.target.checked)} />
-              distill this session into long-term memory when it closes (or via 🧠 anytime)
+              distill this session into long-term memory when it closes (or via the widget's brain button anytime)
             </label>
 
             <label>Skills</label>

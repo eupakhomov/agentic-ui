@@ -82,10 +82,34 @@ body { margin: 0; background: var(--bg); color: var(--text); font-size: calc(14p
 button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: calc(13px * var(--font-scale)); }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { color: var(--muted); cursor: not-allowed; }
+
+/* ---------------------------------------------------------------------------
+   Icon + colour policy (IntelliJ-style monochrome line icons — see src/icons.ts)
+   - every icon is a 16px currentColor glyph, so it inherits its context's colour
+   - at rest icons are --muted; hover raises them to --text; --accent means active
+   - saturated colour encodes STATE ONLY (green ok / amber attention / red error /
+     purple plan), never decoration, and at most one per row at rest
+   --------------------------------------------------------------------------- */
+svg.lucide { display: block; flex-shrink: 0; }
+/* icon-only buttons: square, centred, no text padding */
+button.icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px; color: var(--muted); }
+button.icon-btn:hover:not(:disabled) { color: var(--text); }
+button.icon-btn:disabled { color: var(--muted); opacity: 0.5; }
+button.icon-btn.active { color: var(--accent); border-color: var(--accent); }
+/* icon buttons that carry a count badge stay auto-width */
+/* badges/state dots ride in the button's corner so every toolbar button keeps the
+   same footprint — an inline badge would make its button wider than its neighbours */
+button.icon-btn.with-badge { position: relative; overflow: visible; }
+button.icon-btn.with-badge > .count-badge,
+button.icon-btn.with-badge > .dot { position: absolute; top: -3px; right: -3px; }
+/* labelled buttons that lead with an icon (e.g. the primary "New Session") */
+button.with-icon { display: inline-flex; align-items: center; gap: 6px; }
+.chip svg.lucide { color: inherit; }
 button.primary { background: var(--accent); color: var(--on-accent); border: none; font-weight: 600; }
 button.primary:disabled { background: var(--panel2); color: var(--muted); }
 button.danger { background: var(--red); color: var(--on-accent); border: none; }
 button.danger:disabled { background: var(--panel2); color: var(--muted); }
+button.pulse:disabled { color: var(--text); animation: pulse 1.2s infinite; }
 input, select, textarea { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: calc(13px * var(--font-scale)); font-family: inherit; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
 code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(12.5px * var(--font-scale)); }
@@ -109,7 +133,12 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .dot.CLOSED, .dot.CLOSING { background: var(--muted); }
 .dot.PARKED { background: var(--muted); border: 2px solid var(--green); box-sizing: border-box; }
 @keyframes pulse { 50% { opacity: 0.35; } }
-.chip { font-size: calc(11px * var(--font-scale)); padding: 2px 7px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: calc(11px * var(--font-scale)); padding: 2px 7px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+/* PR status: one glyph, colour carries the state (replaces six coloured emoji) */
+.chip.pr-SUCCESS { color: var(--green); border-color: var(--green); }
+.chip.pr-FAILURE, .chip.pr-ERROR { color: var(--red); border-color: var(--red); }
+.chip.pr-MERGED { color: var(--purple); border-color: var(--purple); }
+.chip.pr-PENDING { color: var(--amber); border-color: var(--amber); }
 .chip.mode-acceptEdits { border-color: var(--amber); color: var(--amber); }
 .chip.mode-plan { border-color: var(--purple); color: var(--purple); }
 .chip.mode-bypassPermissions { border-color: var(--red); color: var(--red); }
@@ -129,6 +158,12 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .t-tool { border: 1px solid var(--border); border-radius: 6px; background: var(--panel2); font-size: calc(12.5px * var(--font-scale)); }
 .t-tool summary { padding: 5px 9px; cursor: pointer; color: var(--muted); user-select: none; }
 .t-tool summary .tname { color: var(--accent); font-weight: 600; }
+/* tool outcome: state colour only — muted while running, green ok, red failed */
+.tool-status { display: inline-flex; vertical-align: -2px; margin-left: 4px; }
+.tool-status.ok { color: var(--green); }
+.tool-status.err { color: var(--red); }
+.tool-status.run { color: var(--muted); animation: spin 1.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .t-tool.error summary .tname { color: var(--red); }
 .t-tool pre { margin: 0; padding: 8px; border-top: 1px solid var(--border); max-height: 260px; overflow: auto; white-space: pre-wrap; }
 .t-footer { color: var(--muted); font-size: calc(11.5px * var(--font-scale)); border-top: 1px dashed var(--border); padding-top: 4px; }
@@ -191,7 +226,7 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .drawer-content { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: calc(12px * var(--font-scale)); white-space: pre-wrap; word-break: break-word; max-height: 40vh; overflow-y: auto; }
 .error-text { color: var(--red); font-size: calc(13px * var(--font-scale)); white-space: pre-wrap; }
 
-.count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: var(--amber); color: var(--on-accent); font-size: calc(10px * var(--font-scale)); font-weight: 600; line-height: 1; }
+.count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 7px; background: var(--amber); color: var(--on-accent); font-size: calc(9px * var(--font-scale)); font-weight: 600; line-height: 1; }
 
 .housekeeping { background: var(--warn-bg); border: 1px solid var(--amber); border-radius: 8px; padding: 10px; margin-bottom: 14px; }
 .housekeeping .head { color: var(--amber); font-weight: 600; margin-bottom: 8px; }
