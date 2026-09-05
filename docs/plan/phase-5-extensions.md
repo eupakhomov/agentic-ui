@@ -14,8 +14,37 @@ Status/diff/log view for the session's worktree; commit + push from the UI.
 existing `gh` auth), with title/body prefilled from session summary.
 - **DoD:** one click yields a real PR URL shown in the widget.
 
-## 5.3 Long-term memory / RAG on pgvector
-The reason the Postgres image ships pgvector. Design sketch (to be refined in its own doc):
+## 5.3 Long-term memory / RAG on pgvector — ✅ shipped 2026-09-06 — design doc: [phase-5.3-memory-reflection.md](phase-5.3-memory-reflection.md)
+The reason the Postgres image ships pgvector. The original per-turn `memory_chunk`/
+top-k-injection sketch (kept below for history) was superseded during design by a
+layered model, then extended twice after shipping. As built: a per-session
+`reflectionEnabled` switch triggers an end-of-session retrospective (`ReflectionService`,
+one structured system-session turn) that — **by default — is held as a
+`memory_proposal` for explicit human approve/discard** (editable before approving,
+mirrors a permission prompt's "edit before allow"; an `memory.reflection-
+approval-required` setting restores straight auto-apply) rather than writing
+immediately. Approved reflections distill into layered memory: episodic
+`memory_episode` DB rows (auto-injected as a recent-activity window at session
+spawn) vs semantic memory as **Markdown files with YAML frontmatter — an
+Obsidian-compatible vault** (the DB is a rebuildable search index, not the source
+of truth; `[[wikilinks]]` build a real graph with dangling-link auto-resolution
+and backlinks), scoped ecosystem vs per-service. Retrieval is hybrid (pgvector
+cosine + Postgres FTS + `pg_trgm`, fused with RRF), exposed to every session via
+an **in-process** MCP server (`spring-ai-starter-mcp-server-webmvc`, Streamable-HTTP
+at `/api/mcp/memory` — no separate process, reuses the dashboard's own bearer
+token) instead of static top-k injection, plus a 🧠 dashboard dialog for
+cross-scope search, browsing, and a "Pending" approval queue. Journal retention
+(`memory.retention-days`, default off) prunes a CLOSED-and-reflected session's raw
+events once its episode/semantic memory is the durable record.
+- **DoD:** ask in a fresh session about a decision approved from a closed session's
+  reflection → the agent calls the memory tools (visible in its transcript) and
+  answers correctly; UI search over past memory returns ranked hits — verified live
+  (curl-driven MCP handshake + tool calls, REST doc/proposal CRUD, hybrid search,
+  wikilink graph resolution); not yet verified with a real Claude/Codex session
+  driving the tools itself rather than curl. See the design doc for full decisions,
+  DoD, and manual test script.
+
+Original pre-design sketch, kept for history:
 - `V3__memory.sql`: `CREATE EXTENSION vector;`
   `memory_chunk(id, session_id, source TEXT, content TEXT, embedding vector(1024), ts)`.
 - Ingestion: on `turn_complete`, summarize/chunk the turn (cheap model via sidecar or
@@ -25,8 +54,6 @@ The reason the Postgres image ships pgvector. Design sketch (to be refined in it
 - Also usable for cross-session search in the UI ("where did I solve X?").
 - Journal retention policy is decided here too: raw events of CLOSED sessions can be
   pruned after N days *once ingested into memory* — until this item lands, keep everything.
-- **DoD:** ask in a fresh session about a decision made in a closed session → answer
-  reflects the retrieved memory; UI search over past transcripts returns ranked hits.
 
 ## 5.4 Session config templates v2 — ✅ shipped 2026-08-30
 Templates (`session_template.config` JSONB, Phase 2) always documented `skillSources`/
@@ -101,10 +128,22 @@ repo-owned settings; needs a merge story if the repo ships its own.
 - **DoD:** a template-defined PostToolUse hook runs on edits in a fresh session
   without touching the repo's committed settings.
 
-## 5.9 Transcript export
-`GET /api/sessions/{id}/export.md` — journal rendered to Markdown (turns, tool calls
-collapsed, costs footer); download button in the widget kebab menu.
-- **DoD:** exported file renders correctly in a Markdown viewer and matches the transcript.
+## 5.9 Transcript export — ✅ shipped 2026-09-06
+`GET /api/sessions/{id}/export.md` — journal rendered to Markdown (user/assistant
+turns with timestamps, tool calls collapsed to name + one-line args, errors/denials,
+reflection events, a trailing cost+model footer), `text/markdown` with a
+`Content-Disposition` filename. No kebab menu exists in this UI (actions are inline
+icon buttons in the widget header, same as git/duplicate/reflect), so the download
+lives there instead: a ⬇ button that fetches the export (bearer-token auth can't
+ride a plain `<a href>`, so the frontend fetches it itself and triggers the save via
+a `Blob` + temporary anchor) — works for any session, including system ones.
+`TranscriptDigest` (`de.pamir.claude.ui.journal`) does the rendering; it already
+existed as 5.3's reflection-prompt digest, generalized here into a shared capped
+digest (`render`, for the LLM prompt) vs. uncapped Markdown (`renderMarkdown`, for
+this export) pair over the same per-event-type logic.
+- **DoD:** exported file renders correctly in a Markdown viewer and matches the
+  transcript — verified against a real session's journal (multi-turn, tool calls,
+  an error, and reflection events all rendered correctly, cost footer accurate).
 
 ## 5.10 Turn-level checkpoints & rewind
 Auto-commit the worktree after each `turn_complete` onto a session ref

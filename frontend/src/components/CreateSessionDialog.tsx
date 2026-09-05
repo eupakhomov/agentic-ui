@@ -42,6 +42,7 @@ export default function CreateSessionDialog({
   const [effort, setEffort] = useState('');
   const [instructions, setInstructions] = useState('');
   const [ecosystemPath, setEcosystemPath] = useState('');
+  const [reflectionEnabled, setReflectionEnabled] = useState(false);
   const [selectedSkillAssets, setSelectedSkillAssets] = useState<Map<string, LibraryAsset>>(new Map());
   const [selectedAgentAssets, setSelectedAgentAssets] = useState<Map<string, LibraryAsset>>(new Map());
   const [extraSkill, setExtraSkill] = useState('');
@@ -75,7 +76,11 @@ export default function CreateSessionDialog({
     }).catch(() => setServicesInfo(null));
     api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
-    api.getSettings().then((s) => { setSettings(s); setProvider(s.defaultProvider); }).catch(() => setSettings(null));
+    api.getSettings().then((s) => {
+      setSettings(s);
+      setProvider(s.defaultProvider);
+      setReflectionEnabled(s.memoryReflectionDefault);
+    }).catch(() => setSettings(null));
     api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
   }, []);
 
@@ -210,6 +215,7 @@ export default function CreateSessionDialog({
       if (effort) overrides['effort'] = effort;
       if (instructions.trim()) overrides['instructions'] = instructions.trim();
       overrides['ecosystemPath'] = ecosystemPath.trim() || null;
+      overrides['reflectionEnabled'] = reflectionEnabled;
       if (promptFromTicket && resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
       const sniffSource = (raw: string) =>
         raw.startsWith('http') || raw.endsWith('.git') ? { type: 'repo', ref: raw } : { type: 'dir', ref: raw };
@@ -401,6 +407,12 @@ export default function CreateSessionDialog({
               placeholder="read-only context folder; empty = no wider context"
               title="parent folder attached read-only so Claude can read sibling services"
             />
+
+            <label>Reflection</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+              <input type="checkbox" checked={reflectionEnabled} onChange={(e) => setReflectionEnabled(e.target.checked)} />
+              distill this session into long-term memory when it closes (or via 🧠 anytime)
+            </label>
 
             <label>Skills</label>
             <AttachedAssetsRow

@@ -99,6 +99,19 @@ public class EventJournal {
 				.params(sessionId, beforeSeq).update();
 	}
 
+	/**
+	 * Deletes every journal row for a session (memory retention pruning — see
+	 * docs/plan/phase-5.3-memory-reflection.md decision 8: once a session's reflection has
+	 * distilled it into durable memory, the raw transcript is disposable). The session row
+	 * itself is untouched.
+	 */
+	public int pruneAll(UUID sessionId) {
+		flush(sessionId);
+		int deleted = jdbc.sql("DELETE FROM session_event WHERE session_id = ?").params(sessionId).update();
+		sessions.remove(sessionId);
+		return deleted;
+	}
+
 	/** Defense in depth: no single journal row grows beyond the cap. */
 	private JsonNode cap(JsonNode payload) {
 		String serialized = write(payload);

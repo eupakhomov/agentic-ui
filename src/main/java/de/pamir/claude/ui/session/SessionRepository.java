@@ -36,16 +36,16 @@ public class SessionRepository {
 							context_dirs, branch, base_branch, worktree_path, model, permission_mode,
 							allowed_tools, disallowed_tools, mcp_config, env_vars, skill_sources, agent_sources,
 							instructions, thinking, effort, max_turns, fallback_model, cost_budget_usd,
-							kickoff_prompt, state, kind, ticket_ref)
+							kickoff_prompt, state, kind, ticket_ref, reflection_enabled)
 						VALUES (?, ?, ?, ?::jsonb, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb,
-							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(s.id(), s.name(), s.provider(), json(s.providerConfig()), s.repoPath(), s.ecosystemPath(),
 						json(s.contextDirs()), s.branch(), s.baseBranch(), s.worktreePath(), s.model(),
 						s.permissionMode(), json(s.allowedTools()), json(s.disallowedTools()), json(s.mcpConfig()),
 						json(s.envVars()), json(s.skillSources()), json(s.agentSources()), s.instructions(),
 						s.thinking(), s.effort(), s.maxTurns(), s.fallbackModel(), s.costBudgetUsd(),
-						s.kickoffPrompt(), s.state().name(), s.kind(), s.ticketRef())
+						s.kickoffPrompt(), s.state().name(), s.kind(), s.ticketRef(), s.reflectionEnabled())
 				.update();
 	}
 
@@ -106,6 +106,24 @@ public class SessionRepository {
 	public void updateCostBudget(UUID id, BigDecimal budget) {
 		jdbc.sql("UPDATE session SET cost_budget_usd = ?, updated_at = now() WHERE id = ?")
 				.params(budget, id).update();
+	}
+
+	public void updateReflectionEnabled(UUID id, boolean enabled) {
+		jdbc.sql("UPDATE session SET reflection_enabled = ?, updated_at = now() WHERE id = ?")
+				.params(enabled, id).update();
+	}
+
+	/** Watermark set after a successful reflection so a later trigger with no new turns is a no-op. */
+	public void updateReflectedSeq(UUID id, long seq) {
+		jdbc.sql("UPDATE session SET reflected_seq = ? WHERE id = ?").params(seq, id).update();
+	}
+
+	/** Sessions eligible for journal pruning: CLOSED, reflected, and reflected before the cutoff. */
+	public List<SessionEntity> findPrunableClosed(Instant cutoff) {
+		return jdbc.sql("SELECT * FROM session WHERE state = 'CLOSED' AND reflected_seq IS NOT NULL "
+						+ "AND updated_at <= ? ORDER BY updated_at")
+				.params(java.sql.Timestamp.from(cutoff))
+				.query(rowMapper).list();
 	}
 
 	/** Called right after a PR is created; seeds the polling loop with a PENDING check. */
@@ -240,6 +258,8 @@ public class SessionRepository {
 				rs.getString("pr_head_sha"),
 				rs.getString("pr_check_status"),
 				rs.getTimestamp("pr_checked_at") == null ? null : rs.getTimestamp("pr_checked_at").toInstant(),
+				rs.getBoolean("reflection_enabled"),
+				(Long) rs.getObject("reflected_seq"),
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("updated_at").toInstant());
 	}

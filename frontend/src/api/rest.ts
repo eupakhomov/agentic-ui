@@ -1,4 +1,4 @@
-import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, ProviderView, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
+import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, ProviderView, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -16,6 +16,18 @@ export class ApiError extends Error {
   constructor(public status: number, message: string, public body: Record<string, unknown> | null) {
     super(message);
   }
+}
+
+/** For non-JSON responses (e.g. the transcript export's text/markdown) — request() always JSON-parses. */
+async function requestText(path: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (authToken) headers['authorization'] = `Bearer ${authToken}`;
+  const res = await fetch(path, { headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new ApiError(res.status, text || res.statusText, null);
+  }
+  return res.text();
 }
 
 async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -58,8 +70,10 @@ export const api = {
   closeSession: (id: string, dirty: string, commitMessage?: string) =>
     request<null>('DELETE', `/api/sessions/${id}?dirty=${dirty}${commitMessage ? `&commitMessage=${encodeURIComponent(commitMessage)}` : ''}`),
   deleteQueued: (id: string, pos: number) => request<null>('DELETE', `/api/sessions/${id}/queue/${pos}`),
-  patchSession: (id: string, body: { costBudgetUsd?: number; name?: string }) =>
+  patchSession: (id: string, body: { costBudgetUsd?: number; name?: string; reflectionEnabled?: boolean }) =>
     request<SessionEntity>('PATCH', `/api/sessions/${id}`, body),
+  reflectSession: (id: string) => request<null>('POST', `/api/sessions/${id}/reflect`),
+  exportTranscript: (id: string) => requestText(`/api/sessions/${id}/export.md`),
   services: () => request<ServicesResponse>('GET', '/api/repo/services'),
   branches: (repo?: string) =>
     request<string[]>('GET', `/api/repo/branches${repo ? `?repo=${encodeURIComponent(repo)}` : ''}`),
@@ -77,7 +91,9 @@ export const api = {
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
     | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
     | 'libraryVectorize' | 'librarySyncEnabled' | 'librarySyncIntervalMinutes'
-    | 'defaultProvider' | 'codexPricing'>>) =>
+    | 'defaultProvider' | 'codexPricing' | 'memoryRoot' | 'memoryEnabled' | 'memoryReflectionDefault'
+    | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
+    | 'memoryReflectionApprovalRequired'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
   listProviders: () => request<ProviderView[]>('GET', '/api/providers'),
   libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>
@@ -113,4 +129,41 @@ export const api = {
     request<LibrarySource>('POST', `/api/library/sources/${id}/discoveries/dismiss`, paths ? { paths } : {}),
   usage: (months = 6) => request<TurnUsage[]>('GET', `/api/usage?months=${months}`),
   staleSessions: () => request<StaleSession[]>('GET', '/api/usage/stale-sessions'),
+  memorySearch: (q: string, opts?: { kind?: 'semantic' | 'episodic' | 'all'; servicePath?: string; tags?: string[]; limit?: number }) => {
+    const params = new URLSearchParams({ q });
+    if (opts?.kind) params.set('kind', opts.kind);
+    if (opts?.servicePath) params.set('servicePath', opts.servicePath);
+    if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+    for (const t of opts?.tags ?? []) params.append('tags', t);
+    return request<MemorySearchHit[]>('GET', `/api/memory/search?${params.toString()}`);
+  },
+  memoryDocs: (filters?: { scope?: string; servicePath?: string; status?: string; q?: string; limit?: number; offset?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.scope) params.set('scope', filters.scope);
+    if (filters?.servicePath) params.set('servicePath', filters.servicePath);
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.q) params.set('q', filters.q);
+    if (filters?.limit !== undefined) params.set('limit', String(filters.limit));
+    if (filters?.offset !== undefined) params.set('offset', String(filters.offset));
+    const qs = params.toString();
+    return request<MemoryDoc[]>('GET', `/api/memory/docs${qs ? `?${qs}` : ''}`);
+  },
+  memoryDoc: (id: string, page = 1) => request<MemoryDocDetail>('GET', `/api/memory/docs/${id}?page=${page}`),
+  memoryCreateDoc: (body: { scope: string; servicePath?: string; name: string; description: string; tags: string[]; content: string }) =>
+    request<MemoryDoc>('POST', '/api/memory/docs', body),
+  memoryUpdateDoc: (id: string, patch: { description?: string; tags?: string[]; content?: string }) =>
+    request<MemoryDoc>('PUT', `/api/memory/docs/${id}`, patch),
+  memoryArchiveDoc: (id: string) => request<null>('DELETE', `/api/memory/docs/${id}`),
+  memoryRestoreDoc: (id: string) => request<MemoryDoc>('POST', `/api/memory/docs/${id}/restore`),
+  memoryProposals: (status: 'PENDING' | 'APPROVED' | 'DISCARDED' = 'PENDING') =>
+    request<MemoryProposal[]>('GET', `/api/memory/proposals?status=${status}`),
+  memoryApproveProposal: (id: string, edited?: { episode?: string; ops?: MemoryProposedOp[] }) =>
+    request<null>('POST', `/api/memory/proposals/${id}/approve`, edited ?? {}),
+  memoryDiscardProposal: (id: string) => request<null>('POST', `/api/memory/proposals/${id}/discard`),
+  memoryEpisodes: (servicePath: string, limit?: number, offset?: number) => {
+    const params = new URLSearchParams({ servicePath });
+    if (limit !== undefined) params.set('limit', String(limit));
+    if (offset !== undefined) params.set('offset', String(offset));
+    return request<MemoryEpisode[]>('GET', `/api/memory/episodes?${params.toString()}`);
+  },
 };

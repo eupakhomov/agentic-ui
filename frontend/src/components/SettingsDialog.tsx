@@ -16,6 +16,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [syncIntervalDraft, setSyncIntervalDraft] = useState('');
   const [codexPricingDraft, setCodexPricingDraft] = useState('');
   const [codexPricingError, setCodexPricingError] = useState('');
+  const [memoryRootDraft, setMemoryRootDraft] = useState('');
+  const [memorySyncIntervalDraft, setMemorySyncIntervalDraft] = useState('');
+  const [memoryRetentionDraft, setMemoryRetentionDraft] = useState('');
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -27,6 +30,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setAgentsRootDraft(s.libraryAgentsRoot);
       setSyncIntervalDraft(String(s.librarySyncIntervalMinutes));
       setCodexPricingDraft(s.codexPricing);
+      setMemoryRootDraft(s.memoryRoot);
+      setMemorySyncIntervalDraft(String(s.memorySyncIntervalMinutes));
+      setMemoryRetentionDraft(String(s.memoryRetentionDays));
     }).catch(() => setSettings(null));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
@@ -118,6 +124,60 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     const next = { ...settings, librarySyncEnabled: !settings.librarySyncEnabled };
     setSettings(next);
     void api.updateSettings({ librarySyncEnabled: next.librarySyncEnabled }).catch(() => setSettings(settings));
+  };
+
+  const toggleMemoryEnabled = () => {
+    if (!settings) return;
+    const next = { ...settings, memoryEnabled: !settings.memoryEnabled };
+    setSettings(next);
+    void api.updateSettings({ memoryEnabled: next.memoryEnabled }).catch(() => setSettings(settings));
+  };
+
+  const toggleReflectionDefault = () => {
+    if (!settings) return;
+    const next = { ...settings, memoryReflectionDefault: !settings.memoryReflectionDefault };
+    setSettings(next);
+    void api.updateSettings({ memoryReflectionDefault: next.memoryReflectionDefault }).catch(() => setSettings(settings));
+  };
+
+  const toggleApprovalRequired = () => {
+    if (!settings) return;
+    const next = { ...settings, memoryReflectionApprovalRequired: !settings.memoryReflectionApprovalRequired };
+    setSettings(next);
+    void api.updateSettings({ memoryReflectionApprovalRequired: next.memoryReflectionApprovalRequired }).catch(() => setSettings(settings));
+  };
+
+  const saveMemoryRoot = () => {
+    if (!settings || memoryRootDraft === settings.memoryRoot) return;
+    void api.updateSettings({ memoryRoot: memoryRootDraft })
+      .then((s) => { setSettings(s); setMemoryRootDraft(s.memoryRoot); })
+      .catch(() => setMemoryRootDraft(settings.memoryRoot));
+  };
+
+  const saveReflectionModel = (model: string) => {
+    if (!settings) return;
+    const previous = settings.memoryReflectionModel;
+    setSettings({ ...settings, memoryReflectionModel: model });
+    void api.updateSettings({ memoryReflectionModel: model })
+      .catch(() => setSettings({ ...settings, memoryReflectionModel: previous }));
+  };
+
+  const saveMemorySyncInterval = () => {
+    if (!settings) return;
+    const minutes = Number(memorySyncIntervalDraft);
+    if (!Number.isFinite(minutes) || minutes === settings.memorySyncIntervalMinutes) return;
+    void api.updateSettings({ memorySyncIntervalMinutes: minutes })
+      .then((s) => { setSettings(s); setMemorySyncIntervalDraft(String(s.memorySyncIntervalMinutes)); })
+      .catch(() => setMemorySyncIntervalDraft(String(settings.memorySyncIntervalMinutes)));
+  };
+
+  const saveMemoryRetention = () => {
+    if (!settings) return;
+    const days = Number(memoryRetentionDraft);
+    if (!Number.isFinite(days) || days === settings.memoryRetentionDays) return;
+    void api.updateSettings({ memoryRetentionDays: days })
+      .then((s) => { setSettings(s); setMemoryRetentionDraft(String(s.memoryRetentionDays)); })
+      .catch(() => setMemoryRetentionDraft(String(settings.memoryRetentionDays)));
   };
 
   return (
@@ -244,6 +304,69 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                   onBlur={saveSyncInterval}
                 />
                 minutes (minimum 5)
+              </span>
+            </div>
+
+            <h3 style={{ margin: '18px 0 10px' }}>Memory</h3>
+            <div className="form-grid">
+              <label>Enabled</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input type="checkbox" checked={settings.memoryEnabled} onChange={toggleMemoryEnabled} />
+                inject the memory tools + recent-activity window into every session
+              </label>
+
+              <label>Reflect by default</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input type="checkbox" checked={settings.memoryReflectionDefault} onChange={toggleReflectionDefault} />
+                new sessions start with reflection enabled (always overridable per session)
+              </label>
+
+              <label>Require approval</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input type="checkbox" checked={settings.memoryReflectionApprovalRequired} onChange={toggleApprovalRequired} />
+                a reflection is held for explicit approve/discard (🧠 → Pending) instead of writing immediately
+              </label>
+
+              <label>Reflection model</label>
+              <select value={settings.memoryReflectionModel} onChange={(e) => saveReflectionModel(e.target.value)}>
+                <option value="haiku">haiku (default — cheap)</option>
+                <option value="sonnet">sonnet (higher quality)</option>
+              </select>
+
+              <label>Memory folder</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1' }}
+                value={memoryRootDraft}
+                onChange={(e) => setMemoryRootDraft(e.target.value)}
+                onBlur={saveMemoryRoot}
+                title="Markdown files are the source of truth — this folder is a valid Obsidian vault"
+              />
+
+              <label>Sync interval</label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="number"
+                  min={1}
+                  style={{ width: 90 }}
+                  value={memorySyncIntervalDraft}
+                  onChange={(e) => setMemorySyncIntervalDraft(e.target.value)}
+                  onBlur={saveMemorySyncInterval}
+                />
+                minutes — how often hand-edited files are picked up
+              </span>
+
+              <label>Journal retention</label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="number"
+                  min={0}
+                  style={{ width: 90 }}
+                  value={memoryRetentionDraft}
+                  onChange={(e) => setMemoryRetentionDraft(e.target.value)}
+                  onBlur={saveMemoryRetention}
+                />
+                days before a closed, reflected session's raw journal is pruned (0 = never)
               </span>
             </div>
 

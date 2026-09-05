@@ -130,6 +130,25 @@ export default function SessionWidget({
     }
   }, [sessionId]);
 
+  const downloadTranscript = useCallback(async () => {
+    setActionError('');
+    try {
+      const markdown = await api.exportTranscript(sessionId);
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const name = (view?.name ?? entity?.name ?? sessionId).replace(/[^a-zA-Z0-9._-]+/g, '-');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : String(e));
+    }
+  }, [sessionId, view?.name, entity?.name]);
+
   const state = view?.state ?? 'CREATING';
   const running = state === 'RUNNING' || state === 'WAITING_INPUT';
   const budget = view?.costBudgetUsd ?? entity?.costBudgetUsd ?? null;
@@ -229,6 +248,21 @@ export default function SessionWidget({
             title="duplicate session"
           >⧉</button>
         )}
+        {entity?.kind !== 'system' && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              setActionError('');
+              void api.reflectSession(sessionId).catch((e) => setActionError(e instanceof ApiError ? e.message : String(e)));
+            }}
+            title="reflect now — distill this conversation into long-term memory"
+          >🧠</button>
+        )}
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => void downloadTranscript()}
+          title="download transcript (Markdown)"
+        >⬇</button>
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => setClosing(true)}

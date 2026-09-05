@@ -2,10 +2,15 @@ package de.pamir.claude.ui.web;
 
 import tools.jackson.databind.JsonNode;
 import de.pamir.claude.ui.journal.EventJournal;
+import de.pamir.claude.ui.journal.TranscriptDigest;
+import de.pamir.claude.ui.memory.ReflectionService;
 import de.pamir.claude.ui.session.SessionEntity;
 import de.pamir.claude.ui.session.SessionRepository;
 import de.pamir.claude.ui.session.SessionService;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,11 +42,14 @@ public class SessionController {
 	private final SessionService service;
 	private final SessionRepository sessions;
 	private final EventJournal journal;
+	private final ReflectionService reflection;
 
-	public SessionController(SessionService service, SessionRepository sessions, EventJournal journal) {
+	public SessionController(SessionService service, SessionRepository sessions, EventJournal journal,
+							  ReflectionService reflection) {
 		this.service = service;
 		this.sessions = sessions;
 		this.journal = journal;
+		this.reflection = reflection;
 	}
 
 	@PostMapping
@@ -80,6 +88,18 @@ public class SessionController {
 		return journal.readAfter(id, afterSeq);
 	}
 
+	@GetMapping(value = "/{id}/export.md", produces = "text/markdown;charset=UTF-8")
+	public ResponseEntity<String> export(@PathVariable UUID id) {
+		SessionEntity session = sessions.get(id);
+		String markdown = TranscriptDigest.renderMarkdown(session.name(), journal.readAfter(id, 0));
+		String filename = session.name().replaceAll("[^a-zA-Z0-9._-]+", "-") + ".md";
+		return ResponseEntity.ok()
+				.contentType(MediaType.valueOf("text/markdown;charset=UTF-8"))
+				.header(HttpHeaders.CONTENT_DISPOSITION,
+						ContentDisposition.attachment().filename(filename).build().toString())
+				.body(markdown);
+	}
+
 	@PostMapping("/{id}/resume")
 	public SessionEntity resume(@PathVariable UUID id) {
 		return service.resume(id);
@@ -97,7 +117,7 @@ public class SessionController {
 		return service.duplicate(id, request.branch(), request.name(), Boolean.TRUE.equals(request.syncBaseBranch()));
 	}
 
-	public record PatchSessionRequest(BigDecimal costBudgetUsd, String name) {
+	public record PatchSessionRequest(BigDecimal costBudgetUsd, String name, Boolean reflectionEnabled) {
 	}
 
 	@org.springframework.web.bind.annotation.PatchMapping("/{id}")
@@ -108,6 +128,9 @@ public class SessionController {
 		if (request.name() != null && !request.name().isBlank()) {
 			service.rename(id, request.name().strip());
 		}
+		if (request.reflectionEnabled() != null) {
+			service.updateReflectionEnabled(id, request.reflectionEnabled());
+		}
 		return sessions.get(id);
 	}
 
@@ -116,6 +139,12 @@ public class SessionController {
 									  @RequestParam(defaultValue = "fail") String dirty,
 									  @RequestParam(required = false) String commitMessage) {
 		service.close(id, dirty, commitMessage);
+		return ResponseEntity.noContent().build();
+	}
+
+	@PostMapping("/{id}/reflect")
+	public ResponseEntity<Void> reflect(@PathVariable UUID id) {
+		reflection.reflect(id);
 		return ResponseEntity.noContent().build();
 	}
 

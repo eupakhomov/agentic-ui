@@ -216,13 +216,16 @@ the backend's environment):
 | `CLAUDE_UI_REPO` | `/mnt/d/projects/claude-ui` | Default service repo (per-session selectable in the UI) |
 | `CLAUDE_UI_WORKTREE_ROOT` | `~/claude-worktrees` | Where session worktrees live |
 | `CLAUDE_UI_SKILLS_ROOT` | `~/claude-skills` | *Default* for the managed skills root, which is now a persisted setting (`library.skills-root`) — the create-dialog picker, provisioning's repo cache, and library imports all read the setting |
-| `CLAUDE_UI_VOYAGE_API_KEY` | — | Voyage AI API key (a secret — env var only); enables the library's "vectorize" setting + semantic search (`VoyageEmbeddingClient`, voyage-3.5-lite, pgvector). Unset = those features disabled, everything else works |
+| `CLAUDE_UI_MEMORY_ROOT` | `~/claude-memory` | *Default* for the managed semantic-memory root (`memory.root` persisted setting) — an Obsidian-compatible vault of Markdown files with YAML frontmatter; the DB is a rebuildable search index over it, not the source of truth |
+| `CLAUDE_UI_VOYAGE_API_KEY` | — | Voyage AI API key (a secret — env var only); enables the library's "vectorize" setting + semantic search (`VoyageEmbeddingClient`, voyage-3.5-lite, pgvector) **and** memory's dense-search arm. Unset = those features fall back to sparse-only (Postgres FTS + trigram for memory), everything else works |
 | `CLAUDE_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku). When configured (or the OAuth toggle is on), the Linear MCP server is also layered by default into every regular session's `mcpConfig` (`SessionService.linearMcpServer()`/`withDefaultLinearMcp()`), so the agent can read/update tickets directly — unless the session's own `mcpConfig` already declares its own `linear` entry, which wins. Regular sessions go through the normal permission-approval flow for its tools (the system session pre-approves them instead, since backend-initiated turns have nobody to answer a prompt). |
 
 **Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
 `costBudgetUsd` (turns are refused once cumulative cost reaches it; in-flight turns
 finish; raise via the widget's cost chip), `maxTurns` (agentic turns per prompt),
-`thinking` budget and `effort` level.
+`thinking` budget and `effort` level, `reflectionEnabled` (opt-in end-of-session memory
+retrospective — see "Long-term memory" below; the widget's 🧠 button triggers one
+manually regardless of this flag).
 
 **Permission modes** (create dialog, or click the widget's mode chip to cycle at
 runtime): `default` (ask for edits & commands), `acceptEdits`, `plan`, and
@@ -271,6 +274,23 @@ effect on the next use with no backend restart.
   GitHub-only for now), imports skills/agents with metadata + tags (AI-fill via the
   Haiku system session), and synced sources auto-update/archive assets and surface
   new upstream files as badge + desktop notification.
+- **Long-term memory** (Settings dialog → "Memory"; feature docs:
+  `docs/plan/phase-5.3-memory-reflection.md`, `docs/ARCHITECTURE.md` §3b) —
+  `memory.root` (managed vault; defaults to `CLAUDE_UI_MEMORY_ROOT`), `memory.enabled`
+  (default on — injects the memory MCP tools + episodic window into every session),
+  `memory.reflection-default` (default off — per-session `reflectionEnabled` always
+  overrides), `memory.reflection-model` (default `haiku`), `memory.sync-interval-
+  minutes` (default 5, floor 1) for picking up hand-edited vault files
+  (`MemorySyncService`), and `memory.retention-days` (default 0 = never prune) for
+  pruning a CLOSED-and-reflected session's raw journal (`MemoryRetentionService`,
+  hourly tick — the episode/semantic memory a reflection wrote is the durable record
+  from that point on), and `memory.reflection-approval-required` (**default on**) —
+  a reflection is held as a pending proposal for explicit approve/discard (editable
+  first, like a permission prompt's "edit before allow") rather than written
+  immediately; turn off to restore straight auto-apply. The 🧠 dashboard dialog
+  searches (hybrid dense+sparse) and browses/edits/archives memory across services,
+  plus a "Pending" tab (topbar badge count) for approving/discarding proposals; the
+  widget's 🧠 button triggers an immediate reflection on that session.
 
 **Fixed internals** (code constants, for awareness): stream_delta journal batching
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100

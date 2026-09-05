@@ -8,6 +8,7 @@ import TemplateManager from './TemplateManager';
 import SettingsDialog from './SettingsDialog';
 import UsageDashboard from './UsageDashboard';
 import LibraryDialog from './LibraryDialog';
+import MemoryDialog from './MemoryDialog';
 import { useStore } from '../store/store';
 import { notificationsEnabled, notify, toggleNotifications } from '../notify';
 
@@ -48,8 +49,10 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [showSettings, setShowSettings] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showMemory, setShowMemory] = useState(false);
   const [staleCount, setStaleCount] = useState(0);
   const [discoveryCount, setDiscoveryCount] = useState(0);
+  const [pendingMemoryCount, setPendingMemoryCount] = useState(0);
   const [width, setWidth] = useState(window.innerWidth - 24);
   // seeds a just-created session's compose box (e.g. an edited-but-unsent ticket import
   // draft); read once by SessionWidget's initial state, no cleanup needed afterward
@@ -86,6 +89,23 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     const timer = setInterval(refreshDiscoveries, 60_000);
     return () => clearInterval(timer);
   }, [refreshDiscoveries]);
+
+  // pending memory-reflection proposals drive the 🧠 badge, same polling shape as 📚 above
+  const prevPending = useRef(-1);
+  const refreshPendingMemory = useCallback(() => {
+    void api.memoryProposals('PENDING').then((list) => {
+      if (prevPending.current >= 0 && list.length > prevPending.current) {
+        notify('Memory', `${list.length} reflection${list.length > 1 ? 's' : ''} awaiting approval`);
+      }
+      prevPending.current = list.length;
+      setPendingMemoryCount(list.length);
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshPendingMemory();
+    const timer = setInterval(refreshPendingMemory, 60_000);
+    return () => clearInterval(timer);
+  }, [refreshPendingMemory]);
 
   const views = useStore((s) => s.views);
   useEffect(() => {
@@ -181,6 +201,13 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         >
           📚{discoveryCount > 0 && <span className="count-badge">{discoveryCount}</span>}
         </button>
+        <button
+          title={pendingMemoryCount > 0 ? `Memory — ${pendingMemoryCount} reflection(s) awaiting approval` : 'Memory'}
+          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+          onClick={() => setShowMemory(true)}
+        >
+          🧠{pendingMemoryCount > 0 && <span className="count-badge">{pendingMemoryCount}</span>}
+        </button>
         <button title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
         <button className="primary" onClick={() => setShowCreate(true)}>+ New Session</button>
       </div>
@@ -211,6 +238,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
       {showUsage && <UsageDashboard onClose={() => { setShowUsage(false); refreshStale(); }} />}
       {showLibrary && <LibraryDialog onClose={() => { setShowLibrary(false); refreshDiscoveries(); }} />}
+      {showMemory && <MemoryDialog onClose={() => { setShowMemory(false); refreshPendingMemory(); }} />}
     </>
   );
 }

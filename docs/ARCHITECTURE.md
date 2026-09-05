@@ -62,7 +62,7 @@ authority on *why*; this file covers *what and how*.
 `session_event(session_id, seq, ts, type, payload jsonb)` ·
 `session_queue` (FIFO pending messages) · `session_template(config jsonb)`.
 Postgres runs the `pgvector/pg17` image; V7 enables the `vector` extension for the
-skill library (see below) — 5.3 will reuse it.
+skill library (see below); V9 (§3b) reuses it for long-term memory and adds `pg_trgm`.
 
 ## 3a. Skill & agent library (Phase 6)
 
@@ -93,20 +93,75 @@ Curated library on top of per-session skill sources (`de.pamir.claude.ui.library
 - **API**: `/api/library/{scan,import,ai-fill,assets,search,sources}` — see
   `LibraryController`.
 
-## 4. Backlog implementation sketches (5.3–5.13)
+## 3b. Long-term memory & reflection (Phase 5.3)
 
-### 5.3 Long-term memory / RAG (pgvector)
-- `V3__memory.sql`: `CREATE EXTENSION vector; memory_chunk(id, session_id, source,
-  content text, embedding vector(1024), ts)`, HNSW index.
-- **Ingestion**: on `turn_complete`, a background virtual thread summarizes the turn
-  (one-shot `claude -p --model haiku`, same pattern as auto-titling) and embeds it.
-  Embedding provider is the open decision: Voyage API (needs a key) vs a local
-  embedder; recommend starting with whatever key is at hand behind a tiny
-  `EmbeddingClient` interface.
-- **Retrieval**: opt-in per template — at session create, top-k chunks across past
-  sessions of the same repo are written to `<worktree>/.claude-ui-memory.md` and
-  referenced via `--append-system-prompt`. Also a `GET /api/search?q=` for the UI.
-- Journal retention (prune CLOSED sessions' events after ingestion) lands here.
+Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
+
+- **Tables (V9)**: `memory_doc` (scope/service_path, name=slug, description, `tags
+  TEXT[]`, content, content_hash, status, `vector(1024)` embedding + generated
+  `tsvector`) · `memory_link` (wikilink graph, `to_doc_id` nullable = dangling) ·
+  `memory_episode` (append-only, per-session summary, its own embedding/tsvector).
+  `session` gains `reflection_enabled`/`reflected_seq`.
+- **Semantic memory's source of truth is the filesystem, not the DB** — Markdown +
+  YAML frontmatter under a managed vault (`memory.root`), laid out
+  `ecosystem/*.md` / `services/<slug>/*.md` (`MemoryPaths` resolves the slug,
+  collision-suffixed by repo-path hash, each dir marked with a `.repo-path` file).
+  The vault is a valid **Obsidian vault** by construction: filenames are slugs,
+  `[[wikilinks]]`/`[[slug|alias]]` in the body resolve the same way Obsidian would
+  (same-scope-first, then ecosystem, then any service — `MemoryRepository.
+  resolveSlug`), dangling links auto-resolve when the target is (re)written.
+  `MemoryDocService` is the only writer; `MemorySyncService` (1-minute tick, the
+  configured interval applied as a last-run cutoff) re-indexes hand-edited files.
+- **Reflection** (`ReflectionService`): one structured system-session turn per
+  session close (async — a Spring `ReflectionRequested` event, not a direct
+  `SessionService` dependency, avoids a circular bean; the manual "Reflect now"
+  🧠 button calls it synchronously from `SessionController` instead) or manual
+  trigger. `TranscriptDigest.render()` (`de.pamir.claude.ui.journal` — provider-
+  neutral, not memory-specific, so it also backs 5.9's transcript export via the
+  sibling `renderMarkdown()`) renders the journal into a capped text digest;
+  `SessionService.runSystemTurn(prompt, model, timeout)` gained a model-override
+  overload so reflection can run on a different model than the system session's
+  default haiku. The model's JSON response (`episode` + up to 10 `semantic` ops)
+  is, **by default, held for human approval rather than applied** (`memory.
+  reflection-approval-required`, default true): a `memory_proposal` row
+  (V10, `PENDING`/`APPROVED`/`DISCARDED`, partial unique index enforcing at most
+  one `PENDING` row per session) and a `reflection_proposed` journal event
+  instead of a write. The 🧠 dialog's Pending tab approves (optionally editing
+  the episode text or any op — mirrors `permission_response`'s `updatedInput`)
+  or discards; either way `ReflectionService.applyReflection()` — the same
+  method the auto-apply path calls directly when the setting is off — is what
+  actually writes and journals `reflection_complete`; a discard journals
+  `reflection_discarded` and writes nothing, leaving `reflectedSeq` unset so a
+  later reflection isn't blocked by a discarded one.
+- **Retrieval is hybrid**: pgvector cosine + Postgres FTS (`websearch_to_tsquery`/
+  `ts_rank_cd`) + `pg_trgm` similarity (catches exact identifiers embeddings blur),
+  fused with Reciprocal Rank Fusion in one SQL query (`MemoryRepository.
+  hybridSearch`/`MemoryEpisodeRepository.hybridSearch`). Dense arm skipped when
+  Voyage is unconfigured — sparse/trigram still work.
+- **Agent-facing tools are in-process, not a spawned process**: three `@McpTool`
+  beans (`MemoryMcpTools`) served by `spring-ai-starter-mcp-server-webmvc`
+  (Streamable-HTTP) at `/api/mcp/memory`, which — because it's mounted under
+  `/api/**` — is already covered by the existing bearer-token `AuthTokenFilter`,
+  no new auth code. Every session's `mcpConfig.memory` entry is the same static
+  `{type: "http", headers: {Authorization}}` block `SessionService.
+  memoryMcpServer()` builds (same shape as `linearMcpServer()`, same reused
+  `CLAUDE_UI_TOKEN` — not a new secret). Since MCP transport context doesn't
+  cleanly expose the inbound session identity to a WebMVC tool method, each tool
+  takes an explicit `sessionId` argument instead (resolved server-side to that
+  session's `repoPath` for the scope filter); the session learns its own id from
+  the episodic-window system-prompt block `SessionService.
+  memorySystemPromptBlock()` adds at every spawn (`SidecarManager.spawn` gained
+  an `extraSystemPrompt` parameter, combined with the session's own
+  `instructions` into one `--append-system-prompt`).
+- **Human-facing**: `MemoryController` (`/api/memory/{search,docs,episodes}`) and
+  the 🧠 dashboard dialog (`MemoryDialog.tsx`) — hybrid search across scopes,
+  browse/edit/archive docs (archive keeps the file, library-style), episode list.
+- **Retention**: `MemoryRetentionService` (hourly tick) deletes the raw
+  `session_event` rows of a CLOSED session once its `reflected_seq` is set and
+  `memory.retention-days` (default 0 = never) has elapsed — the episode/semantic
+  memory a reflection wrote is the durable record from that point on.
+
+## 4. Backlog implementation sketches (5.4–5.13)
 
 ### 5.4 Templates v2
 Template config already carries every session field. Missing: per-template default
@@ -138,9 +193,14 @@ committed `settings.json`). Needs nothing from the sidecar — the SDK already l
 project settings. Guard: refuse if the repo tracks `settings.local.json`.
 
 ### 5.9 Transcript export
-Pure read: `GET /api/sessions/{id}/export.md` renders the journal (user/assistant
-turns, collapsed tool summaries, cost footer). ~100 lines in a new controller; add a
-download button next to the git one. No schema changes.
+`GET /api/sessions/{id}/export.md` (`SessionController`) renders the journal via
+`TranscriptDigest.renderMarkdown()` — user/assistant turns with timestamps,
+collapsed tool-call summaries, reflection events, a cost+model footer —
+`text/markdown` with a `Content-Disposition` filename. No schema changes. The
+dashboard has no kebab menu (actions are inline header buttons), so the download
+is a ⬇ button there instead: since a bearer-token API response can't be linked to
+directly from `<a href>`, the frontend fetches the text itself and saves it via a
+`Blob` + temporary anchor, same shape as any other authenticated action.
 
 ### 5.10 Turn checkpoints & rewind
 On `turn_complete`, if the worktree is dirty: `git add -A && git commit` onto a

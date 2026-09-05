@@ -63,6 +63,8 @@ export interface SessionEntity {
   prUrl: string | null;
   prCheckStatus: PrCheckStatus | null;
   prCheckedAt: string | null;
+  /** Opt-in end-of-session memory retrospective (phase 5.3) */
+  reflectionEnabled: boolean;
 }
 
 export type PrCheckStatus = 'PENDING' | 'SUCCESS' | 'FAILURE' | 'MERGED' | 'CLOSED' | 'ERROR';
@@ -135,6 +137,94 @@ export interface Settings {
   defaultProvider: string;
   /** JSON: {"<model>"|"default": {"inputPer1M":n, "cachedInputPer1M":n, "outputPer1M":n}} */
   codexPricing: string;
+  memoryRoot: string;
+  memoryEnabled: boolean;
+  memoryReflectionDefault: boolean;
+  memoryReflectionModel: string;
+  memorySyncIntervalMinutes: number;
+  memoryRetentionDays: number;
+  memoryReflectionApprovalRequired: boolean;
+}
+
+// --- layered memory (phase 5.3) ---
+
+export type MemoryScope = 'ecosystem' | 'service';
+export type MemoryStatus = 'ACTIVE' | 'ARCHIVED';
+
+export interface MemoryLinkRef {
+  slug: string;
+  docId: string | null;
+  name: string | null;
+  description: string | null;
+  dangling: boolean;
+}
+
+export interface MemoryDoc {
+  id: string;
+  scope: MemoryScope;
+  servicePath: string | null;
+  name: string;
+  description: string;
+  tags: string[];
+  status: MemoryStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryDocDetail {
+  doc: MemoryDoc;
+  content: string;
+  page: number;
+  totalPages: number;
+  outgoing: MemoryLinkRef[];
+  backlinks: MemoryLinkRef[];
+}
+
+export type ProposalStatus = 'PENDING' | 'APPROVED' | 'DISCARDED';
+
+export interface MemoryProposedOp {
+  op: 'create' | 'update' | 'archive';
+  scope: MemoryScope;
+  name: string;
+  description?: string;
+  tags?: string[];
+  content?: string;
+  reason?: string;
+}
+
+export interface MemoryProposal {
+  id: string;
+  sessionId: string;
+  sessionName: string;
+  servicePath: string;
+  reflectedSeq: number;
+  episode: string;
+  ops: MemoryProposedOp[];
+  status: ProposalStatus;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export interface MemoryEpisode {
+  id: string;
+  sessionId: string;
+  sessionName: string;
+  servicePath: string;
+  ts: string;
+  summary: string;
+}
+
+export interface MemorySearchHit {
+  kind: 'semantic' | 'episodic';
+  id: string;
+  name: string | null;
+  scope: MemoryScope | null;
+  servicePath: string | null;
+  description: string;
+  tags: string[];
+  sessionName: string | null;
+  ts: string | null;
+  score: number;
 }
 
 // --- skill & agent library ---

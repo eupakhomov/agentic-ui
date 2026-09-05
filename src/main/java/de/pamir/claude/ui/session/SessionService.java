@@ -10,10 +10,12 @@ import de.pamir.claude.ui.git.GitCommandRunner;
 import de.pamir.claude.ui.git.GitWorktreeService;
 import de.pamir.claude.ui.journal.EventJournal;
 import de.pamir.claude.ui.journal.SessionEventBus;
+import de.pamir.claude.ui.memory.MemoryEpisodeRepository;
 import de.pamir.claude.ui.process.SidecarManager;
 import de.pamir.claude.ui.provision.AssetProvisioningService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -49,6 +51,9 @@ public class SessionService {
 	private final EventJournal journal;
 	private final SessionEventBus bus;
 	private final ObjectMapper mapper;
+	private final org.springframework.context.ApplicationEventPublisher events;
+	private final MemoryEpisodeRepository episodes;
+	private final int serverPort;
 	private final Map<UUID, Object> locks = new ConcurrentHashMap<>();
 
 	// system session: exactly one live at a time, guarded by this lock (see "system sessions" section below)
@@ -60,7 +65,9 @@ public class SessionService {
 	public SessionService(AppProperties props, SettingsService settings, SessionRepository sessions,
 						  TemplateRepository templates, GitWorktreeService worktrees, GitCommandRunner git,
 						  AssetProvisioningService assets, SidecarManager sidecars, EventJournal journal,
-						  SessionEventBus bus, ObjectMapper mapper) {
+						  SessionEventBus bus, ObjectMapper mapper,
+						  org.springframework.context.ApplicationEventPublisher events,
+						  MemoryEpisodeRepository episodes, @Value("${server.port:8080}") int serverPort) {
 		this.props = props;
 		this.settings = settings;
 		this.sessions = sessions;
@@ -72,6 +79,9 @@ public class SessionService {
 		this.journal = journal;
 		this.bus = bus;
 		this.mapper = mapper;
+		this.events = events;
+		this.episodes = episodes;
+		this.serverPort = serverPort;
 	}
 
 	// ------------------------------------------------------------------ creation
@@ -144,8 +154,17 @@ public class SessionService {
 			}
 			ecosystemPath = null;
 			contextDirs = List.of();
+		} else if (settings.memoryEnabled()) {
+			// allowedTools/disallowedTools are additive presets (bypass or block specific tools
+			// without switching the session into allow-list-only mode) — safe to append to
+			// regardless of whether the session configured any of its own. Claude sessions
+			// pre-approve the read-only memory tools this way; Codex rejects allowedTools
+			// entirely (handled above), so its sessions go through the normal approval flow
+			// instead (decision 10).
+			allowedTools = new java.util.ArrayList<>(allowedTools);
+			allowedTools.add("mcp__memory");
 		}
-		JsonNode mcpConfig = withDefaultLinearMcp(explicitMcpConfig);
+		JsonNode mcpConfig = withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig));
 
 		UUID id = UUID.randomUUID();
 		Path worktree = Path.of(props.worktreeRoot()).resolve(id.toString());
@@ -174,7 +193,8 @@ public class SessionService {
 				fallbackModel,
 				config.hasNonNull("costBudgetUsd") ? new BigDecimal(config.get("costBudgetUsd").asText()) : null,
 				fillPlaceholders(nullableText(config, "kickoffPrompt"), kickoffValues),
-				SessionState.CREATING, "user", nullableText(config, "ticketRef"), null, null, null, null, null, null);
+				SessionState.CREATING, "user", nullableText(config, "ticketRef"), null, null, null, null,
+				config.path("reflectionEnabled").asBoolean(settings.memoryReflectionDefault()), null, null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 		for (String warning : assetWarnings) {
@@ -261,6 +281,12 @@ public class SessionService {
 		record(id, "session_renamed", mapper.createObjectNode().put("name", name).put("auto", false));
 	}
 
+	public void updateReflectionEnabled(UUID id, boolean enabled) {
+		sessions.get(id);
+		sessions.updateReflectionEnabled(id, enabled);
+		record(id, "reflection_setting_changed", mapper.createObjectNode().put("reflectionEnabled", enabled));
+	}
+
 	public void respondPermission(UUID id, JsonNode command) {
 		record(id, "permission_response", command);
 		sidecars.handle(id).send(command.toString());
@@ -327,6 +353,9 @@ public class SessionService {
 			}
 			worktrees.removeWorktree(Path.of(session.repoPath()), worktree);
 			transition(id, SessionState.CLOSED);
+			if (session.reflectionEnabled()) {
+				events.publishEvent(new de.pamir.claude.ui.memory.ReflectionRequested(id));
+			}
 		}
 	}
 
@@ -339,8 +368,23 @@ public class SessionService {
 	 * than racing to create a second system session or mixing up whose turn_complete is whose.
 	 */
 	public String runSystemTurn(String prompt, Duration timeout) {
+		return runSystemTurn(prompt, null, timeout);
+	}
+
+	/**
+	 * Same as {@link #runSystemTurn(String, Duration)}, but switches the system session to
+	 * {@code modelOverride} for this one turn and back to its normal model afterward (used by
+	 * reflection to run on a different model than the system session's default haiku — see
+	 * docs/plan/phase-5.3-memory-reflection.md decision 7). {@code null} keeps the current model.
+	 */
+	public String runSystemTurn(String prompt, String modelOverride, Duration timeout) {
 		synchronized (systemSessionLock) {
 			SessionEntity session = getOrCreateSystemSession();
+			String originalModel = session.model();
+			boolean switchModel = modelOverride != null && !modelOverride.equals(originalModel);
+			if (switchModel) {
+				setModel(session.id(), modelOverride);
+			}
 			pendingSystemText.setLength(0);
 			CompletableFuture<String> future = new CompletableFuture<>();
 			pendingSystemTurn = future;
@@ -359,6 +403,9 @@ public class SessionService {
 			} finally {
 				pendingSystemTurn = null;
 				pendingSystemTurnSessionId = null;
+				if (switchModel) {
+					setModel(session.id(), originalModel);
+				}
 			}
 		}
 	}
@@ -398,7 +445,7 @@ public class SessionService {
 				null, null, "haiku", "default",
 				allowedTools, List.of(), mcpConfig, null, mapper.createArrayNode(), mapper.createArrayNode(),
 				null, null, null, null, null, null, null,
-				SessionState.CREATING, "system", null, null, null, null, null, null, null);
+				SessionState.CREATING, "system", null, null, null, null, null, false, null, null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 		try {
@@ -454,6 +501,66 @@ public class SessionService {
 		merged.setAll(existing);
 		merged.setAll(linear);
 		return merged;
+	}
+
+	/**
+	 * The memory MCP server block ({"memory": {...}}), or null if memory is disabled in Settings.
+	 * Same shape as {@link #linearMcpServer()} — an in-process Spring AI MCP server, not a
+	 * spawned child (docs/plan/phase-5.3-memory-reflection.md decision 12a) — pointed at
+	 * ourselves and authenticated with the same dashboard bearer token (decision 11).
+	 */
+	private ObjectNode memoryMcpServer() {
+		if (!settings.memoryEnabled()) {
+			return null;
+		}
+		ObjectNode servers = mapper.createObjectNode();
+		ObjectNode memory = servers.putObject("memory");
+		memory.put("type", "http").put("url", "http://127.0.0.1:" + serverPort + "/api/mcp/memory");
+		if (props.authToken() != null && !props.authToken().isBlank()) {
+			memory.putObject("headers").put("Authorization", "Bearer " + props.authToken());
+		}
+		return servers;
+	}
+
+	/** Layers the memory MCP server into a session's mcpConfig, same merge rule as {@link #withDefaultLinearMcp}. */
+	private JsonNode withDefaultMemoryMcp(JsonNode configured) {
+		ObjectNode memory = memoryMcpServer();
+		if (memory == null) {
+			return configured;
+		}
+		if (configured == null || configured.isNull()) {
+			return memory;
+		}
+		if (!(configured instanceof ObjectNode existing) || existing.has("memory")) {
+			return configured;
+		}
+		ObjectNode merged = mapper.createObjectNode();
+		merged.setAll(existing);
+		merged.setAll(memory);
+		return merged;
+	}
+
+	/**
+	 * The episodic-window system-prompt block (docs/plan/phase-5.3-memory-reflection.md
+	 * "Automatic episodic window" / decision 12b): announces the session's own id (needed for
+	 * every memory tool call) and the last few episodes recorded for this service, if any. Null
+	 * when memory is disabled or this isn't a real-repo user session (system sessions skip it).
+	 */
+	private String memorySystemPromptBlock(SessionEntity session) {
+		if (!settings.memoryEnabled() || !"user".equals(session.kind())) {
+			return null;
+		}
+		StringBuilder sb = new StringBuilder();
+		sb.append("Long-term memory tools are available (memory_tags, memory_search, memory_read). ")
+				.append("Pass this as `sessionId` in every call: ").append(session.id());
+		var recent = episodes.recentByService(session.repoPath(), 5);
+		if (!recent.isEmpty()) {
+			sb.append("\n\nRecent activity on this service, most recent first:\n");
+			for (var ep : recent) {
+				sb.append("- ").append(ep.summary()).append('\n');
+			}
+		}
+		return sb.toString();
 	}
 
 	private static void deleteRecursively(Path dir) {
@@ -582,7 +689,7 @@ public class SessionService {
 	// ------------------------------------------------------------------ internals
 
 	private void spawn(SessionEntity session, boolean resume) {
-		sidecars.spawn(session, mcpConfigPath(session.id()), resume,
+		sidecars.spawn(session, mcpConfigPath(session.id()), resume, memorySystemPromptBlock(session),
 				event -> onSidecarEvent(session.id(), event),
 				(handle, code) -> onSidecarExit(session.id(), code, handle.stderrTail(), handle.isShutdownRequested()));
 	}
@@ -764,6 +871,7 @@ public class SessionService {
 		if (source.costBudgetUsd() != null) {
 			overrides.put("costBudgetUsd", source.costBudgetUsd().toPlainString());
 		}
+		overrides.put("reflectionEnabled", source.reflectionEnabled());
 		String sessionName = name != null && !name.isBlank() ? name : branch;
 		return create(sessionName, branch, source.baseBranch(), source.repoPath(), null, overrides, null, syncBaseBranch);
 	}

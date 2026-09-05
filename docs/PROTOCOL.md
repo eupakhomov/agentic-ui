@@ -173,7 +173,15 @@ approval round-trip. Full mapping tables and rationale:
   `pr_status_changed {url, status, previousStatus, headSha}` — emitted by the background
   PR-check poller (`PrCheckPollingService`) whenever a session's tracked PR's aggregate
   check-suite status changes; `status`/`previousStatus` are one of
-  `PENDING|SUCCESS|FAILURE|MERGED|CLOSED|ERROR`.
+  `PENDING|SUCCESS|FAILURE|MERGED|CLOSED|ERROR`. `reflection_setting_changed
+  {reflectionEnabled}`, `reflection_proposed {proposalId, episode, ops[]}` (default:
+  a reflection computes but does not apply — the proposal awaits explicit
+  approve/discard in the 🧠 dashboard dialog; `memory.reflection-approval-required`
+  turns this off), and `reflection_complete {episode, created[], updated[],
+  archived[], warnings[]}` — emitted by `ReflectionService` once a reflection is
+  actually applied (auto-apply, or an approved proposal), listing exactly what was
+  written to long-term memory. `reflection_discarded {episode}` marks a discarded
+  proposal — nothing was written. See docs/plan/phase-5.3-memory-reflection.md.
 - On connect the journal is replayed from `afterSeq`, terminated by
   `{seq, type: "replay_complete", payload:{lastSeq}}`, then live events follow —
   no gaps, no duplicates (seq strictly increases).

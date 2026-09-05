@@ -48,6 +48,10 @@ public record SessionEntity(
 		/** PENDING | SUCCESS | FAILURE | MERGED | CLOSED | ERROR; null when prUrl is null */
 		String prCheckStatus,
 		Instant prCheckedAt,
+		/** Opt-in end-of-session memory retrospective (see docs/plan/phase-5.3-memory-reflection.md) */
+		boolean reflectionEnabled,
+		/** Journal seq covered by the last reflection; null = never reflected */
+		Long reflectedSeq,
 		Instant createdAt,
 		Instant updatedAt
 ) {

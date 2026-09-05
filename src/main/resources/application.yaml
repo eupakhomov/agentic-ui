@@ -5,6 +5,16 @@ spring:
     url: jdbc:postgresql://localhost:5432/claude_ui
     username: claude_ui
     password: ${CLAUDE_UI_DB_PASSWORD:claude_ui}
+  ai:
+    mcp:
+      server:
+        name: claude-ui-memory
+        version: 1.0.0
+        protocol: STREAMABLE
+        # mounted under /api/** so the existing bearer-token AuthTokenFilter gates it —
+        # see docs/plan/phase-5.3-memory-reflection.md decision 12a
+        streamable-http:
+          mcp-endpoint: /api/mcp/memory
 
 server:
   address: 127.0.0.1   # LAN use: set a real address AND claude-ui.auth-token (enforced at startup)
@@ -23,6 +33,7 @@ claude-ui:
   repo-path: ${CLAUDE_UI_REPO:/mnt/d/projects/claude-ui}
   worktree-root: ${CLAUDE_UI_WORKTREE_ROOT:${HOME}/claude-worktrees}
   skills-root: ${CLAUDE_UI_SKILLS_ROOT:${HOME}/claude-skills}
+  memory-root: ${CLAUDE_UI_MEMORY_ROOT:${HOME}/claude-memory}
   max-sessions: ${CLAUDE_UI_MAX_SESSIONS:4}
   idle-park-minutes: ${CLAUDE_UI_IDLE_PARK_MINUTES:30}
   log-dir: ${CLAUDE_UI_LOG_DIR:logs}

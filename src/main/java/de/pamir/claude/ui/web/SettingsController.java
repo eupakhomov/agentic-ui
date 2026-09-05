@@ -17,14 +17,20 @@ public class SettingsController {
 								String ecosystemRoot, boolean prChecksEnabled, int prCheckPollIntervalSeconds,
 								String librarySkillsRoot, String libraryAgentsRoot, boolean libraryVectorize,
 								boolean librarySyncEnabled, int librarySyncIntervalMinutes, boolean voyageConfigured,
-								String defaultProvider, String codexPricing) {
+								String defaultProvider, String codexPricing,
+								String memoryRoot, boolean memoryEnabled, boolean memoryReflectionDefault,
+								String memoryReflectionModel, int memorySyncIntervalMinutes, int memoryRetentionDays,
+								boolean memoryReflectionApprovalRequired) {
 	}
 
 	public record SettingsUpdate(Boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot,
 								  Boolean prChecksEnabled, Integer prCheckPollIntervalSeconds,
 								  String librarySkillsRoot, String libraryAgentsRoot, Boolean libraryVectorize,
 								  Boolean librarySyncEnabled, Integer librarySyncIntervalMinutes,
-								  String defaultProvider, String codexPricing) {
+								  String defaultProvider, String codexPricing,
+								  String memoryRoot, Boolean memoryEnabled, Boolean memoryReflectionDefault,
+								  String memoryReflectionModel, Integer memorySyncIntervalMinutes,
+								  Integer memoryRetentionDays, Boolean memoryReflectionApprovalRequired) {
 	}
 
 	private final SettingsService settings;
@@ -78,6 +84,27 @@ public class SettingsController {
 		if (update.codexPricing() != null) {
 			settings.setCodexPricing(update.codexPricing());
 		}
+		if (update.memoryRoot() != null) {
+			settings.setMemoryRoot(update.memoryRoot());
+		}
+		if (update.memoryEnabled() != null) {
+			settings.setMemoryEnabled(update.memoryEnabled());
+		}
+		if (update.memoryReflectionDefault() != null) {
+			settings.setMemoryReflectionDefault(update.memoryReflectionDefault());
+		}
+		if (update.memoryReflectionModel() != null) {
+			settings.setMemoryReflectionModel(update.memoryReflectionModel());
+		}
+		if (update.memorySyncIntervalMinutes() != null) {
+			settings.setMemorySyncIntervalMinutes(update.memorySyncIntervalMinutes());
+		}
+		if (update.memoryRetentionDays() != null) {
+			settings.setMemoryRetentionDays(update.memoryRetentionDays());
+		}
+		if (update.memoryReflectionApprovalRequired() != null) {
+			settings.setMemoryReflectionApprovalRequired(update.memoryReflectionApprovalRequired());
+		}
 		return view();
 	}
 
@@ -88,6 +115,9 @@ public class SettingsController {
 				settings.ecosystemRoot(), settings.prChecksEnabled(), settings.prCheckPollIntervalSeconds(),
 				settings.librarySkillsRoot(), settings.libraryAgentsRoot(), settings.libraryVectorize(),
 				settings.librarySyncEnabled(), settings.librarySyncIntervalMinutes(), voyageConfigured,
-				settings.defaultProvider(), settings.codexPricing());
+				settings.defaultProvider(), settings.codexPricing(),
+				settings.memoryRoot(), settings.memoryEnabled(), settings.memoryReflectionDefault(),
+				settings.memoryReflectionModel(), settings.memorySyncIntervalMinutes(), settings.memoryRetentionDays(),
+				settings.memoryReflectionApprovalRequired());
 	}
 }

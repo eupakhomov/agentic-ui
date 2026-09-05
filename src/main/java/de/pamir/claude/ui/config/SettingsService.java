@@ -34,6 +34,15 @@ public class SettingsService {
 	 */
 	private static final String DEFAULT_CODEX_PRICING =
 			"{\"default\": {\"inputPer1M\": 2, \"cachedInputPer1M\": 0.5, \"outputPer1M\": 8}}";
+	private static final String MEMORY_ROOT_KEY = "memory.root";
+	private static final String MEMORY_ENABLED_KEY = "memory.enabled";
+	private static final String MEMORY_REFLECTION_DEFAULT_KEY = "memory.reflection-default";
+	private static final String MEMORY_REFLECTION_MODEL_KEY = "memory.reflection-model";
+	private static final String MEMORY_SYNC_INTERVAL_KEY = "memory.sync-interval-minutes";
+	private static final int DEFAULT_MEMORY_SYNC_INTERVAL_MINUTES = 5;
+	private static final int MIN_MEMORY_SYNC_INTERVAL_MINUTES = 1;
+	private static final String MEMORY_RETENTION_DAYS_KEY = "memory.retention-days";
+	private static final String MEMORY_APPROVAL_REQUIRED_KEY = "memory.reflection-approval-required";
 
 	private final SettingsRepository repo;
 	private final AppProperties props;
@@ -180,5 +189,75 @@ public class SettingsService {
 			throw new IllegalArgumentException("codexPricing must be a JSON object");
 		}
 		repo.set(CODEX_PRICING_KEY, json);
+	}
+
+	/** Managed semantic-memory root (Markdown files, source of truth — see phase-5.3 doc). */
+	public String memoryRoot() {
+		return repo.get(MEMORY_ROOT_KEY).filter(v -> !v.isBlank()).orElse(props.memoryRoot());
+	}
+
+	public void setMemoryRoot(String path) {
+		repo.set(MEMORY_ROOT_KEY, path == null ? "" : path);
+	}
+
+	/** Global on/off switch for the memory MCP server injection + episodic window. */
+	public boolean memoryEnabled() {
+		return repo.get(MEMORY_ENABLED_KEY).map(Boolean::parseBoolean).orElse(true);
+	}
+
+	public void setMemoryEnabled(boolean enabled) {
+		repo.set(MEMORY_ENABLED_KEY, Boolean.toString(enabled));
+	}
+
+	/** Default value of a new session's reflectionEnabled flag (per-session/template always wins). */
+	public boolean memoryReflectionDefault() {
+		return repo.get(MEMORY_REFLECTION_DEFAULT_KEY).map(Boolean::parseBoolean).orElse(false);
+	}
+
+	public void setMemoryReflectionDefault(boolean enabled) {
+		repo.set(MEMORY_REFLECTION_DEFAULT_KEY, Boolean.toString(enabled));
+	}
+
+	/** Model the reflection system turn runs on; raise to sonnet if haiku's extraction quality disappoints. */
+	public String memoryReflectionModel() {
+		return repo.get(MEMORY_REFLECTION_MODEL_KEY).filter(v -> !v.isBlank()).orElse("haiku");
+	}
+
+	public void setMemoryReflectionModel(String model) {
+		repo.set(MEMORY_REFLECTION_MODEL_KEY, model == null || model.isBlank() ? "haiku" : model.strip());
+	}
+
+	/** How often (minutes) the memory root is re-scanned for human edits; clamped to a sane floor. */
+	public int memorySyncIntervalMinutes() {
+		return repo.get(MEMORY_SYNC_INTERVAL_KEY).map(Integer::parseInt)
+				.map(v -> Math.max(v, MIN_MEMORY_SYNC_INTERVAL_MINUTES))
+				.orElse(DEFAULT_MEMORY_SYNC_INTERVAL_MINUTES);
+	}
+
+	public void setMemorySyncIntervalMinutes(int minutes) {
+		repo.set(MEMORY_SYNC_INTERVAL_KEY, Integer.toString(Math.max(minutes, MIN_MEMORY_SYNC_INTERVAL_MINUTES)));
+	}
+
+	/** Days a CLOSED-and-reflected session's raw journal is kept before pruning; 0 = never prune. */
+	public int memoryRetentionDays() {
+		return repo.get(MEMORY_RETENTION_DAYS_KEY).map(Integer::parseInt).map(v -> Math.max(v, 0)).orElse(0);
+	}
+
+	public void setMemoryRetentionDays(int days) {
+		repo.set(MEMORY_RETENTION_DAYS_KEY, Integer.toString(Math.max(days, 0)));
+	}
+
+	/**
+	 * When true (default), a reflection is held as a pending proposal for explicit approve/
+	 * discard instead of being applied immediately — matches this app's general "ask before
+	 * consequential actions" posture (decision 14, phase-5.3 doc). Off = the original
+	 * auto-apply behavior.
+	 */
+	public boolean memoryReflectionApprovalRequired() {
+		return repo.get(MEMORY_APPROVAL_REQUIRED_KEY).map(Boolean::parseBoolean).orElse(true);
+	}
+
+	public void setMemoryReflectionApprovalRequired(boolean required) {
+		repo.set(MEMORY_APPROVAL_REQUIRED_KEY, Boolean.toString(required));
 	}
 }

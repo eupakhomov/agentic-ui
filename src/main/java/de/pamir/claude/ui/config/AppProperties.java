@@ -11,6 +11,7 @@ public record AppProperties(
 		String repoPath,
 		String worktreeRoot,
 		String skillsRoot,
+		String memoryRoot,
 		int maxSessions,
 		String authToken,
 		/** Linear personal API key (Bearer token for https://mcp.linear.app/mcp); blank/unset = ticket import disabled */

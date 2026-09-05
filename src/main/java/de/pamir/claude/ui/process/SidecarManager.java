@@ -37,6 +37,18 @@ public class SidecarManager {
 
 	public SidecarHandle spawn(SessionEntity session, Path mcpConfigFile, boolean resume,
 							   Consumer<JsonNode> onEvent, BiConsumer<SidecarHandle, Integer> onExit) {
+		return spawn(session, mcpConfigFile, resume, null, onEvent, onExit);
+	}
+
+	/**
+	 * @param extraSystemPrompt appended alongside the session's own {@code instructions} in
+	 *                          {@code --append-system-prompt} — used for the memory episodic
+	 *                          window (docs/plan/phase-5.3-memory-reflection.md), computed fresh
+	 *                          on every spawn (including resume/wake) rather than stored, so a
+	 *                          park→wake picks up episodes reflected meanwhile for free.
+	 */
+	public SidecarHandle spawn(SessionEntity session, Path mcpConfigFile, boolean resume, String extraSystemPrompt,
+							   Consumer<JsonNode> onEvent, BiConsumer<SidecarHandle, Integer> onExit) {
 		AppProperties.Provider provider = props.providers().get(session.provider());
 		if (provider == null) {
 			throw new IllegalArgumentException("unknown provider: " + session.provider());
@@ -48,7 +60,7 @@ public class SidecarManager {
 					? Path.of(part).toAbsolutePath().normalize().toString()
 					: part);
 		}
-		command.addAll(buildArgs(session, mcpConfigFile, resume));
+		command.addAll(buildArgs(session, mcpConfigFile, resume, extraSystemPrompt));
 
 		ProcessBuilder builder = new ProcessBuilder(command).directory(Path.of(session.worktreePath()).toFile());
 		if (session.envVars() != null && session.envVars().isObject()) {
@@ -119,7 +131,7 @@ public class SidecarManager {
 		handles.keySet().forEach(this::terminate);
 	}
 
-	private List<String> buildArgs(SessionEntity s, Path mcpConfigFile, boolean resume) {
+	private List<String> buildArgs(SessionEntity s, Path mcpConfigFile, boolean resume, String extraSystemPrompt) {
 		// The codex adapter (sidecar-codex) only understands a subset of these flags — see
 		// docs/plan/phase-5.13-codex-provider.md "Also out of scope". SessionService.create()
 		// already rejects a codex session that explicitly set one of the unsupported fields,
@@ -150,8 +162,10 @@ public class SidecarManager {
 		if (mcpConfigFile != null && Files.exists(mcpConfigFile)) {
 			args.addAll(List.of("--mcp-config", mcpConfigFile.toString()));
 		}
-		if (s.instructions() != null && !s.instructions().isBlank()) {
-			args.addAll(List.of("--append-system-prompt", s.instructions()));
+		String systemPrompt = java.util.stream.Stream.of(s.instructions(), extraSystemPrompt)
+				.filter(p -> p != null && !p.isBlank()).collect(java.util.stream.Collectors.joining("\n\n"));
+		if (!systemPrompt.isBlank()) {
+			args.addAll(List.of("--append-system-prompt", systemPrompt));
 		}
 		if (!codex) {
 			if (s.ecosystemPath() != null && !s.ecosystemPath().isBlank()) {
