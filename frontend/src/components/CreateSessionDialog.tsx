@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type ProviderView, type ServicesResponse, type Settings, type Template, type TicketSummary } from '../protocol';
+import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type ProviderView, type ServicesResponse, type SessionSummary, type Settings, type Template, type TicketSummary } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import { MODE_CYCLE, MODE_LABEL } from './SessionWidget';
 import TicketPickerDialog from './TicketPickerDialog';
+import ContinuationPickerDialog from './ContinuationPickerDialog';
 
 const MODE_DESCRIPTION: Record<PermissionMode, string> = {
   default: 'ask for edits & commands',
@@ -30,6 +31,7 @@ export default function CreateSessionDialog({
   const [name, setName] = useState('');
   const [repoPath, setRepoPath] = useState('');
   const [branch, setBranch] = useState('');
+  const branchRef = useRef<HTMLInputElement>(null);
   const [baseBranch, setBaseBranch] = useState('main');
   const [syncBaseBranch, setSyncBaseBranch] = useState(true);
   const [templateId, setTemplateId] = useState('');
@@ -67,6 +69,26 @@ export default function CreateSessionDialog({
   const [pickerBusy, setPickerBusy] = useState(false);
   const [pickerError, setPickerError] = useState('');
   const pickerAbortRef = useRef<AbortController | null>(null);
+
+  // 7.3 continuation: like ticket import, the fetched brief lands unsent in the compose box
+  // (draft, never auto-fired) — see docs/plan/phase-7-ux-and-orchestration.md 7.3
+  const [promptFromContinuation, setPromptFromContinuation] = useState(false);
+  const [continuedFromId, setContinuedFromId] = useState<string | null>(null);
+  const [continuedFromName, setContinuedFromName] = useState<string | null>(null);
+  const [fullTranscript, setFullTranscript] = useState(false);
+  const [showContinuationPicker, setShowContinuationPicker] = useState(false);
+  const [continuationSessions, setContinuationSessions] = useState<SessionSummary[] | null>(null);
+  const [continuationBusy, setContinuationBusy] = useState(false);
+  const [continuationError, setContinuationError] = useState('');
+  const [applyingContinuation, setApplyingContinuation] = useState(false);
+
+  // deferred (not a plain `autoFocus` prop) — this dialog can be opened by the "n" hotkey,
+  // and focusing synchronously during React's commit races a same-tick trailing key event
+  // that can otherwise land the keystroke straight into this field
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => branchRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   useEffect(() => {
     api.services().then((info) => {
@@ -178,6 +200,44 @@ export default function CreateSessionDialog({
     void importTicket(ref);
   };
 
+  const browseContinuations = async () => {
+    setContinuationError('');
+    setContinuationBusy(true);
+    setShowContinuationPicker(true);
+    try {
+      const list = await api.listSessions();
+      setContinuationSessions(list);
+    } catch (e) {
+      setContinuationError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setContinuationBusy(false);
+    }
+  };
+
+  const pickContinuation = async (source: SessionSummary) => {
+    setShowContinuationPicker(false);
+    setContinuationError('');
+    setApplyingContinuation(true);
+    try {
+      const [detail, text] = await Promise.all([
+        api.sessionDetail(source.id),
+        fullTranscript ? api.exportTranscript(source.id) : api.handoffSummary(source.id),
+      ]);
+      setRepoPath(detail.session.repoPath);
+      setProvider(detail.session.provider);
+      if (detail.session.model) setModel(detail.session.model);
+      setPermissionMode(detail.session.permissionMode);
+      setInitialPrompt(text);
+      setPromptFromContinuation(true);
+      setContinuedFromId(source.id);
+      setContinuedFromName(detail.session.name);
+    } catch (e) {
+      setContinuationError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setApplyingContinuation(false);
+    }
+  };
+
   useEffect(() => {
     if (!repoPath) return;
     api.branches(repoPath).then((list) => {
@@ -229,10 +289,11 @@ export default function CreateSessionDialog({
         ...(extraAgent.trim() ? [sniffSource(extraAgent.trim())] : []),
       ];
       if (agentSources.length > 0) overrides['agentSources'] = agentSources;
-      const draftInput = promptFromTicket ? initialPrompt.trim() : '';
-      if (promptFromTicket) {
+      const draftPromptPending = promptFromTicket || promptFromContinuation;
+      const draftInput = draftPromptPending ? initialPrompt.trim() : '';
+      if (draftPromptPending) {
         // explicit '' (not omitted) so a template's own kickoffPrompt can't leak through the
-        // config merge and auto-fire in place of the ticket text we're intentionally not sending
+        // config merge and auto-fire in place of the text we're intentionally landing as a draft
         overrides['kickoffPrompt'] = '';
       } else if (initialPrompt.trim()) {
         overrides['kickoffPrompt'] = initialPrompt.trim();
@@ -248,6 +309,7 @@ export default function CreateSessionDialog({
         overrides,
         kickoffValues,
         syncBaseBranch,
+        continuedFromId: continuedFromId || null,
       });
       onCreated(created.id, draftInput || undefined);
     } catch (e) {
@@ -277,7 +339,7 @@ export default function CreateSessionDialog({
           </label>
 
           <label>Branch</label>
-          <input value={branch} onChange={(e) => setBranch(e.target.value)} list="branches" placeholder="feat/my-feature" autoFocus />
+          <input ref={branchRef} value={branch} onChange={(e) => setBranch(e.target.value)} list="branches" placeholder="feat/my-feature" />
           <datalist id="branches">{branches.map((b) => <option key={b} value={b} />)}</datalist>
 
           {ticketImportEnabled && (
@@ -309,6 +371,23 @@ export default function CreateSessionDialog({
               {importError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{importError}</div>}
             </>
           )}
+
+          <label>Continue from…</label>
+          <div className="row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => void browseContinuations()} disabled={applyingContinuation}>
+              {applyingContinuation ? 'Fetching handoff…' : 'Browse recent sessions'}
+            </button>
+            {continuedFromName && (
+              <span className="chip" title="clear">
+                ↩ {continuedFromName}
+                <button
+                  style={{ marginLeft: 6, border: 'none', background: 'none', padding: 0, color: 'inherit' }}
+                  onClick={() => { setContinuedFromId(null); setContinuedFromName(null); setPromptFromContinuation(false); }}
+                >✕</button>
+              </span>
+            )}
+          </div>
+          {continuationError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{continuationError}</div>}
 
           <label>Initial prompt</label>
           <textarea
@@ -493,6 +572,17 @@ export default function CreateSessionDialog({
         error={pickerError}
         onPick={pickTicket}
         onClose={() => { pickerAbortRef.current?.abort('user'); setShowTicketPicker(false); }}
+      />
+    )}
+    {showContinuationPicker && (
+      <ContinuationPickerDialog
+        sessions={continuationSessions}
+        busy={continuationBusy}
+        error={continuationError}
+        fullTranscript={fullTranscript}
+        onToggleFullTranscript={setFullTranscript}
+        onPick={(s) => void pickContinuation(s)}
+        onClose={() => setShowContinuationPicker(false)}
       />
     )}
     {assetPickerKind && (

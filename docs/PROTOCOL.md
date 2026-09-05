@@ -182,6 +182,10 @@ approval round-trip. Full mapping tables and rationale:
   actually applied (auto-apply, or an approved proposal), listing exactly what was
   written to long-term memory. `reflection_discarded {episode}` marks a discarded
   proposal — nothing was written. See docs/plan/phase-5.3-memory-reflection.md.
+  `child_reported {childId, childName, service, summary}` — journaled on *both* the
+  child and the parent when the child calls the `report_result` MCP tool (7.4); the
+  same payload also lands as a `user_message` in the parent's queue/transcript, tagged
+  `[child report — <name> / <service>]`. See docs/plan/phase-7-ux-and-orchestration.md.
 - On connect the journal is replayed from `afterSeq`, terminated by
   `{seq, type: "replay_complete", payload:{lastSeq}}`, then live events follow —
   no gaps, no duplicates (seq strictly increases).

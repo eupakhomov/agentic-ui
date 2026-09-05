@@ -4,6 +4,7 @@ import tools.jackson.databind.JsonNode;
 import de.pamir.claude.ui.journal.EventJournal;
 import de.pamir.claude.ui.journal.TranscriptDigest;
 import de.pamir.claude.ui.memory.ReflectionService;
+import de.pamir.claude.ui.session.HandoffService;
 import de.pamir.claude.ui.session.SessionEntity;
 import de.pamir.claude.ui.session.SessionRepository;
 import de.pamir.claude.ui.session.SessionService;
@@ -32,24 +33,27 @@ public class SessionController {
 
 	public record CreateSessionRequest(String name, String branch, String baseBranch, String repoPath,
 									   UUID templateId, JsonNode overrides, Map<String, String> kickoffValues,
-									   Boolean syncBaseBranch) {
+									   Boolean syncBaseBranch, UUID continuedFromId) {
 	}
 
-	public record SessionSummary(UUID id, String name, String provider, String branch, String model,
-								 String permissionMode, String state, String kind, BigDecimal costToDate) {
+	public record SessionSummary(UUID id, String name, String provider, String repoPath, String branch, String model,
+								 String permissionMode, String state, String kind, BigDecimal costToDate,
+								 java.time.Instant updatedAt, long lastSeq) {
 	}
 
 	private final SessionService service;
 	private final SessionRepository sessions;
 	private final EventJournal journal;
 	private final ReflectionService reflection;
+	private final HandoffService handoff;
 
 	public SessionController(SessionService service, SessionRepository sessions, EventJournal journal,
-							  ReflectionService reflection) {
+							  ReflectionService reflection, HandoffService handoff) {
 		this.service = service;
 		this.sessions = sessions;
 		this.journal = journal;
 		this.reflection = reflection;
+		this.handoff = handoff;
 	}
 
 	@PostMapping
@@ -60,25 +64,33 @@ public class SessionController {
 		}
 		return service.create(request.name(), request.branch(), request.baseBranch(), request.repoPath(),
 				request.templateId(), request.overrides(), request.kickoffValues(),
-				Boolean.TRUE.equals(request.syncBaseBranch()));
+				Boolean.TRUE.equals(request.syncBaseBranch()), request.continuedFromId());
 	}
 
 	@GetMapping
 	public List<SessionSummary> list() {
 		return sessions.findAll().stream()
-				.map(s -> new SessionSummary(s.id(), s.name(), s.provider(), s.branch(), s.model(),
-						s.permissionMode(), s.state().name(), s.kind(), journal.costToDate(s.id())))
+				.map(s -> new SessionSummary(s.id(), s.name(), s.provider(), s.repoPath(), s.branch(), s.model(),
+						s.permissionMode(), s.state().name(), s.kind(), journal.costToDate(s.id()), s.updatedAt(),
+						journal.lastSeq(s.id())))
 				.toList();
 	}
 
 	@GetMapping("/{id}")
 	public Map<String, Object> detail(@PathVariable UUID id) {
 		SessionEntity session = sessions.get(id);
-		return Map.of(
-				"session", session,
-				"queued", sessions.queued(id),
-				"lastSeq", journal.lastSeq(id),
-				"costToDate", journal.costToDate(id));
+		Map<String, Object> result = new java.util.HashMap<>();
+		result.put("session", session);
+		result.put("queued", sessions.queued(id));
+		result.put("lastSeq", journal.lastSeq(id));
+		result.put("costToDate", journal.costToDate(id));
+		if (session.continuedFromId() != null) {
+			sessions.find(session.continuedFromId()).ifPresent(source -> result.put("continuedFromName", source.name()));
+		}
+		if (session.parentSessionId() != null) {
+			sessions.find(session.parentSessionId()).ifPresent(parent -> result.put("parentName", parent.name()));
+		}
+		return result;
 	}
 
 	@GetMapping("/{id}/events")
@@ -98,6 +110,12 @@ public class SessionController {
 				.header(HttpHeaders.CONTENT_DISPOSITION,
 						ContentDisposition.attachment().filename(filename).build().toString())
 				.body(markdown);
+	}
+
+	@PostMapping(value = "/{id}/handoff-summary", produces = "text/markdown;charset=UTF-8")
+	public ResponseEntity<String> handoffSummary(@PathVariable UUID id) {
+		return ResponseEntity.ok().contentType(MediaType.valueOf("text/markdown;charset=UTF-8"))
+				.body(handoff.summarize(id));
 	}
 
 	@PostMapping("/{id}/resume")

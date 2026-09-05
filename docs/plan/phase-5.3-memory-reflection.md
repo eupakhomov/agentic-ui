@@ -98,9 +98,12 @@ that this earns its own doc, per the 5.13/Phase-6 pattern.
    scope: same scope as the linking doc first, then ecosystem, then (UI only) other
    services. Slugs are immutable after create — no rename cascade to maintain.
 10. **Claude sessions pre-approve the memory tools; Codex sessions don't.** The
-   tools are read-only, so `mcp__memory` is appended to `allowedTools` at spawn for
-   Claude sessions (same rationale as the system session's `mcp__linear`
-   pre-approval). Codex sessions reject `allowedTools` by design (5.13), so memory
+   tools are read-only, so `mcp__memory__memory_tags`/`__memory_search`/`__memory_read`
+   are appended to `allowedTools` at spawn for Claude sessions (same rationale as the
+   system session's `mcp__linear` pre-approval) — named individually rather than the
+   blanket `mcp__memory` server-level grant since phase 7.4 added orchestration tools
+   to this same server that must NOT be pre-approved. Codex sessions reject
+   `allowedTools` by design (5.13), so memory
    tool calls there go through the normal approval flow — mildly noisier, correct.
 11. **The memory MCP entry authenticates with the existing `CLAUDE_UI_TOKEN`
     — no new secret** (2026-09-05 follow-up). This app has exactly one shared
@@ -431,7 +434,8 @@ system-prompt block below):
 Injection: `withDefaultMemoryMcp()` alongside `withDefaultLinearMcp()` — layered
 into every session's `mcpConfig` when `memory.enabled` (persisted setting, default
 on); a session's own `memory` entry wins, same rule as `linear`. Claude sessions
-also get `mcp__memory` appended to `allowedTools` at spawn (decision 10).
+also get the three read-only memory tools appended to `allowedTools` at spawn
+(decision 10; phase 7.4's orchestration tools live on this same server unapproved).
 
 ### Automatic episodic window
 

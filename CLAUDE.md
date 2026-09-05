@@ -79,6 +79,12 @@ docker compose up -d          # if WSL integration is enabled
 - **Schema changes go through Flyway only** (`src/main/resources/db/migration/V*__*.sql`,
   applied at startup). No manual DDL, no generated schema. Boot 4 note: Flyway needs
   `spring-boot-starter-flyway`; plain `flyway-core` silently does nothing.
+- **`docker compose down` keeps the `pgdata` volume** (only `down -v` removes it) — editing
+  or renaming an already-applied migration file during dev iteration then hits Flyway's
+  checksum-mismatch validation error on next startup, since the old content is still
+  recorded in `flyway_schema_history` on that persisted volume. If a migration you're
+  actively iterating on hasn't shipped/been committed yet, `docker compose down -v` before
+  the next `up -d` is the easy reset; don't do this once a migration is real/committed.
 
 ## Run the project
 
@@ -199,6 +205,15 @@ runs `npm install` — slow on /mnt/d (DrvFS), expect ~10+ min. Later builds are
 To skip the frontend rebuild entirely (reuses `frontend/dist`):
 `./mvnw package -DskipTests -Dskip.installnodenpm -Dskip.npm`
 
+**Vite dev-server watcher gotcha (WSL + DrvFS)**: `npm run dev`'s file watcher (chokidar/
+inotify) does not reliably see edits to files on `/mnt/d` — Vite keeps serving its
+in-memory transformed copy of a file indefinitely after the *first* request for it,
+silently ignoring later on-disk changes (no error, no HMR log). Symptom: an edit that
+provably typechecks and is on disk has *zero* effect in the browser, even after a hard
+reload. Fix: kill and restart the `npm run dev` process after editing frontend source
+while manually verifying in a browser — don't trust HMR here. (`mvn package`'s frontend
+build is unaffected; it always reads fresh from disk.)
+
 ## Limits & caps
 
 All operational limits are env-tunable (read at backend startup; the sidecar inherits
@@ -206,7 +221,7 @@ the backend's environment):
 
 | Env var | Default | What it caps |
 |---|---|---|
-| `CLAUDE_UI_MAX_SESSIONS` | `4` | Concurrent live sidecar processes; create/resume beyond it → 409. PARKED sessions don't count |
+| `CLAUDE_UI_MAX_SESSIONS` | `4` | Concurrent live sidecar processes; create/resume beyond it → 409 (including 7.4's `spawn_child_session`, surfaced to the parent as a tool error). PARKED sessions don't count, so a parent that parks after spawning fans out wider than the raw count suggests — raise this for wide fan-outs |
 | `CLAUDE_UI_IDLE_PARK_MINUTES` | `30` | Minutes a session may sit IDLE before its sidecar is shut down (PARKED); next message transparently wakes it |
 | `CLAUDE_UI_TOOL_OUTPUT_LIMIT` | `16384` | Bytes of tool output kept per result (sidecar truncates, `truncated` flag set) |
 | `CLAUDE_UI_JOURNAL_PAYLOAD_CAP` | `65536` | Max bytes for one journal event payload; larger payloads stored as a truncated preview |
@@ -296,7 +311,8 @@ effect on the next use with no backend restart.
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100
 lines; WS send timeout 10 s; git command timeout 60 s; sidecar shutdown grace 5 s + 2 s
 before force-kill; auto-title ≤6 words / 60 s timeout; log rotation 10 MB daily,
-14 days app / 30 days errors (200 MB / 100 MB total caps).
+14 days app / 30 days errors (200 MB / 100 MB total caps); 7.4's `spawn_child_session`
+MAX_CHILDREN = 5 (lifetime per parent, not concurrent — children aren't recycled).
 
 ## Conventions
 

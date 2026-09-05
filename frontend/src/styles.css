@@ -97,6 +97,7 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .widget { display: flex; flex-direction: column; height: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .widget.waiting { border-color: var(--amber); }
 .widget.crashed { border-color: var(--red); }
+.widget.focused { box-shadow: 0 0 0 2px var(--accent); }
 .widget-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--panel2); cursor: move; }
 .widget-header .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
@@ -235,6 +236,14 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .ticket-row .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ticket-row .status { color: var(--muted); font-size: calc(12px * var(--font-scale)); white-space: nowrap; }
 
+.continuation-list { display: flex; flex-direction: column; gap: 4px; max-height: 55vh; overflow-y: auto; }
+.continuation-row { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 7px 9px; border: 1px solid transparent; border-radius: 6px; background: none; flex-wrap: wrap; }
+.continuation-row:hover:not(:disabled) { background: var(--panel2); border-color: var(--border); }
+.continuation-row:disabled { opacity: 0.5; cursor: not-allowed; }
+.continuation-name { font-weight: 600; }
+.continuation-date { margin-left: auto; color: var(--muted); font-size: calc(11.5px * var(--font-scale)); white-space: nowrap; }
+.continuation-pruned { color: var(--amber); font-size: calc(11px * var(--font-scale)); white-space: nowrap; }
+
 .git-panel { border-bottom: 1px solid var(--border); background: var(--panel2); padding: 8px 10px; max-height: 45%; overflow-y: auto; font-size: calc(12.5px * var(--font-scale)); }
 .git-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .git-section { margin-top: 8px; }
@@ -252,3 +261,38 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .gate .modal { width: 360px; }
 
 .react-grid-item.react-grid-placeholder { background: var(--accent); opacity: 0.2; border-radius: 10px; }
+
+/* 7.2 window management — react-grid-layout sets position/transform/size as inline
+   styles on this same node, so overriding them here requires !important */
+.grid-item-wrap.maximized {
+  position: fixed !important;
+  inset: 8px !important;
+  width: auto !important;
+  height: auto !important;
+  transform: none !important;
+  z-index: 200 !important;
+}
+.grid-item-wrap.minimized { display: none !important; }
+
+.dock-strip { position: fixed; left: 12px; right: 12px; bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 150; pointer-events: none; }
+.dock-chip { pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
+.dock-chip.pulse { border-color: var(--amber); animation: pulse 1.2s infinite; }
+.dock-name { font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-cost { color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+
+.expose-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 300; padding: 40px; overflow-y: auto; }
+.expose-close { position: fixed; top: 16px; right: 20px; z-index: 301; }
+.expose-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; max-width: 1400px; margin: 0 auto; }
+.expose-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; cursor: pointer; }
+.expose-card:hover { border-color: var(--accent); }
+.expose-card.pending { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+.expose-head { display: flex; align-items: center; gap: 7px; }
+.expose-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.expose-preview { margin-top: 8px; background: var(--panel2); border-radius: 6px; padding: 6px 8px; font-size: calc(12px * var(--font-scale)); color: var(--muted); min-height: 50px; }
+.expose-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cheatsheet-table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+.cheatsheet-table td { padding: 5px 0; border-bottom: 1px solid var(--border); vertical-align: baseline; }
+.cheatsheet-table td:first-child { width: 170px; white-space: nowrap; }
+.cheatsheet-table td:last-child { color: var(--muted); }
+kbd { display: inline-block; background: var(--panel2); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 7px; font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(12px * var(--font-scale)); }

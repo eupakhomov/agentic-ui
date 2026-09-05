@@ -9,11 +9,24 @@ import SettingsDialog from './SettingsDialog';
 import UsageDashboard from './UsageDashboard';
 import LibraryDialog from './LibraryDialog';
 import MemoryDialog from './MemoryDialog';
+import HotkeyCheatsheet from './HotkeyCheatsheet';
+import DockStrip from './DockStrip';
+import ExposeOverlay from './ExposeOverlay';
 import { useStore } from '../store/store';
 import { notificationsEnabled, notify, toggleNotifications } from '../notify';
+import { useHotkeys } from '../hotkeys/useHotkeys';
 
 const LAYOUT_KEY = 'claude-ui.layout';
+const MINIMIZED_KEY = 'claude-ui.minimized';
 const COLS = 12;
+
+function loadMinimized(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(MINIMIZED_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+}
 
 function NotifyToggle() {
   const [on, setOn] = useState(notificationsEnabled());
@@ -50,6 +63,11 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [showUsage, setShowUsage] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
+  const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const [showExpose, setShowExpose] = useState(false);
+  // maximize is transient (not persisted); minimize survives reload like layout does
+  const [maximizedId, setMaximizedId] = useState<string | null>(null);
+  const [minimizedIds, setMinimizedIds] = useState<string[]>(loadMinimized());
   const [staleCount, setStaleCount] = useState(0);
   const [discoveryCount, setDiscoveryCount] = useState(0);
   const [pendingMemoryCount, setPendingMemoryCount] = useState(0);
@@ -58,6 +76,8 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   // draft); read once by SessionWidget's initial state, no cleanup needed afterward
   const [pendingDraft, setPendingDraft] = useState<{ id: string; text: string } | null>(null);
   const removeView = useStore((s) => s.remove);
+  const focusedId = useStore((s) => s.focusedId);
+  const setFocused = useStore((s) => s.setFocused);
 
   useEffect(() => {
     const onResize = () => setWidth(window.innerWidth - 24);
@@ -144,12 +164,13 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     setSessionIds((ids) => [...ids, id]);
     setPendingDraft(draftInput ? { id, text: draftInput } : null);
     setShowCreate(false);
+    setFocused(id);
     // the create flow (e.g. ticket import) may have spun up the system session before this
     // page ever loaded it — refresh so the topbar 🤖 toggle reflects it immediately
     void api.listSessions().then((list) => {
       setSystemSessions(list.filter((s) => s.kind === 'system' && s.state !== 'CLOSED'));
     });
-  }, []);
+  }, [setFocused]);
 
   const onClosed = useCallback((id: string) => {
     setSessionIds((ids) => ids.filter((x) => x !== id));
@@ -163,6 +184,69 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     setSessionIds(live.filter((s) => s.kind !== 'system').map((s) => s.id));
     setSystemSessions(live.filter((s) => s.kind === 'system'));
   }, []);
+
+  const closeTopDialog = useCallback((): boolean => {
+    if (showCheatsheet) { setShowCheatsheet(false); return true; }
+    if (showCreate) { setShowCreate(false); return true; }
+    if (showTemplates) { setShowTemplates(false); return true; }
+    if (showSettings) { setShowSettings(false); return true; }
+    if (showUsage) { setShowUsage(false); return true; }
+    if (showLibrary) { setShowLibrary(false); return true; }
+    if (showMemory) { setShowMemory(false); return true; }
+    return false;
+  }, [showCheatsheet, showCreate, showTemplates, showSettings, showUsage, showLibrary, showMemory]);
+
+  const toggleMaximize = useCallback((id: string) => {
+    setMaximizedId((cur) => (cur === id ? null : id));
+  }, []);
+
+  const toggleMinimize = useCallback((id: string) => {
+    setMinimizedIds((cur) => {
+      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+      localStorage.setItem(MINIMIZED_KEY, JSON.stringify(next));
+      return next;
+    });
+    setMaximizedId((cur) => (cur === id ? null : cur));
+  }, []);
+
+  const restore = useCallback((id: string) => {
+    setMinimizedIds((cur) => {
+      if (!cur.includes(id)) return cur;
+      const next = cur.filter((x) => x !== id);
+      localStorage.setItem(MINIMIZED_KEY, JSON.stringify(next));
+      return next;
+    });
+    setFocused(id);
+  }, [setFocused]);
+
+  const selectFromExpose = useCallback((id: string) => {
+    restore(id);
+    setShowExpose(false);
+  }, [restore]);
+
+  const exitOverlay = useCallback((): boolean => {
+    if (showExpose) { setShowExpose(false); return true; }
+    if (maximizedId) { setMaximizedId(null); return true; }
+    return false;
+  }, [showExpose, maximizedId]);
+
+  useHotkeys({
+    orderedIds: () => [...fullLayout].sort((a, b) => a.y - b.y || a.x - b.x).map((l) => l.i),
+    openCreate: () => setShowCreate(true),
+    openMemory: () => setShowMemory(true),
+    openLibrary: () => setShowLibrary(true),
+    openUsage: () => setShowUsage(true),
+    openTemplates: () => setShowTemplates(true),
+    openSettings: () => setShowSettings(true),
+    openCheatsheet: () => setShowCheatsheet(true),
+    toggleMaximizeFocused: () => { if (focusedId) toggleMaximize(focusedId); },
+    toggleMinimizeFocused: () => { if (focusedId) toggleMinimize(focusedId); },
+    openExpose: () => setShowExpose(true),
+    anyDialogOpen: () =>
+      showCreate || showTemplates || showSettings || showUsage || showLibrary || showMemory || showCheatsheet || showExpose,
+    closeTopDialog,
+    exitOverlay,
+  });
 
   return (
     <>
@@ -208,6 +292,8 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         >
           🧠{pendingMemoryCount > 0 && <span className="count-badge">{pendingMemoryCount}</span>}
         </button>
+        <button title="keyboard shortcuts (?)" onClick={() => setShowCheatsheet(true)}>⌨</button>
+        <button title="Exposé — all sessions (e)" onClick={() => setShowExpose(true)}>▦</button>
         <button title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
         <button className="primary" onClick={() => setShowCreate(true)}>+ New Session</button>
       </div>
@@ -222,16 +308,23 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
           draggableHandle=".widget-header"
         >
           {visibleIds.map((id) => (
-            <div key={id}>
+            <div
+              key={id}
+              className={`grid-item-wrap${maximizedId === id ? ' maximized' : ''}${minimizedIds.includes(id) ? ' minimized' : ''}`}
+            >
               <SessionWidget
                 sessionId={id}
                 initialInput={pendingDraft?.id === id ? pendingDraft.text : undefined}
                 onClosed={() => onClosed(id)}
                 onDuplicated={onCreated}
+                isMaximized={maximizedId === id}
+                onToggleMaximize={() => toggleMaximize(id)}
+                onToggleMinimize={() => toggleMinimize(id)}
               />
             </div>
           ))}
         </GridLayout>
+        <DockStrip ids={minimizedIds} onRestore={restore} />
       </div>
       {showCreate && <CreateSessionDialog onCreated={onCreated} onCancel={() => setShowCreate(false)} />}
       {showTemplates && <TemplateManager onClose={() => setShowTemplates(false)} />}
@@ -239,6 +332,16 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
       {showUsage && <UsageDashboard onClose={() => { setShowUsage(false); refreshStale(); }} />}
       {showLibrary && <LibraryDialog onClose={() => { setShowLibrary(false); refreshDiscoveries(); }} />}
       {showMemory && <MemoryDialog onClose={() => { setShowMemory(false); refreshPendingMemory(); }} />}
+      {showCheatsheet && <HotkeyCheatsheet onClose={() => setShowCheatsheet(false)} />}
+      {showExpose && (
+        <ExposeOverlay
+          ids={visibleIds}
+          views={views}
+          minimizedIds={minimizedIds}
+          onSelect={selectFromExpose}
+          onClose={() => setShowExpose(false)}
+        />
+      )}
     </>
   );
 }

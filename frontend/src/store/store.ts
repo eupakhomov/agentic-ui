@@ -27,6 +27,10 @@ export interface SessionView {
   costToDate: number;
   wsStatus: WsStatus;
   pendingPermission: { requestId: string; toolName: string; input: Record<string, unknown>; plan: string | null } | null;
+  // seeded once from the REST entity fetch (SessionWidget) — 7.2's Exposé cards read these
+  // straight from the store so they need no connection of their own
+  repoPath: string | null;
+  branch: string | null;
 }
 
 const emptyView = (): SessionView => ({
@@ -41,6 +45,8 @@ const emptyView = (): SessionView => ({
   costToDate: 0,
   wsStatus: 'connecting',
   pendingPermission: null,
+  repoPath: null,
+  branch: null,
 });
 
 function last<T>(arr: T[]): T | undefined {
@@ -212,6 +218,9 @@ interface Store {
   setWsStatus: (sessionId: string, status: WsStatus) => void;
   seed: (sessionId: string, seedFn: (v: SessionView) => SessionView) => void;
   remove: (sessionId: string) => void;
+  // 7.1 keyboard shortcuts: the widget hotkeys act on ("y"/"d", "g", Enter/"i", …)
+  focusedId: string | null;
+  setFocused: (sessionId: string | null) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -228,4 +237,6 @@ export const useStore = create<Store>((set) => ({
       delete views[sessionId];
       return { views };
     }),
+  focusedId: null,
+  setFocused: (sessionId) => set({ focusedId: sessionId }),
 }));

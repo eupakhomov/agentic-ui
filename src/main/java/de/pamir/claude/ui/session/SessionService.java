@@ -88,6 +88,21 @@ public class SessionService {
 
 	public SessionEntity create(String name, String branch, String baseBranch, String repoPath, UUID templateId,
 								JsonNode overrides, Map<String, String> kickoffValues, boolean syncBaseBranch) {
+		return create(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues, syncBaseBranch, null);
+	}
+
+	/** Same as above, with an explicit continuation provenance link (7.3's "continue from" picker). */
+	public SessionEntity create(String name, String branch, String baseBranch, String repoPath, UUID templateId,
+								JsonNode overrides, Map<String, String> kickoffValues, boolean syncBaseBranch,
+								UUID continuedFromId) {
+		return create(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues, syncBaseBranch,
+				continuedFromId, null);
+	}
+
+	/** Same as above, with an explicit parent link (7.4's spawn_child_session tool). */
+	public SessionEntity create(String name, String branch, String baseBranch, String repoPath, UUID templateId,
+								JsonNode overrides, Map<String, String> kickoffValues, boolean syncBaseBranch,
+								UUID continuedFromId, UUID parentSessionId) {
 		enforceSessionLimit();
 		String repo = repoPath == null || repoPath.isBlank() ? props.repoPath() : repoPath;
 		if (!Files.exists(Path.of(repo).resolve(".git"))) {
@@ -160,9 +175,13 @@ public class SessionService {
 			// regardless of whether the session configured any of its own. Claude sessions
 			// pre-approve the read-only memory tools this way; Codex rejects allowedTools
 			// entirely (handled above), so its sessions go through the normal approval flow
-			// instead (decision 10).
+			// instead (decision 10). Named explicitly (not the blanket "mcp__memory" server-level
+			// grant) since 7.4's orchestration tools now live on the same MCP server and must NOT
+			// be pre-approved — spawn_child_session needs the normal human-in-the-loop prompt.
 			allowedTools = new java.util.ArrayList<>(allowedTools);
-			allowedTools.add("mcp__memory");
+			allowedTools.add("mcp__memory__memory_tags");
+			allowedTools.add("mcp__memory__memory_search");
+			allowedTools.add("mcp__memory__memory_read");
 		}
 		JsonNode mcpConfig = withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig));
 
@@ -193,7 +212,8 @@ public class SessionService {
 				fallbackModel,
 				config.hasNonNull("costBudgetUsd") ? new BigDecimal(config.get("costBudgetUsd").asText()) : null,
 				fillPlaceholders(nullableText(config, "kickoffPrompt"), kickoffValues),
-				SessionState.CREATING, "user", nullableText(config, "ticketRef"), null, null, null, null,
+				SessionState.CREATING, "user", nullableText(config, "ticketRef"), continuedFromId, parentSessionId,
+				null, null, null, null,
 				config.path("reflectionEnabled").asBoolean(settings.memoryReflectionDefault()), null, null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
@@ -445,7 +465,7 @@ public class SessionService {
 				null, null, "haiku", "default",
 				allowedTools, List.of(), mcpConfig, null, mapper.createArrayNode(), mapper.createArrayNode(),
 				null, null, null, null, null, null, null,
-				SessionState.CREATING, "system", null, null, null, null, null, false, null, null, null);
+				SessionState.CREATING, "system", null, null, null, null, null, null, null, false, null, null, null);
 		sessions.insert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 		try {
@@ -561,6 +581,31 @@ public class SessionService {
 			}
 		}
 		return sb.toString();
+	}
+
+	/**
+	 * 7.4's orchestration-tools announcement — same MCP server as memory (decision 12a), so it's
+	 * gated on the same {@code settings.memoryEnabled()}. A child session gets the report_result
+	 * reminder instead of the spawn tools (it can't spawn — depth 1, enforced in the tool body
+	 * too); a plain session with no ecosystem configured gets nothing, since list_services would
+	 * just error for it.
+	 */
+	private String orchestrationSystemPromptBlock(SessionEntity session) {
+		if (!settings.memoryEnabled() || !"user".equals(session.kind())) {
+			return null;
+		}
+		if (session.parentSessionId() != null) {
+			return "You are a child session (sessionId: " + session.id() + ") spawned to work on this service "
+					+ "as part of a larger cross-service task. When your task is complete, call report_result "
+					+ "with sessionId=" + session.id() + " and a concise summary of what you did — this reaches "
+					+ "the parent session automatically.";
+		}
+		if (session.ecosystemPath() == null || session.ecosystemPath().isBlank()) {
+			return null;
+		}
+		return "Multi-service orchestration tools are available (list_services, spawn_child_session, "
+				+ "check_children) for tasks that span several services under this session's ecosystem folder. "
+				+ "Pass this as `sessionId` in every call: " + session.id();
 	}
 
 	private static void deleteRecursively(Path dir) {
@@ -689,7 +734,11 @@ public class SessionService {
 	// ------------------------------------------------------------------ internals
 
 	private void spawn(SessionEntity session, boolean resume) {
-		sidecars.spawn(session, mcpConfigPath(session.id()), resume, memorySystemPromptBlock(session),
+		String extraSystemPrompt = java.util.stream.Stream
+				.of(memorySystemPromptBlock(session), orchestrationSystemPromptBlock(session))
+				.filter(java.util.Objects::nonNull)
+				.collect(java.util.stream.Collectors.joining("\n\n"));
+		sidecars.spawn(session, mcpConfigPath(session.id()), resume, extraSystemPrompt.isBlank() ? null : extraSystemPrompt,
 				event -> onSidecarEvent(session.id(), event),
 				(handle, code) -> onSidecarExit(session.id(), code, handle.stderrTail(), handle.isShutdownRequested()));
 	}

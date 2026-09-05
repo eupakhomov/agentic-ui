@@ -161,6 +161,53 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   `memory.retention-days` (default 0 = never) has elapsed — the episode/semantic
   memory a reflection wrote is the durable record from that point on.
 
+## 3c. Dashboard UX & orchestration (Phase 7)
+
+Full design + decisions: `docs/plan/phase-7-ux-and-orchestration.md`.
+
+- **7.1 hotkeys**: one document-level `keydown` listener (`useHotkeys`), suppressed
+  while typing or a dialog is open. A module-level registry (`widgetRegistry.ts`,
+  not React state) lets it reach into a specific `SessionWidget` — focus the
+  composer, toggle the git panel, respond to a pending permission — since there's
+  no shared component tree between the global listener and per-widget state.
+  `y`/`d` special-case `AskUserQuestion` (no safe keystroke "allow"; `d` reuses its
+  existing skip message) and `ExitPlanMode` (friendlier deny wording), otherwise
+  send the same plain allow/deny `PermissionCard` already does. Every handled key
+  calls `preventDefault()` unconditionally (not just where an action fires) — opening
+  a dialog whose first field autofocuses can otherwise race the browser's own
+  default text-insertion for that same keystroke, landing the letter in the field.
+- **7.2 window management**: tiling (react-grid-layout) stays the base; maximize is
+  a CSS class (`!important`, since RGL sets `position`/`transform` inline) on the
+  same grid-item DOM node — no remount, no WS reconnect. Minimize is `display:none`
+  on that node, not unmount, so the widget's WS/store stay live (Exposé cards and
+  desktop notifications keep working while hidden). Exposé and the dock strip read
+  straight from the Zustand store; zero new connections.
+- **7.3 continuation**: `session.continued_from_id` (V11). `HandoffService`
+  (mirrors `GitAssistService`'s digest→system-turn shape) runs one system-session
+  turn over `TranscriptDigest.render()` — the same capped digest reflection uses —
+  producing a ~1-2 KB Markdown brief (`POST /api/sessions/{id}/handoff-summary`);
+  the picker's "full transcript" checkbox instead calls the existing uncapped
+  `export.md` (5.9). Either way the text lands unsent in the new session's compose
+  box (`CreateSessionDialog`'s `onCreated(id, draftInput)`, the ticket-import
+  precedent) — never auto-fired.
+- **7.4 orchestration**: `session.parent_session_id` (V11) plus four `@McpTool`
+  beans (`OrchestrationMcpTools`) on the *same* in-process MCP server as memory
+  (Spring AI autoconfigures exactly one server per app). This forced narrowing
+  `allowedTools`' memory grant from the blanket `mcp__memory` server-level entry to
+  the three read-only tool names (`mcp__memory__memory_{tags,search,read}`), so
+  `spawn_child_session` on that same server flows through the normal
+  tool-permission prompt instead of inheriting the pre-approval. Depth 1 (no
+  grandchildren) and the per-parent `MAX_CHILDREN` cap are enforced inside the tool
+  bodies, not by hiding tools per session — the server's tool list is static and
+  application-wide. `report_result` journals `child_reported` on both sessions
+  (`SessionEventBus.publish`, same journal-then-fan-out shape as `SessionService`'s
+  private `record()`) and delivers the tagged summary into the parent's queue via
+  the already-public `SessionService.sendUserMessage` — no bespoke wake logic
+  needed, PARKED parents already transparently wake on enqueue. `GitWorktreeService.
+  findRepos()`/`defaultBranch()` are shared between `list_services` and
+  `MetaController`'s pre-existing (global-root) `/api/repo/services`, parameterized
+  by `Path` so the tool can scan a *session's* `ecosystemPath` instead.
+
 ## 4. Backlog implementation sketches (5.4–5.13)
 
 ### 5.4 Templates v2

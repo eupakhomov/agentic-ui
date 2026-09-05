@@ -4,6 +4,7 @@ import { WsSession } from '../api/ws';
 import type { Envelope, PermissionMode, SessionEntity } from '../protocol';
 import { useStore } from '../store/store';
 import { notify } from '../notify';
+import { registerWidget, unregisterWidget } from '../hotkeys/widgetRegistry';
 import Transcript from './Transcript';
 import CloseDialog from './CloseDialog';
 import DuplicateDialog from './DuplicateDialog';
@@ -33,17 +34,27 @@ export default function SessionWidget({
   initialInput,
   onClosed,
   onDuplicated,
+  isMaximized,
+  onToggleMaximize,
+  onToggleMinimize,
 }: {
   sessionId: string;
   initialInput?: string;
   onClosed: () => void;
   onDuplicated: (id: string) => void;
+  isMaximized: boolean;
+  onToggleMaximize: () => void;
+  onToggleMinimize: () => void;
 }) {
   const view = useStore((s) => s.views[sessionId]);
   const apply = useStore((s) => s.apply);
   const setWsStatus = useStore((s) => s.setWsStatus);
   const seed = useStore((s) => s.seed);
+  const focusedId = useStore((s) => s.focusedId);
+  const setFocused = useStore((s) => s.setFocused);
   const [entity, setEntity] = useState<SessionEntity | null>(null);
+  const [continuedFromName, setContinuedFromName] = useState<string | null>(null);
+  const [parentName, setParentName] = useState<string | null>(null);
   const [input, setInput] = useState(initialInput ?? '');
   const [closing, setClosing] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
@@ -52,10 +63,13 @@ export default function SessionWidget({
   const wsRef = useRef<WsSession | null>(null);
   const nameRef = useRef<string>('');
   const liveRef = useRef(false);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     api.sessionDetail(sessionId).then((d) => {
       setEntity(d.session);
+      setContinuedFromName(d.continuedFromName ?? null);
+      setParentName(d.parentName ?? null);
       seed(sessionId, (v) => ({
         ...v,
         permissionMode: d.session.permissionMode,
@@ -63,6 +77,8 @@ export default function SessionWidget({
         model: v.model ?? d.session.model,
         name: v.name ?? d.session.name,
         costBudgetUsd: v.costBudgetUsd ?? d.session.costBudgetUsd,
+        repoPath: v.repoPath ?? d.session.repoPath,
+        branch: v.branch ?? d.session.branch,
       }));
     }).catch(() => setEntity(null));
     const onEvent = (e: Envelope) => {
@@ -96,6 +112,17 @@ export default function SessionWidget({
   }, [sessionId, apply, setWsStatus, seed]);
 
   const send = useCallback((cmd: Record<string, unknown>) => wsRef.current?.send(cmd), []);
+
+  // exposes actions the global hotkey listener (Dashboard) can't reach otherwise — there's
+  // no shared React tree between it and this widget's composer/git-panel/WS state
+  useEffect(() => {
+    registerWidget(sessionId, {
+      focusComposer: () => composerRef.current?.focus(),
+      toggleGit: () => setShowGit((v) => !v),
+      respondPermission: (requestId, response) => send({ type: 'permission_response', requestId, ...response }),
+    });
+    return () => unregisterWidget(sessionId);
+  }, [sessionId, send]);
 
   const submit = useCallback(() => {
     const text = input.trim();
@@ -154,21 +181,33 @@ export default function SessionWidget({
   const budget = view?.costBudgetUsd ?? entity?.costBudgetUsd ?? null;
   nameRef.current = view?.name ?? entity?.name ?? '';
   const widgetClass = useMemo(() => {
-    if (state === 'WAITING_INPUT') return 'widget waiting';
-    if (state === 'CRASHED' || state === 'FAILED') return 'widget crashed';
-    return 'widget';
-  }, [state]);
+    let cls = 'widget';
+    if (state === 'WAITING_INPUT') cls += ' waiting';
+    else if (state === 'CRASHED' || state === 'FAILED') cls += ' crashed';
+    if (focusedId === sessionId) cls += ' focused';
+    return cls;
+  }, [state, focusedId, sessionId]);
 
   if (!view) return <div className="widget"><div className="overlay">loading…</div></div>;
 
   return (
-    <div className={widgetClass}>
-      <div className="widget-header">
+    <div className={widgetClass} onClick={() => setFocused(sessionId)}>
+      <div
+        className="widget-header"
+        onDoubleClick={(e) => {
+          // only the empty drag area toggles maximize — the name label has its own
+          // double-click (rename) and stops propagation before this ever runs
+          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('spacer')) {
+            onToggleMaximize();
+          }
+        }}
+      >
         <span className={`dot ${state}`} title={state} />
         <span
           className="name"
           title={`${view.name ?? entity?.name ?? ''} — double-click to rename`}
-          onDoubleClick={() => {
+          onDoubleClick={(e) => {
+            e.stopPropagation();
             const next = prompt('Session name:', view.name ?? entity?.name ?? '');
             if (next?.trim()) void api.patchSession(sessionId, { name: next.trim() });
           }}
@@ -194,6 +233,16 @@ export default function SessionWidget({
         )}
         {entity?.ecosystemPath && <span className="chip" title={`context: ${entity.ecosystemPath}`}>🌐</span>}
         {entity?.ticketRef && <span className="chip" title="linked ticket">🎫 {entity.ticketRef}</span>}
+        {entity?.continuedFromId && (
+          <span className="chip" title={`continued from: ${continuedFromName ?? entity.continuedFromId}`}>
+            ↩ {continuedFromName ?? 'continued'}
+          </span>
+        )}
+        {entity?.parentSessionId && (
+          <span className="chip" title={`child of: ${parentName ?? entity.parentSessionId}`}>
+            ⑂ {parentName ?? 'parent'}
+          </span>
+        )}
         {entity?.prUrl && (
           <a
             className="chip clickable"
@@ -234,6 +283,16 @@ export default function SessionWidget({
         {state === 'CRASHED' && (
           <button onMouseDown={(e) => e.stopPropagation()} onClick={() => void resume()}>Resume</button>
         )}
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={onToggleMaximize}
+          title={isMaximized ? 'restore (f)' : 'maximize (f)'}
+        >{isMaximized ? '🗗' : '🗖'}</button>
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={onToggleMinimize}
+          title="minimize (x)"
+        >🗕</button>
         {entity?.kind !== 'system' && (
           <button
             onMouseDown={(e) => e.stopPropagation()}
@@ -304,6 +363,7 @@ export default function SessionWidget({
           )}
           <div className="row">
             <textarea
+              ref={composerRef}
               placeholder={state === 'PARKED' ? 'parked — sending wakes the session…' : running ? 'type to queue a message…' : 'message…'}
               value={input}
               rows={Math.min(5, input.split('\n').length)}

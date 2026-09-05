@@ -19,10 +19,10 @@ export class ApiError extends Error {
 }
 
 /** For non-JSON responses (e.g. the transcript export's text/markdown) — request() always JSON-parses. */
-async function requestText(path: string): Promise<string> {
+async function requestText(path: string, method: string = 'GET'): Promise<string> {
   const headers: Record<string, string> = {};
   if (authToken) headers['authorization'] = `Bearer ${authToken}`;
-  const res = await fetch(path, { headers });
+  const res = await fetch(path, { method, headers });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new ApiError(res.status, text || res.statusText, null);
@@ -74,6 +74,7 @@ export const api = {
     request<SessionEntity>('PATCH', `/api/sessions/${id}`, body),
   reflectSession: (id: string) => request<null>('POST', `/api/sessions/${id}/reflect`),
   exportTranscript: (id: string) => requestText(`/api/sessions/${id}/export.md`),
+  handoffSummary: (id: string) => requestText(`/api/sessions/${id}/handoff-summary`, 'POST'),
   services: () => request<ServicesResponse>('GET', '/api/repo/services'),
   branches: (repo?: string) =>
     request<string[]>('GET', `/api/repo/branches${repo ? `?repo=${encodeURIComponent(repo)}` : ''}`),

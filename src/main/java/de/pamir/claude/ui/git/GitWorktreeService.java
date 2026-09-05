@@ -4,9 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 @Service
 public class GitWorktreeService {
@@ -90,5 +94,32 @@ public class GitWorktreeService {
 	public List<String> localBranches(Path repo) {
 		var result = git.runOrThrow(repo, "for-each-ref", "refs/heads", "--format=%(refname:short)");
 		return result.stdout().isBlank() ? List.of() : result.stdout().lines().toList();
+	}
+
+	/** "main" if present, else the first local branch, else "main" (worktree creation then fails with a clear git error). */
+	public String defaultBranch(Path repo) {
+		List<String> branches = localBranches(repo);
+		if (branches.contains("main")) {
+			return "main";
+		}
+		return branches.isEmpty() ? "main" : branches.get(0);
+	}
+
+	public record RepoInfo(String name, String path) {
+	}
+
+	/** Git repos directly under a folder — the ecosystem/service picker (MetaController) and 7.4's list_services tool. */
+	public List<RepoInfo> findRepos(Path root) {
+		List<RepoInfo> repos = new ArrayList<>();
+		if (root == null || !Files.isDirectory(root)) {
+			return repos;
+		}
+		try (Stream<Path> children = Files.list(root)) {
+			children.filter(c -> Files.exists(c.resolve(".git"))).sorted()
+					.forEach(c -> repos.add(new RepoInfo(c.getFileName().toString(), c.toString())));
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+		return repos;
 	}
 }

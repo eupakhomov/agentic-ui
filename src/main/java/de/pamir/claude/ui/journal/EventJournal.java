@@ -77,6 +77,14 @@ public class EventJournal {
 		}
 	}
 
+	/** Cheap existence check (e.g. 7.4's check_children "reported?" column) — no row materialization. */
+	public boolean hasEventType(UUID sessionId, String type) {
+		flush(sessionId);
+		return Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM session_event WHERE session_id = ? AND type = ?)")
+				.params(sessionId, type)
+				.query(Boolean.class).single());
+	}
+
 	public List<JournalEvent> readAfter(UUID sessionId, long afterSeq) {
 		flush(sessionId);
 		return jdbc.sql("SELECT seq, ts, type, payload FROM session_event WHERE session_id = ? AND seq > ? ORDER BY seq")

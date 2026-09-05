@@ -59,6 +59,10 @@ export interface SessionEntity {
   kind: 'user' | 'system';
   /** Canonical ticket identifier (e.g. "ENG-123") if this session was created via ticket import */
   ticketRef: string | null;
+  /** Source session this one carried a handoff summary/digest from (phase 7.3); null otherwise */
+  continuedFromId: string | null;
+  /** Parent session this one was spawned by via spawn_child_session (phase 7.4); null for ordinary/parent sessions */
+  parentSessionId: string | null;
   /** GitHub PR URL opened from this session's branch, if any; one PR tracked per session */
   prUrl: string | null;
   prCheckStatus: PrCheckStatus | null;
@@ -73,12 +77,15 @@ export interface SessionSummary {
   id: string;
   name: string;
   provider: string;
+  repoPath: string;
   branch: string;
   model: string | null;
   permissionMode: PermissionMode;
   state: SessionState;
   kind: 'user' | 'system';
   costToDate: number;
+  updatedAt: string;
+  lastSeq: number;
 }
 
 export interface QueuedMessage {
@@ -91,6 +98,10 @@ export interface SessionDetail {
   queued: QueuedMessage[];
   lastSeq: number;
   costToDate: number;
+  /** Name of the source session, when `session.continuedFromId` is set (phase 7.3) */
+  continuedFromName?: string;
+  /** Name of the parent session, when `session.parentSessionId` is set (phase 7.4) */
+  parentName?: string;
 }
 
 /** A template's live reference to a library asset (Phase 5.4) — resolved for display. */

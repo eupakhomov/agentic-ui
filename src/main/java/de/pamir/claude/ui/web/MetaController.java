@@ -7,13 +7,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/api")
@@ -40,14 +37,9 @@ public class MetaController {
 	public ServicesResponse services() {
 		List<ServiceInfo> services = new ArrayList<>();
 		String ecosystemRoot = settings.ecosystemRoot();
-		Path root = Path.of(ecosystemRoot.isBlank() ? "." : ecosystemRoot);
-		if (!ecosystemRoot.isBlank() && Files.isDirectory(root)) {
-			try (Stream<Path> children = Files.list(root)) {
-				children.filter(c -> Files.exists(c.resolve(".git"))).sorted()
-						.forEach(c -> services.add(new ServiceInfo(c.getFileName().toString(), c.toString())));
-			} catch (IOException e) {
-				throw new UncheckedIOException(e);
-			}
+		if (!ecosystemRoot.isBlank()) {
+			worktrees.findRepos(Path.of(ecosystemRoot))
+					.forEach(r -> services.add(new ServiceInfo(r.name(), r.path())));
 		}
 		Path configured = Path.of(props.repoPath());
 		if (services.stream().noneMatch(s -> s.path().equals(configured.toString()))
