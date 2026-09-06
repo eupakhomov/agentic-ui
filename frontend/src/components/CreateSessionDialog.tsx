@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type ProviderView, type ServicesResponse, type SessionSummary, type Settings, type Template, type TicketSummary } from '../protocol';
+import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type ProviderView, type ServicesResponse, type SessionSummary, type Settings, type Template } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
+import ModelSelect from './ModelSelect';
 import { MODE_CYCLE, MODE_LABEL } from './SessionWidget';
 import TicketPickerDialog from './TicketPickerDialog';
 import ContinuationPickerDialog from './ContinuationPickerDialog';
+import { useTicketImport, type TicketImportOutcome } from '../hooks/useTicketImport';
 import { Close, ContinuedFrom } from '../icons';
 
 const MODE_DESCRIPTION: Record<PermissionMode, string> = {
@@ -38,7 +40,7 @@ export default function CreateSessionDialog({
   const [templateId, setTemplateId] = useState('');
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [provider, setProvider] = useState('claude');
-  const [model, setModel] = useState('sonnet');
+  const [model, setModel] = useState('');
   const [recommendedModel, setRecommendedModel] = useState<string | null>(null);
   const [permissionMode, setPermissionMode] = useState('acceptEdits');
   const [thinking, setThinking] = useState('');
@@ -54,22 +56,13 @@ export default function CreateSessionDialog({
   const [kickoffValues, setKickoffValues] = useState<Record<string, string>>({});
   const [advanced, setAdvanced] = useState('');
   const [initialPrompt, setInitialPrompt] = useState('');
-  const [ticketRef, setTicketRef] = useState('');
-  // the canonical ref returned by import (e.g. "ENG-123"), distinct from the raw text the user
-  // typed above (which may be a pasted URL) — this is what gets persisted on the session
+  // the canonical ref returned by import (e.g. "ENG-123"), distinct from the raw text typed into
+  // the ticket-import field (which may be a pasted URL) — this is what gets persisted on the session
   const [resolvedTicketRef, setResolvedTicketRef] = useState<string | null>(null);
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
   // ticket-derived prompts land unsent in the new session's compose box (reviewed & sent by
   // hand there) instead of auto-firing as a kickoff turn the moment the sidecar is ready
   const [promptFromTicket, setPromptFromTicket] = useState(false);
-  const [importBusy, setImportBusy] = useState(false);
-  const [importError, setImportError] = useState('');
-  const importAbortRef = useRef<AbortController | null>(null);
-  const [showTicketPicker, setShowTicketPicker] = useState(false);
-  const [recentTickets, setRecentTickets] = useState<TicketSummary[] | null>(null);
-  const [pickerBusy, setPickerBusy] = useState(false);
-  const [pickerError, setPickerError] = useState('');
-  const pickerAbortRef = useRef<AbortController | null>(null);
 
   // 7.3 continuation: like ticket import, the fetched brief lands unsent in the compose box
   // (draft, never auto-fired) — see docs/plan/phase-7-ux-and-orchestration.md 7.3
@@ -108,6 +101,7 @@ export default function CreateSessionDialog({
   }, []);
 
   const activeCapabilities = providers.find((p) => p.id === provider)?.capabilities;
+  const modelIds = useMemo(() => (activeCapabilities?.models ?? []).map((m) => m.id), [activeCapabilities]);
 
   // keep permission mode / model within what the selected provider actually supports —
   // capabilities gate the controls, never a provider-name check (docs/PROTOCOL.md)
@@ -121,85 +115,32 @@ export default function CreateSessionDialog({
       setSelectedAgentAssets(new Map());
       setExtraAgent('');
     }
-    if (provider !== 'claude' && ['sonnet', 'opus', 'haiku'].includes(model)) setModel('');
-    if (provider === 'claude' && model === '') setModel('sonnet');
+    if (activeCapabilities.models.length > 0 && !modelIds.includes(model)) {
+      // switched to a provider with a fixed catalog the current model isn't in (including
+      // a first load where model is still '') — default to its "standard" tier, if it has one
+      const standard = activeCapabilities.models.find((m) => m.tier === 'standard') ?? activeCapabilities.models[0];
+      setModel(standard?.id ?? '');
+      setRecommendedModel(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, activeCapabilities]);
 
-  const importTicket = async (refOverride?: string) => {
-    const ref = (refOverride ?? ticketRef).trim();
-    setImportError('');
-    setImportBusy(true);
-    const controller = new AbortController();
-    importAbortRef.current = controller;
-    // backend already bounds the underlying system-session turn to 45s (see
-    // SessionService.runSystemTurn / TicketImportService) and always resolves with a
-    // real error by then; this is a client-side safety net so the button can never
-    // get stuck forever even if that assumption turns out wrong in some environment
-    const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
-    console.log('[claude-ui] ticket import: fetching', ref);
-    const started = performance.now();
-    try {
-      const result = await api.importTicket(ref, controller.signal);
-      console.log('[claude-ui] ticket import: succeeded in', Math.round(performance.now() - started), 'ms', result);
-      setBranch(result.branchName);
-      setInitialPrompt(result.prompt);
-      setPromptFromTicket(true);
-      setResolvedTicketRef(result.ticketRef);
-      if (result.recommendedModel && ['sonnet', 'opus', 'haiku'].includes(result.recommendedModel)) {
-        setModel(result.recommendedModel);
-        setRecommendedModel(result.recommendedModel);
-      }
-    } catch (e) {
-      const elapsed = Math.round(performance.now() - started);
-      if (controller.signal.aborted) {
-        console.error('[claude-ui] ticket import: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
-        setImportError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (50s)');
-      } else {
-        console.error('[claude-ui] ticket import: failed after', elapsed, 'ms', e);
-        setImportError(e instanceof ApiError ? e.message : String(e));
-      }
-    } finally {
-      clearTimeout(safetyNet);
-      importAbortRef.current = null;
-      setImportBusy(false);
+  const ticketImport = useTicketImport(modelIds);
+  const { ticketRef, setTicketRef, importBusy, importError, showTicketPicker, setShowTicketPicker,
+    recentTickets, pickerBusy, pickerError } = ticketImport;
+
+  const applyImportOutcome = (outcome: TicketImportOutcome) => {
+    setBranch(outcome.branchName);
+    setInitialPrompt(outcome.prompt);
+    setPromptFromTicket(true);
+    setResolvedTicketRef(outcome.ticketRef);
+    if (outcome.recommendedModel) {
+      setModel(outcome.recommendedModel);
+      setRecommendedModel(outcome.recommendedModel);
     }
   };
-
-  const browseRecentTickets = async () => {
-    setPickerError('');
-    setPickerBusy(true);
-    setShowTicketPicker(true);
-    const controller = new AbortController();
-    pickerAbortRef.current = controller;
-    const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
-    console.log('[claude-ui] ticket browse: fetching recent tickets');
-    const started = performance.now();
-    try {
-      const list = await api.listRecentTickets(controller.signal);
-      console.log('[claude-ui] ticket browse: succeeded in', Math.round(performance.now() - started), 'ms', list);
-      setRecentTickets(list);
-    } catch (e) {
-      const elapsed = Math.round(performance.now() - started);
-      if (controller.signal.aborted) {
-        console.error('[claude-ui] ticket browse: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
-        setPickerError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (50s)');
-      } else {
-        console.error('[claude-ui] ticket browse: failed after', elapsed, 'ms', e);
-        setPickerError(e instanceof ApiError ? e.message : String(e));
-      }
-    } finally {
-      clearTimeout(safetyNet);
-      pickerAbortRef.current = null;
-      setPickerBusy(false);
-    }
-  };
-
-  const pickTicket = (ref: string) => {
-    setShowTicketPicker(false);
-    setTicketRef(ref);
-    void importTicket(ref);
-  };
+  const importTicket = (refOverride?: string) => ticketImport.importTicket(refOverride, applyImportOutcome);
+  const pickTicket = (ref: string) => ticketImport.pickTicket(ref, applyImportOutcome);
 
   const browseContinuations = async () => {
     setContinuationError('');
@@ -355,11 +296,11 @@ export default function CreateSessionDialog({
                   disabled={importBusy || pickerBusy}
                 />
                 {importBusy || pickerBusy ? (
-                  <button onClick={() => { importAbortRef.current?.abort('user'); pickerAbortRef.current?.abort('user'); }}>
+                  <button onClick={() => ticketImport.cancel()}>
                     Cancel
                   </button>
                 ) : (
-                  <button onClick={() => void (ticketRef.trim() ? importTicket() : browseRecentTickets())}>
+                  <button onClick={() => void (ticketRef.trim() ? importTicket() : ticketImport.browseRecentTickets())}>
                     {ticketRef.trim() ? 'Fetch' : 'Browse'}
                   </button>
                 )}
@@ -407,19 +348,11 @@ export default function CreateSessionDialog({
           </select>
 
           <label>Model</label>
-          {provider === 'claude' ? (
-            <select value={model} onChange={(e) => { setRecommendedModel(null); setModel(e.target.value); }}>
-              <option value="sonnet">sonnet</option>
-              <option value="opus">opus</option>
-              <option value="haiku">haiku</option>
-            </select>
-          ) : (
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="provider default — leave blank"
-            />
-          )}
+          <ModelSelect
+            value={model}
+            onChange={(v) => { setRecommendedModel(null); setModel(v); }}
+            capabilities={activeCapabilities}
+          />
           {recommendedModel && recommendedModel === model && (
             <div className="full" style={{ gridColumn: '2 / -1', color: 'var(--muted)', fontSize: 12.5 }}>
               recommended by ticket import
@@ -572,7 +505,7 @@ export default function CreateSessionDialog({
         busy={pickerBusy}
         error={pickerError}
         onPick={pickTicket}
-        onClose={() => { pickerAbortRef.current?.abort('user'); setShowTicketPicker(false); }}
+        onClose={() => { ticketImport.cancel(); setShowTicketPicker(false); }}
       />
     )}
     {showContinuationPicker && (

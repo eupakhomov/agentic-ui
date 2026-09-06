@@ -22,8 +22,6 @@ export const MODE_LABEL: Record<PermissionMode, string> = {
   bypassPermissions: 'Bypass',
 };
 
-const MODEL_CYCLE = ['sonnet', 'opus', 'haiku'];
-
 // one glyph for every PR state — the *colour* carries the status (see .chip.pr-* in
 // styles.css), instead of six differently-coloured emoji competing in the header
 const PR_STATUS_LABEL: Record<NonNullable<SessionEntity['prCheckStatus']>, string> = {
@@ -148,12 +146,18 @@ export default function SessionWidget({
 
   const cycleModel = useCallback(() => {
     if (!view) return;
+    // P4 fix: cycle through *this session's own provider* catalog (live capabilities, reported
+    // in its ready event) instead of a hardcoded Claude list — a Codex session (empty catalog,
+    // modelSwitch still true) has nothing to cycle through and is left alone.
+    const models = view.capabilities?.models ?? [];
+    if (models.length === 0) return;
     // system_init reports a concrete resolved id (e.g. "claude-sonnet-5") even when
     // launched via an alias, so match by substring rather than exact equality
-    const current = MODEL_CYCLE.findIndex((m) => (view.model ?? '').toLowerCase().includes(m));
-    const next = MODEL_CYCLE[(current + 1) % MODEL_CYCLE.length]!;
-    send({ type: 'set_model', model: next });
+    const current = models.findIndex((m) => (view.model ?? '').toLowerCase().includes(m.id));
+    const next = models[(current + 1) % models.length]!;
+    send({ type: 'set_model', model: next.id });
   }, [view, send]);
+  const canCycleModel = (view?.capabilities?.modelSwitch ?? true) && (view?.capabilities?.models.length ?? 0) > 0;
 
   const resume = useCallback(async () => {
     setActionError('');
@@ -232,8 +236,8 @@ export default function SessionWidget({
         {entity?.kind !== 'system' && <span className="chip" title="branch">{entity?.branch}</span>}
         {(view.model ?? entity?.model) && (
           <span
-            className={`chip${view.capabilities?.modelSwitch ?? true ? ' clickable' : ''}`}
-            title={view.capabilities?.modelSwitch ?? true ? 'click to switch model' : undefined}
+            className={`chip${canCycleModel ? ' clickable' : ''}`}
+            title={canCycleModel ? 'click to switch model' : undefined}
             onClick={cycleModel}
             onMouseDown={(e) => e.stopPropagation()}
           >

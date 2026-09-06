@@ -6,6 +6,12 @@ export type SessionState =
   | 'CREATING' | 'PROVISIONING' | 'STARTING' | 'IDLE' | 'RUNNING'
   | 'WAITING_INPUT' | 'PARKED' | 'CRASHED' | 'CLOSING' | 'CLOSED' | 'FAILED';
 
+export interface ModelInfo {
+  id: string;
+  label: string;
+  tier: 'cheap' | 'standard' | 'premium';
+}
+
 export interface Capabilities {
   permissionModes: PermissionMode[];
   thinking: boolean;
@@ -19,6 +25,8 @@ export interface Capabilities {
   fallbackModel: boolean;
   updatedInput: boolean;
   modelSwitch: boolean;
+  /** known model catalog for this provider; empty = no fixed list (free-text model input) */
+  models: ModelInfo[];
 }
 
 /** GET /api/providers — static per-provider capabilities, used to gate create-dialog/
@@ -146,17 +154,21 @@ export interface Settings {
   librarySyncIntervalMinutes: number;
   voyageConfigured: boolean;
   defaultProvider: string;
+  /** provider the singleton system session spawns as; '' = follow defaultProvider */
+  systemProvider: string;
   /** JSON: {"<model>"|"default": {"inputPer1M":n, "cachedInputPer1M":n, "outputPer1M":n}} */
   codexPricing: string;
   memoryRoot: string;
   memoryEnabled: boolean;
   memoryReflectionDefault: boolean;
+  /** tier: 'cheap' | 'standard' | 'premium' */
   memoryReflectionModel: string;
   memorySyncIntervalMinutes: number;
   memoryRetentionDays: number;
   memoryReflectionApprovalRequired: boolean;
   serviceDiscoveryEnabled: boolean;
   serviceDiscoveryStalenessDays: number;
+  /** tier: 'cheap' | 'standard' | 'premium' */
   serviceDiscoveryModel: string;
 }
 

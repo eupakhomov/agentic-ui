@@ -3,6 +3,10 @@ package de.pamir.claude.ui.config;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
 /**
  * Persisted, UI-editable settings (Settings dialog → Linear integration). Deliberately not a
  * secret store: the Linear API key stays in AppProperties/env, never touches app_setting.
@@ -25,7 +29,17 @@ public class SettingsService {
 	private static final int DEFAULT_LIBRARY_SYNC_INTERVAL_MINUTES = 60;
 	private static final int MIN_LIBRARY_SYNC_INTERVAL_MINUTES = 5;
 	private static final String DEFAULT_PROVIDER_KEY = "session.default-provider";
+	private static final String SYSTEM_PROVIDER_KEY = "session.system-provider";
 	private static final String CODEX_PRICING_KEY = "codex.pricing";
+	private static final Set<String> VALID_TIERS = Set.of("cheap", "standard", "premium");
+	/**
+	 * memory.reflection-model / service-discovery.model used to store a raw Claude alias
+	 * ("haiku"/"sonnet"/"opus") passed straight into set_model; normalizing legacy values here
+	 * keeps a pre-existing install's persisted choice meaningful now that these settings are
+	 * provider-neutral tier names (see docs/plan/phase-9-production-hardening.md P1/P3).
+	 */
+	private static final Map<String, String> LEGACY_MODEL_ALIAS_TIER =
+			Map.of("haiku", "cheap", "sonnet", "standard", "opus", "premium");
 	/**
 	 * Codex reports token counts, never a per-turn USD figure (see
 	 * docs/plan/phase-5.13-codex-provider.md Decision 2) — this is a manually
@@ -173,6 +187,29 @@ public class SettingsService {
 		repo.set(DEFAULT_PROVIDER_KEY, provider == null || provider.isBlank() ? "claude" : provider);
 	}
 
+	/**
+	 * Provider the singleton system session (ticket import, library AI-fill, reflection, service
+	 * discovery, commit/PR drafting, handoff briefs — see docs/plan/phase-9-production-hardening.md
+	 * P1) spawns as; empty (the default) means "follow {@link #defaultProvider()}". Note a Codex
+	 * system session gets no MCP tool pre-approval (Codex rejects {@code allowedTools} outright —
+	 * decision 10 in phase-5.13-codex-provider.md), so a backend-initiated turn needing Linear/
+	 * memory tools has nobody to answer the resulting approval prompt and will simply time out.
+	 */
+	public String systemProvider() {
+		return repo.get(SYSTEM_PROVIDER_KEY).filter(v -> !v.isBlank()).orElseGet(this::defaultProvider);
+	}
+
+	/** The raw persisted override (possibly blank = "follow default provider"), for the Settings
+	 * dialog to round-trip correctly — {@link #systemProvider()} already resolves the fallback, so
+	 * blank would otherwise be indistinguishable from an explicit choice that happens to match. */
+	public String systemProviderOverride() {
+		return repo.get(SYSTEM_PROVIDER_KEY).orElse("");
+	}
+
+	public void setSystemProvider(String provider) {
+		repo.set(SYSTEM_PROVIDER_KEY, provider == null ? "" : provider.strip());
+	}
+
 	/** Per-model $-per-million-tokens rate table used to estimate Codex turn cost. */
 	public String codexPricing() {
 		return repo.get(CODEX_PRICING_KEY).filter(v -> !v.isBlank()).orElse(DEFAULT_CODEX_PRICING);
@@ -222,13 +259,18 @@ public class SettingsService {
 		repo.set(MEMORY_REFLECTION_DEFAULT_KEY, Boolean.toString(enabled));
 	}
 
-	/** Model the reflection system turn runs on; raise to sonnet if haiku's extraction quality disappoints. */
+	/**
+	 * Tier ("cheap"/"standard"/"premium") the reflection system turn runs on — resolved to a
+	 * concrete model via {@link de.pamir.claude.ui.session.ModelCatalog#byTier} for whatever
+	 * {@link #systemProvider()} is currently set to; raise to "standard" if the cheap tier's
+	 * extraction quality disappoints.
+	 */
 	public String memoryReflectionModel() {
-		return repo.get(MEMORY_REFLECTION_MODEL_KEY).filter(v -> !v.isBlank()).orElse("haiku");
+		return normalizeTier(repo.get(MEMORY_REFLECTION_MODEL_KEY).orElse(""));
 	}
 
-	public void setMemoryReflectionModel(String model) {
-		repo.set(MEMORY_REFLECTION_MODEL_KEY, model == null || model.isBlank() ? "haiku" : model.strip());
+	public void setMemoryReflectionModel(String tier) {
+		repo.set(MEMORY_REFLECTION_MODEL_KEY, normalizeTier(tier));
 	}
 
 	/** How often (minutes) the memory root is re-scanned for human edits; clamped to a sane floor. */
@@ -288,12 +330,25 @@ public class SettingsService {
 		repo.set(SERVICE_DISCOVERY_STALENESS_DAYS_KEY, Integer.toString(Math.max(days, 1)));
 	}
 
-	/** Model the discovery system turn runs on; raise to sonnet if haiku's descriptions disappoint. */
+	/**
+	 * Tier ("cheap"/"standard"/"premium") the discovery system turn runs on; raise to "standard"
+	 * if the cheap tier's descriptions disappoint. See {@link #memoryReflectionModel()} for the
+	 * tier→model resolution and provider it follows.
+	 */
 	public String serviceDiscoveryModel() {
-		return repo.get(SERVICE_DISCOVERY_MODEL_KEY).filter(v -> !v.isBlank()).orElse("haiku");
+		return normalizeTier(repo.get(SERVICE_DISCOVERY_MODEL_KEY).orElse(""));
 	}
 
-	public void setServiceDiscoveryModel(String model) {
-		repo.set(SERVICE_DISCOVERY_MODEL_KEY, model == null || model.isBlank() ? "haiku" : model.strip());
+	public void setServiceDiscoveryModel(String tier) {
+		repo.set(SERVICE_DISCOVERY_MODEL_KEY, normalizeTier(tier));
+	}
+
+	/** Accepts a tier name as-is, maps a legacy raw Claude alias to its tier, else defaults to "cheap". */
+	private static String normalizeTier(String raw) {
+		String v = raw == null ? "" : raw.strip().toLowerCase(Locale.ROOT);
+		if (VALID_TIERS.contains(v)) {
+			return v;
+		}
+		return LEGACY_MODEL_ALIAS_TIER.getOrDefault(v, "cheap");
 	}
 }

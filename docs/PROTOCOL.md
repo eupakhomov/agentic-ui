@@ -69,9 +69,22 @@ this, never from the provider name:
   "permissionModes": ["default", "acceptEdits", "plan", "bypassPermissions"],
   "thinking": true, "effort": true, "planMode": true, "resume": true, "skills": true,
   "agents": true, "mcp": true, "interrupt": true, "fallbackModel": true,
-  "updatedInput": true, "modelSwitch": true
+  "updatedInput": true, "modelSwitch": true,
+  "models": [
+    {"id": "haiku", "label": "haiku", "tier": "cheap"},
+    {"id": "sonnet", "label": "sonnet", "tier": "standard"},
+    {"id": "opus", "label": "opus", "tier": "premium"}
+  ]
 }
 ```
+
+`models` is each provider's known model catalog (`tier` one of `cheap`/`standard`/
+`premium`); empty means the provider has no fixed list (Codex resolves its own default
+model/alias, so the UI falls back to a free-text model field). `GET /api/providers`
+exposes the same shape statically (before any session exists to report it live) —
+backed by `ModelCatalog` on the backend, which also lets backend-initiated system
+turns pick a model by tier instead of a hardcoded alias (see CLAUDE.md's
+`session.system-provider` setting).
 
 ## Behavioral notes (Claude adapter)
 

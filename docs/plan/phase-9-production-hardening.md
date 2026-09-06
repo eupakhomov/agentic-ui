@@ -1,6 +1,6 @@
 # Phase 9 — Architectural review & production hardening
 
-Status: **Runs A, B, and C done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
+Status: **Runs A, B, C, and D done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
 it is a curated backlog produced by a full architectural review (2026-09-06), not one
 feature plan. Each item below is self-contained with enough context to be picked up as
 its own run; pick order suggestions are at the bottom. Security is explicitly out of
@@ -86,37 +86,52 @@ from this phase onward is unguarded — so test items come first, and the dedup 
 The system supports `provider: codex` for *user* sessions, but every backend-initiated
 LLM feature assumes a working `claude` CLI login:
 
-- **P1 — System session hardcodes provider `"claude"` + model `"haiku"`**
-  (`SessionService.createSystemSession`). Everything funnels through it: ticket
-  import + "my tickets" list, library AI-fill, reflection, service discovery,
-  commit/PR drafting (`GitAssistService`), handoff briefs. On a Codex-only machine all
-  of these fail at spawn. Fix direction: system session provider follows the persisted
-  `session.default-provider` (or its own `session.system-provider` setting), and the
-  model comes from a per-provider tier map (see P3) instead of the literal `"haiku"`.
-  Note `runSystemTurn(modelOverride)` also passes Claude aliases
-  (`memory.reflection-model` / `service-discovery.model` settings default `"haiku"`)
-  straight into `set_model` — those settings need to become tier names or per-provider.
-- **P2 — Auto-titling bypasses the provider abstraction entirely**:
-  `SessionService.maybeAutoTitle` spawns raw `claude -p --model haiku`. Breaks without
-  the CLI, and its cost is invisible to the usage dashboard. Route it through
-  `runSystemTurn` — but note the serialization trade-off: `runSystemTurn` holds one
-  global lock for up to the caller's timeout (3 min for reflection), so a naive move
-  makes titles wait behind reflections. Either accept that (titles are best-effort
-  anyway) or give system turns a small queue (see S2).
-- **P3 — Model vocabulary is hardcoded Claude aliases everywhere.** `sonnet|opus|haiku`
-  appears in: `TicketImportService.VALID_MODELS` + its prompt text,
-  `SettingsService` defaults, and the frontend in five places
-  (`CreateSessionDialog`, `QuickSessionDialog`, `TemplateManager`, `SettingsDialog`
-  ×2, `SessionWidget.MODEL_CYCLE`). The adapter `Capabilities` record has
-  `modelSwitch: boolean` but no model *list*. Fix direction: extend the capabilities
-  handshake (and `GET /api/providers`) with `models: [{id, label, tier: cheap|standard|premium}]`;
-  frontend dropdowns and the ticket-import "recommendedModel" mapping derive from it;
-  backend maps tier→id per provider for system turns.
-- **P4 — Bug: `SessionWidget.cycleModel` ignores provider.** `cycleMode` filters by
-  `capabilities.permissionModes`, but `cycleModel` cycles the hardcoded Claude list
-  unconditionally — clicking the model chip on a Codex session sends `set_model:
-  "sonnet"`. Falls out of P3 for free; worth a point-fix earlier if Codex sessions are
-  in real use.
+- **P3 — DONE (2026-09-06).** New `ModelCatalog` (`session/ModelCatalog.java`,
+  synced-in-spirit with `sidecar/src/protocol.ts`'s `CLAUDE_CAPABILITIES.models` and
+  `sidecar-codex/src/protocol.ts`'s `CODEX_CAPABILITIES.models`, both added to the
+  `Capabilities` interface the protocol-sync guard checks) is the single source of
+  truth for `{id, label, tier: cheap|standard|premium}` per provider — Claude gets all
+  three tiers, Codex an empty list (deliberately: "no hardcoded Codex model list" is a
+  standing decision from phase-5.13, so the frontend falls back to free text exactly
+  as before). `GET /api/providers` and every adapter's `ready.capabilities` now carry
+  `models`; `ModelCatalog.byTier(provider, tier)` lets backend code pick "the cheap
+  model for whatever provider is active" instead of a literal alias — the mechanism
+  P1/P2 build on.
+- **P1 — DONE (2026-09-06).** `SessionService.createSystemSession` now reads provider
+  from the new `session.system-provider` setting (`SettingsService.systemProvider()`,
+  empty = follow `session.default-provider`) and model from
+  `ModelCatalog.byTier(provider, "cheap")` (null on a provider with no catalog, same as
+  "unspecified" already meant for non-Claude sessions). `memory.reflection-model` and
+  `service-discovery.model` changed from a raw Claude alias to a tier name
+  (`SettingsService.normalizeTier` maps a pre-existing "haiku"/"sonnet"/"opus" value to
+  its tier so an existing install's choice survives); `ReflectionService`/
+  `ServiceDiscoveryService` resolve the tier via `ModelCatalog.byTier(settings.
+  systemProvider(), tier)` right before the `systemTurnClient.json(...)` call.
+  `TicketImportService`'s prompt (recommendedModel field + guidance text) is now built
+  from `ModelCatalog.models(settings.defaultProvider())` instead of a hardcoded
+  `sonnet|opus|haiku` enum, and `parse()` takes the valid-id set as a parameter instead
+  of a `private static final Set` so it stays a dependency-free pure function (test
+  updated to pass the set explicitly). Caveat documented on `systemProvider()`'s
+  javadoc and in the Settings dialog's tooltip: Codex rejects `allowedTools` outright
+  (existing decision 10, phase-5.13), so a Codex system session gets no MCP
+  pre-approval and a Linear/memory-tool turn will simply time out — not fixed here,
+  just made visible instead of silently inherited.
+- **P2 + O2 — DONE (2026-09-06).** `SessionService.maybeAutoTitle` now calls
+  `runSystemTurn(prompt, ModelCatalog.byTier(settings.systemProvider(), "cheap")
+  .orElse(null), Duration.ofSeconds(60))` from its existing virtual thread instead of
+  spawning `claude -p --model haiku` directly — works on a Codex-only install, and the
+  turn's cost now lands in the usage dashboard like every other system turn (O2)
+  instead of being invisible. The 60s timeout and ≤80-char sanity check are unchanged;
+  accepted the documented serialization trade-off as-is (titles queue behind an
+  in-flight reflection on `runSystemTurn`'s lock) since auto-titling was already
+  best-effort and fire-and-forget from the caller's perspective — S2 (Run E) is where
+  a fair queue would go if this turns out to matter in practice.
+- **P4 — DONE (2026-09-06).** `SessionWidget.cycleModel` now cycles
+  `view.capabilities.models` (the session's own live, provider-correct catalog) instead
+  of a hardcoded `['sonnet','opus','haiku']`, and no-ops when that list is empty
+  (Codex) rather than sending a Claude alias into `set_model`; the model chip's
+  `clickable`/tooltip state now also requires a non-empty catalog, not just
+  `modelSwitch`. Fell out of P3 as intended, landed alongside it.
 - **P5 — DONE (2026-09-06).** `sidecar/package.json` pinned
   `"@anthropic-ai/claude-agent-sdk"` to the exact version already resolved in
   `package-lock.json` (`0.3.241`) instead of `"latest"`, so a bare `npm install` can
@@ -173,11 +188,17 @@ LLM feature assumes a working `claude` CLI login:
   `SessionEventBus` remains a live bean in its own right (`SessionWebSocketHandler`
   still subscribes to it for the WS fan-out) — only the append+publish call sites
   changed, not the bus itself.
-- **G5 — Frontend: extract the ticket-import flow.** `QuickSessionDialog` and
-  `CreateSessionDialog` duplicate the whole importTicket/browseRecentTickets/
-  recommendedModel/abort-controller dance (~80 lines each). Extract a
-  `useTicketImport()` hook + a shared `<ModelSelect>` fed by provider capabilities
-  (lands naturally with P3).
+- **G5 — DONE (2026-09-06).** `frontend/src/hooks/useTicketImport.ts` centralizes the
+  importTicket/browseRecentTickets/pickTicket/abort-controller dance (state +
+  recommendedModel filtering against a caller-supplied `validModelIds`); both dialogs
+  now supply an `onResult` callback that just maps the outcome onto their own local
+  fields, rather than owning the fetch logic themselves. `CreateSessionDialog`'s console
+  timing logs moved into the hook, so `QuickSessionDialog` picks up the same
+  diagnostics for free (it had none before). `frontend/src/components/ModelSelect.tsx`
+  is the shared `<select>`-or-free-text control from P3, used by `CreateSessionDialog`
+  and `TemplateManager` (whose "session default" provider choice now correctly shows
+  free text instead of assuming Claude's model list, since there's no capabilities
+  object to key off an empty provider id).
 - **G6 — (optional) Event-listener + virtual-thread + `inFlight` guard pattern** is
   duplicated between `ReflectionService` and `ServiceDiscoveryService`; the
   scheduled-tick-with-settings-cutoff pattern across the four background services is
@@ -293,9 +314,15 @@ LLM feature assumes a working `claude` CLI login:
    files: +149/-344 lines, plus three new shared classes (`SystemTurnClient`/
    `PgVector`/`JournalPublisher`) and their tests; unit test count 54 → 74. Full
    `mvn`/`npm run build` (both sidecars) and `check-protocol-sync.mjs` all still green.
-4. **Run D (provider decoupling):** P3 (model catalog in capabilities) → P1 (system
-   session provider/tier) → P2+O2 (auto-title via system turn) → P4/G5 (frontend).
+4. **Run D (provider decoupling) — DONE 2026-09-06.** P3 (`ModelCatalog` + capabilities
+   `models`) → P1 (system session provider/tier, `session.system-provider` setting) →
+   P2+O2 (auto-title via `runSystemTurn`) → P4 (cycleModel bug) + G5 (`useTicketImport`
+   hook, `ModelSelect` component). New tests: `ModelCatalogTest`, `SettingsServiceTest`
+   (tier-normalization/system-provider backward compat); `TicketImportServiceTest`
+   updated for `parse`'s new `validModels` parameter. Unit test count 74 → 88. Full
+   `mvn`/`npm run build` (both sidecars + frontend) and `check-protocol-sync.mjs` all
+   green. Re-review S2's lock trade-off (auto-titling now shares it) once this sees
+   real use.
 5. **Run E (structural):** S1–S4 + T2, then T3/T4/T6 to taste.
 
-Items not picked stay valid backlog; re-review after Run D whether S2's lock trade-off
-still matters in practice.
+Items not picked stay valid backlog.

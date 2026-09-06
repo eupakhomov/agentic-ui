@@ -3,6 +3,7 @@ package de.pamir.claude.ui.integration;
 import tools.jackson.databind.JsonNode;
 import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.SettingsService;
+import de.pamir.claude.ui.session.ModelCatalog;
 import de.pamir.claude.ui.session.SystemTurnClient;
 import org.springframework.stereotype.Service;
 
@@ -10,18 +11,28 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Generates a branch name + kickoff prompt from a ticket, via the singleton system session
- * (Haiku + the Linear MCP server). Provider-specific today (Linear only); named generically
- * since "ticket system" naming, not "linear", is what should survive a second provider later.
+ * (the cheap tier of {@link SettingsService#defaultProvider()}'s model catalog + the Linear MCP
+ * server). Provider-specific today (Linear only); named generically since "ticket system"
+ * naming, not "linear", is what should survive a second provider later.
  */
 @Service
 public class TicketImportService {
 
 	private static final Duration TIMEOUT = Duration.ofSeconds(45);
-	private static final Set<String> VALID_MODELS = Set.of("sonnet", "opus", "haiku");
+
+	/** Per-tier phrasing for the recommendedModel guidance clause; a tier with no model in the
+	 * catalog (e.g. a provider offering only "cheap"/"standard") is simply skipped. */
+	private static final Map<String, String> TIER_COMPLEXITY_PHRASE = Map.of(
+			"cheap", "trivial/mechanical changes (typo, copy tweak, a config value, a tiny well-defined fix)",
+			"standard", "typical, well-scoped feature or bug work (the default for most tickets)",
+			"premium", "complex, ambiguous, or high-risk work (architecture/design changes, tricky concurrency "
+					+ "or security issues, large multi-system refactors)");
 
 	public record TicketImportResult(String branchName, String prompt, String recommendedModel, String ticketRef) {
 	}
@@ -54,6 +65,7 @@ public class TicketImportService {
 		String spec = settings.ticketImportSpec();
 		String guidance = spec.isBlank() ? "" : "Follow these additional guidelines when choosing the branch name "
 				+ "and/or writing the prompt: " + spec.strip() + " ";
+		List<ModelCatalog.ModelInfo> models = ModelCatalog.models(settings.defaultProvider());
 		String prompt = ("You have access to Linear via MCP tools. Fetch the Linear issue referenced by \"%s\" "
 				+ "(it may be a short identifier like ENG-123 or a full Linear issue URL), along with its "
 				+ "comments. Read the comment thread for any clarifications, scope changes, decisions, or "
@@ -63,16 +75,36 @@ public class TicketImportService {
 				+ "Then respond with ONLY a single JSON object — no markdown fences, no commentary — "
 				+ "of the form: {\"branchName\": \"kebab-case-git-safe-branch-name\", \"prompt\": \"a clear, "
 				+ "actionable initial instruction for an engineer/agent implementing this ticket, including its "
-				+ "key requirements\", \"recommendedModel\": \"sonnet|opus|haiku\", \"ticketRef\": "
-				+ "\"the issue's own short identifier, e.g. ENG-123, uppercased\"}. branchName must be short, "
+				+ "key requirements\"%s}. branchName must be short, "
 				+ "kebab-case, git-ref-safe, and include the ticket identifier, e.g. \"ENG-123-fix-login-bug\" OR "
-				+ "\"eng-123-fix-login-bug\". recommendedModel must be exactly one of \"sonnet\", \"opus\", or "
-				+ "\"haiku\", chosen by the ticket's apparent complexity: \"haiku\" for trivial/mechanical changes "
-				+ "(typo, copy tweak, a config value, a tiny well-defined fix); \"sonnet\" for typical, "
-				+ "well-scoped feature or bug work (the default for most tickets); \"opus\" for complex, "
-				+ "ambiguous, or high-risk work (architecture/design changes, tricky concurrency or security "
-				+ "issues, large multi-system refactors).").formatted(ticketRef.strip(), guidance);
-		return parse(systemTurnClient.json(prompt, TIMEOUT));
+				+ "\"eng-123-fix-login-bug\".%s")
+				.formatted(ticketRef.strip(), guidance, recommendedModelField(models), recommendedModelGuidance(models));
+		Set<String> validModels = models.stream().map(ModelCatalog.ModelInfo::id).collect(Collectors.toSet());
+		return parse(systemTurnClient.json(prompt, TIMEOUT), validModels);
+	}
+
+	private static String recommendedModelField(List<ModelCatalog.ModelInfo> models) {
+		if (models.isEmpty()) {
+			return "";
+		}
+		String idsPiped = models.stream().map(ModelCatalog.ModelInfo::id).collect(Collectors.joining("|"));
+		return ", \"recommendedModel\": \"" + idsPiped + "\"";
+	}
+
+	private static String recommendedModelGuidance(List<ModelCatalog.ModelInfo> models) {
+		if (models.isEmpty()) {
+			return "";
+		}
+		String idsQuoted = models.stream().map(m -> "\"" + m.id() + "\"").collect(Collectors.joining(", "));
+		List<String> clauses = new ArrayList<>();
+		for (ModelCatalog.ModelInfo m : models) {
+			String phrase = TIER_COMPLEXITY_PHRASE.get(m.tier());
+			if (phrase != null) {
+				clauses.add("\"" + m.id() + "\" for " + phrase);
+			}
+		}
+		return " recommendedModel must be exactly one of " + idsQuoted
+				+ ", chosen by the ticket's apparent complexity: " + String.join("; ", clauses) + ".";
 	}
 
 	public List<TicketSummary> listMyTickets() {
@@ -106,14 +138,14 @@ public class TicketImportService {
 		return tickets;
 	}
 
-	TicketImportResult parse(JsonNode node) {
+	static TicketImportResult parse(JsonNode node, Set<String> validModels) {
 		String branchName = sanitizeBranch(node.path("branchName").asText(""));
 		String promptText = node.path("prompt").asText("").strip();
 		if (branchName.isBlank() || promptText.isBlank()) {
 			throw new IllegalStateException("ticket import response missing branchName/prompt: " + node);
 		}
 		String recommendedModel = node.path("recommendedModel").asText("").strip().toLowerCase(Locale.ROOT);
-		if (!VALID_MODELS.contains(recommendedModel)) {
+		if (!validModels.contains(recommendedModel)) {
 			recommendedModel = null;
 		}
 		String canonicalRef = node.path("ticketRef").asText("").strip().toUpperCase(Locale.ROOT);

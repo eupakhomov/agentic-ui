@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import type { ServicesResponse, TicketSummary } from '../protocol';
+import type { ProviderView, ServicesResponse } from '../protocol';
+import { useTicketImport, type TicketImportOutcome } from '../hooks/useTicketImport';
 import TicketPickerDialog from './TicketPickerDialog';
 
 /**
@@ -19,20 +20,15 @@ export default function QuickSessionDialog({
   const [servicesInfo, setServicesInfo] = useState<ServicesResponse | null>(null);
   const [repoPath, setRepoPath] = useState('');
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
+  // recommendedModel is generated against the *default* provider's catalog (TicketImportService
+  // uses SettingsService.defaultProvider()), which is what a new session created here also gets
+  // absent an explicit override in lastSessionConfig — see ModelCatalog (P3).
+  const [defaultProviderModelIds, setDefaultProviderModelIds] = useState<string[]>([]);
 
-  const [ticketRef, setTicketRef] = useState('');
   const [branchName, setBranchName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [resolvedTicketRef, setResolvedTicketRef] = useState<string | null>(null);
   const [recommendedModel, setRecommendedModel] = useState<string | null>(null);
-  const [importBusy, setImportBusy] = useState(false);
-  const [importError, setImportError] = useState('');
-  const importAbortRef = useRef<AbortController | null>(null);
-  const [showTicketPicker, setShowTicketPicker] = useState(false);
-  const [recentTickets, setRecentTickets] = useState<TicketSummary[] | null>(null);
-  const [pickerBusy, setPickerBusy] = useState(false);
-  const [pickerError, setPickerError] = useState('');
-  const pickerAbortRef = useRef<AbortController | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -49,61 +45,24 @@ export default function QuickSessionDialog({
       setRepoPath(info.defaultRepoPath);
     }).catch(() => setServicesInfo(null));
     api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
+    Promise.all([api.getSettings(), api.listProviders()]).then(([settings, providers]) => {
+      const models = providers.find((p: ProviderView) => p.id === settings.defaultProvider)?.capabilities.models ?? [];
+      setDefaultProviderModelIds(models.map((m) => m.id));
+    }).catch(() => setDefaultProviderModelIds([]));
   }, []);
 
-  const importTicket = async (refOverride?: string) => {
-    const ref = (refOverride ?? ticketRef).trim();
-    setImportError('');
-    setImportBusy(true);
-    const controller = new AbortController();
-    importAbortRef.current = controller;
-    const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
-    try {
-      const result = await api.importTicket(ref, controller.signal);
-      setBranchName(result.branchName);
-      setPrompt(result.prompt);
-      setResolvedTicketRef(result.ticketRef);
-      setRecommendedModel(result.recommendedModel);
-    } catch (e) {
-      if (controller.signal.aborted) {
-        setImportError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (50s)');
-      } else {
-        setImportError(e instanceof ApiError ? e.message : String(e));
-      }
-    } finally {
-      clearTimeout(safetyNet);
-      importAbortRef.current = null;
-      setImportBusy(false);
-    }
-  };
+  const ticketImport = useTicketImport(defaultProviderModelIds);
+  const { ticketRef, importBusy, importError, showTicketPicker, setShowTicketPicker,
+    recentTickets, pickerBusy, pickerError } = ticketImport;
 
-  const browseRecentTickets = async () => {
-    setPickerError('');
-    setPickerBusy(true);
-    setShowTicketPicker(true);
-    const controller = new AbortController();
-    pickerAbortRef.current = controller;
-    const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
-    try {
-      setRecentTickets(await api.listRecentTickets(controller.signal));
-    } catch (e) {
-      if (controller.signal.aborted) {
-        setPickerError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (50s)');
-      } else {
-        setPickerError(e instanceof ApiError ? e.message : String(e));
-      }
-    } finally {
-      clearTimeout(safetyNet);
-      pickerAbortRef.current = null;
-      setPickerBusy(false);
-    }
+  const applyImportOutcome = (outcome: TicketImportOutcome) => {
+    setBranchName(outcome.branchName);
+    setPrompt(outcome.prompt);
+    setResolvedTicketRef(outcome.ticketRef);
+    setRecommendedModel(outcome.recommendedModel);
   };
-
-  const pickTicket = (ref: string) => {
-    setShowTicketPicker(false);
-    setTicketRef(ref);
-    void importTicket(ref);
-  };
+  const importTicket = (refOverride?: string) => ticketImport.importTicket(refOverride, applyImportOutcome);
+  const pickTicket = (ref: string) => ticketImport.pickTicket(ref, applyImportOutcome);
 
   const create = async () => {
     setError('');
@@ -112,9 +71,7 @@ export default function QuickSessionDialog({
       const [lastConfig, branches] = await Promise.all([api.lastSessionConfig(), api.branches(repoPath)]);
       const overrides: Record<string, unknown> = { ...lastConfig };
       if (resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
-      if (recommendedModel && ['sonnet', 'opus', 'haiku'].includes(recommendedModel)) {
-        overrides['model'] = recommendedModel;
-      }
+      if (recommendedModel) overrides['model'] = recommendedModel;
       const baseBranch = branches.includes('main') ? 'main' : (branches[0] ?? 'main');
       const created = await api.createSession({
         name: branchName,
@@ -164,16 +121,16 @@ export default function QuickSessionDialog({
                 ref={ticketInputRef}
                 style={{ flex: 1 }}
                 value={ticketRef}
-                onChange={(e) => setTicketRef(e.target.value)}
+                onChange={(e) => ticketImport.setTicketRef(e.target.value)}
                 placeholder="Linear ticket, e.g. ENG-123 or a URL — leave blank to browse tickets assigned to you"
                 disabled={importBusy || pickerBusy}
               />
               {importBusy || pickerBusy ? (
-                <button onClick={() => { importAbortRef.current?.abort('user'); pickerAbortRef.current?.abort('user'); }}>
+                <button onClick={() => ticketImport.cancel()}>
                   Cancel
                 </button>
               ) : (
-                <button onClick={() => void (ticketRef.trim() ? importTicket() : browseRecentTickets())}>
+                <button onClick={() => void (ticketRef.trim() ? importTicket() : ticketImport.browseRecentTickets())}>
                   {ticketRef.trim() ? 'Fetch' : 'Browse'}
                 </button>
               )}
@@ -216,7 +173,7 @@ export default function QuickSessionDialog({
         busy={pickerBusy}
         error={pickerError}
         onPick={pickTicket}
-        onClose={() => { pickerAbortRef.current?.abort('user'); setShowTicketPicker(false); }}
+        onClose={() => { ticketImport.cancel(); setShowTicketPicker(false); }}
       />
     )}
     </>

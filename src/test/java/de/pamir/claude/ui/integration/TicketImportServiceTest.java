@@ -5,6 +5,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -24,10 +26,12 @@ class TicketImportServiceTest {
 		return mapper.readTree(json);
 	}
 
+	private static final Set<String> VALID_MODELS = Set.of("sonnet", "opus", "haiku");
+
 	@Test
 	void parsesAValidJsonResponse() {
-		var result = svc.parse(node("{\"branchName\":\"ENG-123-fix-login\",\"prompt\":\"Fix the login bug\","
-				+ "\"recommendedModel\":\"sonnet\",\"ticketRef\":\"eng-123\"}"));
+		var result = TicketImportService.parse(node("{\"branchName\":\"ENG-123-fix-login\",\"prompt\":\"Fix the login bug\","
+				+ "\"recommendedModel\":\"sonnet\",\"ticketRef\":\"eng-123\"}"), VALID_MODELS);
 
 		assertThat(result.branchName()).isEqualTo("ENG-123-fix-login");
 		assertThat(result.prompt()).isEqualTo("Fix the login bug");
@@ -37,14 +41,16 @@ class TicketImportServiceTest {
 
 	@Test
 	void dropsAnInvalidRecommendedModelRatherThanPassingItThrough() {
-		var result = svc.parse(node("{\"branchName\":\"a\",\"prompt\":\"b\",\"recommendedModel\":\"gpt-5\"}"));
+		var result = TicketImportService.parse(
+				node("{\"branchName\":\"a\",\"prompt\":\"b\",\"recommendedModel\":\"gpt-5\"}"), VALID_MODELS);
 
 		assertThat(result.recommendedModel()).isNull();
 	}
 
 	@Test
 	void throwsWhenBranchNameOrPromptIsMissing() {
-		assertThrows(IllegalStateException.class, () -> svc.parse(node("{\"branchName\":\"\",\"prompt\":\"\"}")));
+		assertThrows(IllegalStateException.class,
+				() -> TicketImportService.parse(node("{\"branchName\":\"\",\"prompt\":\"\"}"), VALID_MODELS));
 	}
 
 	@Test

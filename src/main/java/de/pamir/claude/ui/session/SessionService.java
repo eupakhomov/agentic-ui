@@ -470,12 +470,15 @@ public class SessionService {
 		// Backend-initiated turns have nobody to answer an interactive permission prompt, so tools
 		// exposed via linearMcpServer() are pre-approved here (allowedTools bypasses canUseTool
 		// entirely, regardless of permissionMode) rather than left to prompt and hang/time out.
+		// (Codex rejects allowedTools outright — see SettingsService.systemProvider()'s javadoc.)
 		List<String> allowedTools = mcpConfig != null ? List.of("mcp__linear") : List.of();
+		String provider = settings.systemProvider();
+		String model = ModelCatalog.byTier(provider, "cheap").orElse(null);
 		SessionEntity entity = new SessionEntity(
-				id, "system", "claude", null,
+				id, "system", provider, null,
 				"(system)", null, List.of(),
 				"(system)", "(system)", scratch.toString(),
-				null, null, "haiku", "default",
+				null, null, model, "default",
 				allowedTools, List.of(), mcpConfig, null, mapper.createArrayNode(), mapper.createArrayNode(),
 				null, null, null, null, null, null, null,
 				SessionState.CREATING, "system", null, null, null, null, null, null, null, false, null, null, null);
@@ -1105,22 +1108,22 @@ public class SessionService {
 		}
 		Thread.ofVirtual().name("auto-title-" + id).start(() -> {
 			try {
-				Process p = new ProcessBuilder("claude", "-p", "--model", "haiku",
+				// Routed through the system session (P2) instead of a raw `claude -p` spawn: works
+				// on a Codex-only install too, and the turn's cost now lands in the usage dashboard
+				// like every other system turn (O2) instead of being invisible.
+				String modelOverride = ModelCatalog.byTier(settings.systemProvider(), "cheap").orElse(null);
+				String title = runSystemTurn(
 						"Generate a short title (max 6 words) for a coding session that starts with this request. "
-								+ "Output ONLY the title, no quotes:\n\n" + userText.substring(0, Math.min(500, userText.length())))
-						.redirectErrorStream(false).start();
-				String title = new String(p.getInputStream().readAllBytes()).strip();
-				if (p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0
-						&& !title.isBlank() && title.length() <= 80) {
+								+ "Output ONLY the title, no quotes:\n\n" + userText.substring(0, Math.min(500, userText.length())),
+						modelOverride, Duration.ofSeconds(60)).strip();
+				if (!title.isBlank() && title.length() <= 80) {
 					SessionEntity current = sessions.find(id).orElse(null);
 					if (current != null && current.name().equals(current.branch())) {
 						sessions.updateName(id, title);
 						record(id, "session_renamed", mapper.createObjectNode().put("name", title).put("auto", true));
 					}
-				} else {
-					p.destroyForcibly();
 				}
-			} catch (Exception e) {
+			} catch (RuntimeException e) {
 				log.debug("auto-title failed for {}: {}", id, e.getMessage());
 			}
 		});

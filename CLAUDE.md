@@ -164,7 +164,14 @@ claude-ui:
       command: ["node", "sidecar-codex/dist/index.js"]
 ```
 Session/template `provider` (default from the persisted `session.default-provider`
-setting, Settings dialog → "Sessions") selects which entry `SidecarManager` spawns.
+setting, Settings dialog → "Sessions") selects which entry `SidecarManager` spawns. The
+singleton system session (ticket import, library AI-fill, reflection, service
+discovery, commit/PR drafting, handoff briefs) spawns as `session.system-provider`
+(same dialog; empty = follow `session.default-provider`) at a model from
+`ModelCatalog`'s "cheap" tier for that provider — a Codex system session gets no MCP
+tool pre-approval (Codex rejects `allowedTools` outright), so a backend-initiated turn
+needing Linear/memory tools has nobody to answer the resulting approval prompt and
+simply times out.
 
 ## Sidecar (Phase 1+)
 
@@ -363,8 +370,11 @@ effect on the next use with no backend restart.
   `memory.root` (managed vault; defaults to `CLAUDE_UI_MEMORY_ROOT`), `memory.enabled`
   (default on — injects the memory MCP tools + episodic window into every session),
   `memory.reflection-default` (default off — per-session `reflectionEnabled` always
-  overrides), `memory.reflection-model` (default `haiku`), `memory.sync-interval-
-  minutes` (default 5, floor 1) for picking up hand-edited vault files
+  overrides), `memory.reflection-model` (a tier — `cheap`/`standard`/`premium`, default
+  `cheap` — resolved to a concrete model via `ModelCatalog` for whatever
+  `session.system-provider` is set to; a legacy raw Claude alias from before this was a
+  tier is normalized on read), `memory.sync-interval-minutes` (default 5, floor 1) for
+  picking up hand-edited vault files
   (`MemorySyncService`), and `memory.retention-days` (default 0 = never prune) for
   pruning a CLOSED-and-reflected session's raw journal (`MemoryRetentionService`,
   hourly tick — the episode/semantic memory a reflection wrote is the durable record

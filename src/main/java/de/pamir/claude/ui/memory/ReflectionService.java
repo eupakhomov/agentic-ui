@@ -5,6 +5,7 @@ import de.pamir.claude.ui.journal.EventJournal;
 import de.pamir.claude.ui.journal.JournalPublisher;
 import de.pamir.claude.ui.journal.TranscriptDigest;
 import de.pamir.claude.ui.library.EmbeddingClient;
+import de.pamir.claude.ui.session.ModelCatalog;
 import de.pamir.claude.ui.session.SessionEntity;
 import de.pamir.claude.ui.session.SessionRepository;
 import de.pamir.claude.ui.session.SystemTurnClient;
@@ -137,7 +138,8 @@ public class ReflectionService {
 		String prompt = buildPrompt(session, digest, index);
 		JsonNode result;
 		try {
-			result = systemTurnClient.json(prompt, settings.memoryReflectionModel(), TIMEOUT);
+			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.memoryReflectionModel()).orElse(null);
+			result = systemTurnClient.json(prompt, modelOverride, TIMEOUT);
 		} catch (RuntimeException e) {
 			warn(session.id(), "reflection failed: " + e.getMessage());
 			return;

@@ -71,6 +71,12 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /** 'off' | 'adaptive' (model decides) | fixed token budget */
 export type ThinkingSetting = 'off' | 'adaptive' | number;
 
+export interface ModelInfo {
+  id: string;
+  label: string;
+  tier: 'cheap' | 'standard' | 'premium';
+}
+
 export interface Capabilities {
   permissionModes: PermissionMode[];
   thinking: boolean;
@@ -87,6 +93,8 @@ export interface Capabilities {
   updatedInput: boolean;
   /** supports set_model mid-session */
   modelSwitch: boolean;
+  /** known model catalog for this provider; empty = no fixed list (free-text model input) */
+  models: ModelInfo[];
 }
 
 export interface ReadyEvent {
@@ -222,4 +230,8 @@ export const CODEX_CAPABILITIES: Capabilities = {
   fallbackModel: false,
   updatedInput: false,
   modelSwitch: true,
+  // Codex resolves its own default model/alias with no fixed enumeration we can offer
+  // up front (docs/plan/phase-5.13-codex-provider.md: "no hardcoded Codex model list")
+  // — empty means the frontend falls back to a free-text model field.
+  models: [],
 };

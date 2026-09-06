@@ -93,7 +93,7 @@ export const api = {
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
     | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
     | 'libraryVectorize' | 'librarySyncEnabled' | 'librarySyncIntervalMinutes'
-    | 'defaultProvider' | 'codexPricing' | 'memoryRoot' | 'memoryEnabled' | 'memoryReflectionDefault'
+    | 'defaultProvider' | 'systemProvider' | 'codexPricing' | 'memoryRoot' | 'memoryEnabled' | 'memoryReflectionDefault'
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
     | 'memoryReflectionApprovalRequired' | 'serviceDiscoveryEnabled' | 'serviceDiscoveryStalenessDays'
     | 'serviceDiscoveryModel'>>) =>

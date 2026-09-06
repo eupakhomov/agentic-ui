@@ -65,6 +65,12 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /** 'off' | 'adaptive' (model decides) | fixed token budget */
 export type ThinkingSetting = 'off' | 'adaptive' | number;
 
+export interface ModelInfo {
+  id: string;
+  label: string;
+  tier: 'cheap' | 'standard' | 'premium';
+}
+
 export interface Capabilities {
   permissionModes: PermissionMode[];
   thinking: boolean;
@@ -81,6 +87,8 @@ export interface Capabilities {
   updatedInput: boolean;
   /** supports set_model mid-session */
   modelSwitch: boolean;
+  /** known model catalog for this provider; empty = no fixed list (free-text model input) */
+  models: ModelInfo[];
 }
 
 export interface ReadyEvent {
@@ -208,4 +216,9 @@ export const CLAUDE_CAPABILITIES: Capabilities = {
   fallbackModel: true,
   updatedInput: true,
   modelSwitch: true,
+  models: [
+    { id: 'haiku', label: 'haiku', tier: 'cheap' },
+    { id: 'sonnet', label: 'sonnet', tier: 'standard' },
+    { id: 'opus', label: 'opus', tier: 'premium' },
+  ],
 };

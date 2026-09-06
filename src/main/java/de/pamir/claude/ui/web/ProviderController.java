@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.web;
 
 import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.session.ModelCatalog;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,27 +16,40 @@ import java.util.List;
  * {@code SessionEntity.capabilities} instead (see docs/PROTOCOL.md's capabilities
  * handshake). These constants must stay in sync with each adapter's own
  * {@code ready.capabilities} — see sidecar/src/protocol.ts's CLAUDE_CAPABILITIES and
- * sidecar-codex/src/protocol.ts's CODEX_CAPABILITIES.
+ * sidecar-codex/src/protocol.ts's CODEX_CAPABILITIES. {@code models} is sourced from
+ * {@link ModelCatalog} rather than duplicated here, since backend-initiated system
+ * turns (see SessionService/ReflectionService/ServiceDiscoveryService) need the same
+ * per-provider/tier data.
  */
 @RestController
 @RequestMapping("/api/providers")
 public class ProviderController {
 
+	public record ModelInfo(String id, String label, String tier) {
+	}
+
 	public record Capabilities(List<String> permissionModes, boolean thinking, boolean effort, boolean planMode,
 								boolean resume, boolean skills, boolean agents, boolean mcp, boolean interrupt,
-								boolean fallbackModel, boolean updatedInput, boolean modelSwitch) {
+								boolean fallbackModel, boolean updatedInput, boolean modelSwitch,
+								List<ModelInfo> models) {
 	}
 
 	public record ProviderView(String id, Capabilities capabilities) {
 	}
 
+	private static List<ModelInfo> models(String provider) {
+		return ModelCatalog.models(provider).stream()
+				.map(m -> new ModelInfo(m.id(), m.label(), m.tier()))
+				.toList();
+	}
+
 	private static final Capabilities CLAUDE_CAPABILITIES = new Capabilities(
 			List.of("default", "acceptEdits", "plan", "bypassPermissions"),
-			true, true, true, true, true, true, true, true, true, true, true);
+			true, true, true, true, true, true, true, true, true, true, true, models("claude"));
 
 	private static final Capabilities CODEX_CAPABILITIES = new Capabilities(
 			List.of("default", "bypassPermissions"),
-			false, true, false, true, true, false, true, true, false, false, true);
+			false, true, false, true, true, false, true, true, false, false, true, models("codex"));
 
 	private static final java.util.Map<String, Capabilities> KNOWN = java.util.Map.of(
 			"claude", CLAUDE_CAPABILITIES,

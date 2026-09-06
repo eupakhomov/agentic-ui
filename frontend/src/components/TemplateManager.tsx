@@ -4,6 +4,7 @@ import { Close } from '../icons';
 import { assetStub, type AssetKind, type LibraryAsset, type ProviderView, type Settings, type Template } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import { AttachedAssetsRow } from './CreateSessionDialog';
+import ModelSelect from './ModelSelect';
 
 const PROMOTED_KEYS = ['provider', 'model', 'permissionMode', 'baseBranch', 'kickoffPrompt', 'instructions', 'mcpConfig', 'envVars'];
 
@@ -131,16 +132,7 @@ export default function TemplateManager({ onClose }: { onClose: () => void }) {
           </select>
 
           <label>Model</label>
-          {provider === 'claude' || provider === '' ? (
-            <select value={model} onChange={(e) => setModel(e.target.value)}>
-              <option value="">provider default</option>
-              <option value="sonnet">sonnet</option>
-              <option value="opus">opus</option>
-              <option value="haiku">haiku</option>
-            </select>
-          ) : (
-            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="provider default" />
-          )}
+          <ModelSelect value={model} onChange={setModel} capabilities={activeCapabilities} />
 
           <label>Permissions</label>
           <select value={permissionMode} onChange={(e) => setPermissionMode(e.target.value)}>

@@ -17,7 +17,7 @@ public class SettingsController {
 								String ecosystemRoot, boolean prChecksEnabled, int prCheckPollIntervalSeconds,
 								String librarySkillsRoot, String libraryAgentsRoot, boolean libraryVectorize,
 								boolean librarySyncEnabled, int librarySyncIntervalMinutes, boolean voyageConfigured,
-								String defaultProvider, String codexPricing,
+								String defaultProvider, String systemProvider, String codexPricing,
 								String memoryRoot, boolean memoryEnabled, boolean memoryReflectionDefault,
 								String memoryReflectionModel, int memorySyncIntervalMinutes, int memoryRetentionDays,
 								boolean memoryReflectionApprovalRequired,
@@ -29,7 +29,7 @@ public class SettingsController {
 								  Boolean prChecksEnabled, Integer prCheckPollIntervalSeconds,
 								  String librarySkillsRoot, String libraryAgentsRoot, Boolean libraryVectorize,
 								  Boolean librarySyncEnabled, Integer librarySyncIntervalMinutes,
-								  String defaultProvider, String codexPricing,
+								  String defaultProvider, String systemProvider, String codexPricing,
 								  String memoryRoot, Boolean memoryEnabled, Boolean memoryReflectionDefault,
 								  String memoryReflectionModel, Integer memorySyncIntervalMinutes,
 								  Integer memoryRetentionDays, Boolean memoryReflectionApprovalRequired,
@@ -85,6 +85,9 @@ public class SettingsController {
 		if (update.defaultProvider() != null) {
 			settings.setDefaultProvider(update.defaultProvider());
 		}
+		if (update.systemProvider() != null) {
+			settings.setSystemProvider(update.systemProvider());
+		}
 		if (update.codexPricing() != null) {
 			settings.setCodexPricing(update.codexPricing());
 		}
@@ -128,7 +131,7 @@ public class SettingsController {
 				settings.ecosystemRoot(), settings.prChecksEnabled(), settings.prCheckPollIntervalSeconds(),
 				settings.librarySkillsRoot(), settings.libraryAgentsRoot(), settings.libraryVectorize(),
 				settings.librarySyncEnabled(), settings.librarySyncIntervalMinutes(), voyageConfigured,
-				settings.defaultProvider(), settings.codexPricing(),
+				settings.defaultProvider(), settings.systemProviderOverride(), settings.codexPricing(),
 				settings.memoryRoot(), settings.memoryEnabled(), settings.memoryReflectionDefault(),
 				settings.memoryReflectionModel(), settings.memorySyncIntervalMinutes(), settings.memoryRetentionDays(),
 				settings.memoryReflectionApprovalRequired(),

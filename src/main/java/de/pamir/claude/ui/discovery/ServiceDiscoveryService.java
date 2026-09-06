@@ -3,6 +3,7 @@ package de.pamir.claude.ui.discovery;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitCommandRunner;
 import de.pamir.claude.ui.library.EmbeddingClient;
+import de.pamir.claude.ui.session.ModelCatalog;
 import de.pamir.claude.ui.session.SystemTurnClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -133,7 +134,8 @@ public class ServiceDiscoveryService {
 		String prompt = buildPrompt(name, digest);
 		JsonNode result;
 		try {
-			result = systemTurnClient.json(prompt, settings.serviceDiscoveryModel(), TIMEOUT);
+			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.serviceDiscoveryModel()).orElse(null);
+			result = systemTurnClient.json(prompt, modelOverride, TIMEOUT);
 		} catch (RuntimeException e) {
 			log.warn("service discovery failed for {}: {}", repoPath, e.getMessage());
 			return;

@@ -106,6 +106,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     void api.updateSettings({ defaultProvider: id }).catch(() => setSettings({ ...settings, defaultProvider: previous }));
   };
 
+  const saveSystemProvider = (id: string) => {
+    if (!settings) return;
+    const previous = settings.systemProvider;
+    setSettings({ ...settings, systemProvider: id });
+    void api.updateSettings({ systemProvider: id }).catch(() => setSettings({ ...settings, systemProvider: previous }));
+  };
+
   const saveCodexPricing = () => {
     if (!settings || codexPricingDraft === settings.codexPricing) return;
     setCodexPricingError('');
@@ -261,6 +268,16 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                   <option key={id} value={id}>{id}</option>
                 ))}
               </select>
+
+              <label>System session provider</label>
+              <select
+                value={settings.systemProvider}
+                onChange={(e) => saveSystemProvider(e.target.value)}
+                title="drives ticket import, reflection, service discovery, commit/PR drafting, and handoff briefs; a Codex system session gets no MCP tool pre-approval and may time out on Linear/memory-tool turns"
+              >
+                <option value="">(follow default provider)</option>
+                {providers.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
+              </select>
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>Codex</h3>
@@ -353,10 +370,11 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 a reflection is held for explicit approve/discard (Memory → Pending) instead of writing immediately
               </label>
 
-              <label>Reflection model</label>
+              <label>Reflection tier</label>
               <select value={settings.memoryReflectionModel} onChange={(e) => saveReflectionModel(e.target.value)}>
-                <option value="haiku">haiku (default — cheap)</option>
-                <option value="sonnet">sonnet (higher quality)</option>
+                <option value="cheap">cheap (default)</option>
+                <option value="standard">standard (higher quality)</option>
+                <option value="premium">premium</option>
               </select>
 
               <label>Memory folder</label>
@@ -417,10 +435,11 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 days before a service's description is regenerated
               </span>
 
-              <label>Discovery model</label>
+              <label>Discovery tier</label>
               <select value={settings.serviceDiscoveryModel} onChange={(e) => saveServiceDiscoveryModel(e.target.value)}>
-                <option value="haiku">haiku (default — cheap)</option>
-                <option value="sonnet">sonnet (higher quality)</option>
+                <option value="cheap">cheap (default)</option>
+                <option value="standard">standard (higher quality)</option>
+                <option value="premium">premium</option>
               </select>
             </div>
 
