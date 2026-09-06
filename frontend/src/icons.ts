@@ -26,6 +26,7 @@ export {
   LayoutGrid as Expose,
   Settings as SettingsIcon,
   Plus as New,
+  Zap as QuickSession,
 
   // session widget header
   FolderTree as EcosystemContext,

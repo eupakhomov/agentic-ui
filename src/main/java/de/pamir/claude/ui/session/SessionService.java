@@ -890,6 +890,27 @@ public class SessionService {
 		if ("system".equals(source.kind())) {
 			throw new IllegalArgumentException("cannot duplicate a system session");
 		}
+		ObjectNode overrides = configOverridesFrom(source);
+		String sessionName = name != null && !name.isBlank() ? name : branch;
+		return create(sessionName, branch, source.baseBranch(), source.repoPath(), null, overrides, null, syncBaseBranch);
+	}
+
+	/**
+	 * The most recently created non-system session's effective config, as an overrides object
+	 * shaped for {@link #create}. Backs the "quick session" create flow (ticket + service only,
+	 * everything else copied from whatever was last set up) — an empty object if there is no
+	 * prior session yet (a session created from it then just gets ordinary provider defaults).
+	 */
+	public JsonNode lastSessionConfig() {
+		return sessions.findAll().stream()
+				.filter(s -> !"system".equals(s.kind()))
+				.findFirst()
+				.<JsonNode>map(this::configOverridesFrom)
+				.orElseGet(mapper::createObjectNode);
+	}
+
+	/** Copies a session's tunable config (not its identity: name/branch/repo/provider) into an overrides object. */
+	private ObjectNode configOverridesFrom(SessionEntity source) {
 		ObjectNode overrides = mapper.createObjectNode();
 		if (source.model() != null) {
 			overrides.put("model", source.model());
@@ -938,8 +959,7 @@ public class SessionService {
 			overrides.put("costBudgetUsd", source.costBudgetUsd().toPlainString());
 		}
 		overrides.put("reflectionEnabled", source.reflectionEnabled());
-		String sessionName = name != null && !name.isBlank() ? name : branch;
-		return create(sessionName, branch, source.baseBranch(), source.repoPath(), null, overrides, null, syncBaseBranch);
+		return overrides;
 	}
 
 	private ObjectNode mergedConfig(UUID templateId, JsonNode overrides) {

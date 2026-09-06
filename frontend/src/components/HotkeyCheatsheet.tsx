@@ -1,6 +1,7 @@
 const ROWS: [string, string][] = [
   ['?', 'this cheatsheet'],
   ['n', 'new session'],
+  ['q', 'quick session (ticket + service only)'],
   ['j / k  (also ] / [)', 'focus next / previous widget'],
   ['1 – 9', 'focus widget N (grid order)'],
   ['Enter / i', 'focus the composer'],

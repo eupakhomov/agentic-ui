@@ -67,6 +67,12 @@ public class SessionController {
 				Boolean.TRUE.equals(request.syncBaseBranch()), request.continuedFromId());
 	}
 
+	/** Backs the "quick session" dialog: the config a new session would inherit if created now. */
+	@GetMapping("/last-config")
+	public JsonNode lastConfig() {
+		return service.lastSessionConfig();
+	}
+
 	@GetMapping
 	public List<SessionSummary> list() {
 		return sessions.findAll().stream()

@@ -4,6 +4,7 @@ import { api } from '../api/rest';
 import type { SessionSummary } from '../protocol';
 import SessionWidget from './SessionWidget';
 import CreateSessionDialog from './CreateSessionDialog';
+import QuickSessionDialog from './QuickSessionDialog';
 import TemplateManager from './TemplateManager';
 import SettingsDialog from './SettingsDialog';
 import UsageDashboard from './UsageDashboard';
@@ -17,8 +18,8 @@ import { useStore } from '../store/store';
 import { notificationsEnabled, notify, toggleNotifications } from '../notify';
 import { useHotkeys } from '../hotkeys/useHotkeys';
 import {
-  Expose, Memory, New, NotifyOff, NotifyOn, Refresh, ServiceDiscovery, SettingsIcon, Shortcuts, SkillLibrary,
-  SystemSession, Templates, Usage,
+  Expose, Memory, New, NotifyOff, NotifyOn, QuickSession, Refresh, ServiceDiscovery, SettingsIcon, Shortcuts,
+  SkillLibrary, SystemSession, Templates, Usage,
 } from '../icons';
 
 const LAYOUT_KEY = 'claude-ui.layout';
@@ -64,6 +65,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [showSystem, setShowSystem] = useState(() => localStorage.getItem('claude-ui.showSystem') === '1');
   const [layout, setLayout] = useState<Layout[]>(loadLayout());
   const [showCreate, setShowCreate] = useState(false);
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
@@ -195,6 +197,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const closeTopDialog = useCallback((): boolean => {
     if (showCheatsheet) { setShowCheatsheet(false); return true; }
     if (showCreate) { setShowCreate(false); return true; }
+    if (showQuickCreate) { setShowQuickCreate(false); return true; }
     if (showTemplates) { setShowTemplates(false); return true; }
     if (showSettings) { setShowSettings(false); return true; }
     if (showUsage) { setShowUsage(false); return true; }
@@ -202,7 +205,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     if (showMemory) { setShowMemory(false); return true; }
     if (showServiceDiscovery) { setShowServiceDiscovery(false); return true; }
     return false;
-  }, [showCheatsheet, showCreate, showTemplates, showSettings, showUsage, showLibrary, showMemory,
+  }, [showCheatsheet, showCreate, showQuickCreate, showTemplates, showSettings, showUsage, showLibrary, showMemory,
     showServiceDiscovery]);
 
   const toggleMaximize = useCallback((id: string) => {
@@ -242,6 +245,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   useHotkeys({
     orderedIds: () => [...fullLayout].sort((a, b) => a.y - b.y || a.x - b.x).map((l) => l.i),
     openCreate: () => setShowCreate(true),
+    openQuickCreate: () => setShowQuickCreate(true),
     openMemory: () => setShowMemory(true),
     openLibrary: () => setShowLibrary(true),
     openUsage: () => setShowUsage(true),
@@ -252,7 +256,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     toggleMinimizeFocused: () => { if (focusedId) toggleMinimize(focusedId); },
     openExpose: () => setShowExpose(true),
     anyDialogOpen: () =>
-      showCreate || showTemplates || showSettings || showUsage || showLibrary || showMemory
+      showCreate || showQuickCreate || showTemplates || showSettings || showUsage || showLibrary || showMemory
         || showServiceDiscovery || showCheatsheet || showExpose,
     closeTopDialog,
     exitOverlay,
@@ -308,6 +312,9 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         <button className="icon-btn" title="Keyboard shortcuts (?)" onClick={() => setShowCheatsheet(true)}><Shortcuts /></button>
         <button className="icon-btn" title="Exposé — all sessions (e)" onClick={() => setShowExpose(true)}><Expose /></button>
         <button className="icon-btn" title="Settings (,)" onClick={() => setShowSettings(true)}><SettingsIcon /></button>
+        <button className="icon-btn" title="Quick session — ticket + service only (q)" onClick={() => setShowQuickCreate(true)}>
+          <QuickSession />
+        </button>
         {/* the one deliberate accent in the topbar: the primary action keeps its label */}
         <button className="primary with-icon" onClick={() => setShowCreate(true)}><New />New Session</button>
       </div>
@@ -341,6 +348,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         <DockStrip ids={minimizedIds} onRestore={restore} />
       </div>
       {showCreate && <CreateSessionDialog onCreated={onCreated} onCancel={() => setShowCreate(false)} />}
+      {showQuickCreate && <QuickSessionDialog onCreated={onCreated} onCancel={() => setShowQuickCreate(false)} />}
       {showTemplates && <TemplateManager onClose={() => setShowTemplates(false)} />}
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
       {showUsage && <UsageDashboard onClose={() => { setShowUsage(false); refreshStale(); }} />}

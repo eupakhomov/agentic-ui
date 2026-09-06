@@ -7,6 +7,7 @@ export interface HotkeyActions {
   /** visible widget ids, grid order (top-to-bottom, left-to-right) — recomputed on every call */
   orderedIds: () => string[];
   openCreate: () => void;
+  openQuickCreate: () => void;
   openMemory: () => void;
   openLibrary: () => void;
   openUsage: () => void;
@@ -101,6 +102,9 @@ export function useHotkeys(actions: HotkeyActions): void {
           return;
         case 'n':
           a.openCreate();
+          return;
+        case 'q':
+          a.openQuickCreate();
           return;
         case 'm':
           a.openMemory();
