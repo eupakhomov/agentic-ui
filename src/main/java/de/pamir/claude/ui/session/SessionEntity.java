@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.session;
 
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -108,8 +109,10 @@ public record SessionEntity(
 		private List<String> disallowedTools = List.of();
 		private JsonNode mcpConfig;
 		private JsonNode envVars;
-		private JsonNode skillSources;
-		private JsonNode agentSources;
+		// column is NOT NULL — default to empty rather than making every caller (tests especially)
+		// spell out ".skillSources(mapper.createArrayNode())" for the common "no sources" case
+		private JsonNode skillSources = JsonNodeFactory.instance.arrayNode();
+		private JsonNode agentSources = JsonNodeFactory.instance.arrayNode();
 		private String instructions;
 		private String thinking;
 		private String effort;

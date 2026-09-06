@@ -335,7 +335,7 @@ export interface LibrarySource {
 
 export interface LibrarySearchHit {
   asset: LibraryAsset;
-  distance: number;
+  score: number;
 }
 
 export interface LibraryAssetContent {

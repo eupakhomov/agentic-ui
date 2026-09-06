@@ -56,7 +56,7 @@ public class LibraryController {
 	public record DiscoveryView(String path, String kind, Instant firstSeenAt) {
 	}
 
-	public record SearchHitView(LibraryRepository.AssetEntity asset, double distance) {
+	public record SearchHitView(LibraryRepository.AssetEntity asset, double score) {
 	}
 
 	private final AssetScanService scanner;
@@ -127,7 +127,7 @@ public class LibraryController {
 			throw new IllegalArgumentException("q is required");
 		}
 		return library.search(q, Math.max(1, Math.min(100, k)), kind).stream()
-				.map(hit -> new SearchHitView(hit.asset(), hit.distance())).toList();
+				.map(hit -> new SearchHitView(hit.asset(), hit.score())).toList();
 	}
 
 	@GetMapping("/sources")

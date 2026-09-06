@@ -4,6 +4,7 @@ import {
   PROTOCOL_VERSION,
   type Command,
   type EffortLevel,
+  type Event,
   type PermissionMode,
   type ThinkingSetting,
 } from './protocol.js';
@@ -84,6 +85,138 @@ async function loadMcpServers(path: string): Promise<Record<string, unknown>> {
   return (parsed['mcpServers'] as Record<string, unknown>) ?? parsed;
 }
 
+/**
+ * Pure(ish) translation of one SDK message into the zero-or-more protocol Events it
+ * produces, plus any stderr-bound diagnostic lines. Mutates `modelState.currentModel`
+ * on a `system/init` message (mirrors the pre-extraction inline `currentModel`
+ * variable) so a later `result` message can stamp the model that produced the turn.
+ * Split out from {@link runSession}'s main loop so it's testable without a live SDK
+ * query — feed it canned SDK message shapes directly.
+ */
+export function translateSdkMessage(
+  message: { type: string } & Record<string, unknown>,
+  modelState: { currentModel: string },
+): { events: Event[]; logs: string[] } {
+  const events: Event[] = [];
+  const logs: string[] = [];
+  switch (message.type) {
+    case 'system':
+      if ((message as unknown as { subtype: string }).subtype === 'thinking_tokens') {
+        const m = message as unknown as { estimated_tokens: number; estimated_tokens_delta: number };
+        events.push({
+          type: 'thinking_progress',
+          estimatedTokens: m.estimated_tokens,
+          estimatedTokensDelta: m.estimated_tokens_delta,
+        });
+      } else if (message['subtype'] === 'init') {
+        const m = message as unknown as {
+          model: string;
+          session_id: string;
+          cwd: string;
+          tools: string[];
+          mcp_servers: { name: string; status: string }[];
+          permissionMode: string;
+        };
+        modelState.currentModel = m.model;
+        events.push({
+          type: 'system_init',
+          providerSessionId: m.session_id,
+          model: m.model,
+          cwd: m.cwd,
+          tools: m.tools,
+          mcpServers: m.mcp_servers,
+          permissionMode: m.permissionMode as PermissionMode,
+        });
+      }
+      break;
+    case 'stream_event': {
+      const event = (message as unknown as { event: unknown }).event as {
+        type: string;
+        delta?: { type: string; text?: string; thinking?: string };
+      };
+      if (event.type === 'content_block_delta' && event.delta) {
+        if (event.delta.type === 'text_delta' && event.delta.text) {
+          events.push({ type: 'stream_delta', deltaType: 'text', text: event.delta.text });
+        } else if (event.delta.type === 'thinking_delta' && event.delta.thinking) {
+          events.push({ type: 'stream_delta', deltaType: 'thinking', text: event.delta.thinking });
+        } else {
+          logs.push(`unmapped stream delta: ${JSON.stringify(event.delta).slice(0, 300)}`);
+        }
+      }
+      break;
+    }
+    case 'assistant': {
+      const content = (message as unknown as { message: { content: unknown[] } }).message.content;
+      events.push({ type: 'assistant_message', content });
+      for (const block of content) {
+        const b = block as { type: string; id?: string; name?: string; input?: Record<string, unknown> };
+        if (b.type === 'tool_use' && b.id && b.name) {
+          events.push({ type: 'tool_started', toolUseId: b.id, name: b.name, input: b.input ?? {} });
+        }
+      }
+      break;
+    }
+    case 'user': {
+      const content = (message as unknown as { message: { content: unknown } }).message.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          const b = block as {
+            type: string;
+            tool_use_id?: string;
+            content?: unknown;
+            is_error?: boolean;
+          };
+          if (b.type === 'tool_result' && b.tool_use_id) {
+            const full = toolResultToString(b.content);
+            events.push({
+              type: 'tool_result',
+              toolUseId: b.tool_use_id,
+              isError: b.is_error === true,
+              output: full.slice(0, TOOL_OUTPUT_LIMIT),
+              truncated: full.length > TOOL_OUTPUT_LIMIT,
+            });
+          }
+        }
+      }
+      break;
+    }
+    case 'result': {
+      const m = message as unknown as {
+        subtype: string;
+        usage: unknown;
+        total_cost_usd: number;
+        duration_ms: number;
+        num_turns: number;
+      };
+      events.push({
+        type: 'turn_complete',
+        stopReason: m.subtype,
+        usage: m.usage,
+        costUsd: m.total_cost_usd,
+        durationMs: m.duration_ms,
+        numTurns: m.num_turns,
+        model: modelState.currentModel,
+      });
+      break;
+    }
+    case 'rate_limit_event': {
+      // surface only non-nominal rate-limit statuses so the UI shows trouble, not noise
+      const rl = (message as unknown as { rate_limit?: { status?: string } }).rate_limit;
+      if (rl?.status && rl.status !== 'allowed') {
+        events.push({
+          type: 'error',
+          message: `provider rate limit: ${JSON.stringify(rl).slice(0, 300)}`,
+          fatal: false,
+        });
+      }
+      break;
+    }
+    default:
+      logs.push(`unhandled SDK message type: ${message.type}`);
+  }
+  return { events, logs };
+}
+
 export async function runSession(config: SidecarConfig): Promise<never> {
   const bridge = new PermissionBridge();
   const inputQueue = new AsyncQueue<SDKUserMessage>();
@@ -146,7 +279,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
 
   const q = query({ prompt: userMessages(), options });
   // updated from system_init (which reports the concrete resolved id, even for an alias like "sonnet")
-  let currentModel = '';
+  const modelState = { currentModel: '' };
 
   const handleCommand = (line: string): void => {
     let cmd: Command;
@@ -186,7 +319,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
         void q
           .setModel(cmd.model)
           .then(() => {
-            currentModel = cmd.model;
+            modelState.currentModel = cmd.model;
             writeEvent({ type: 'model_changed', model: cmd.model });
           })
           .catch((e: unknown) =>
@@ -217,105 +350,9 @@ export async function runSession(config: SidecarConfig): Promise<never> {
 
   try {
     for await (const message of q) {
-      switch (message.type) {
-        case 'system':
-          if ((message as { subtype: string }).subtype === 'thinking_tokens') {
-            const m = message as unknown as { estimated_tokens: number; estimated_tokens_delta: number };
-            writeEvent({
-              type: 'thinking_progress',
-              estimatedTokens: m.estimated_tokens,
-              estimatedTokensDelta: m.estimated_tokens_delta,
-            });
-          } else if (message.subtype === 'init') {
-            currentModel = message.model;
-            writeEvent({
-              type: 'system_init',
-              providerSessionId: message.session_id,
-              model: message.model,
-              cwd: message.cwd,
-              tools: message.tools,
-              mcpServers: message.mcp_servers,
-              permissionMode: message.permissionMode as PermissionMode,
-            });
-          }
-          break;
-        case 'stream_event': {
-          const event = message.event as {
-            type: string;
-            delta?: { type: string; text?: string; thinking?: string };
-          };
-          if (event.type === 'content_block_delta' && event.delta) {
-            if (event.delta.type === 'text_delta' && event.delta.text) {
-              writeEvent({ type: 'stream_delta', deltaType: 'text', text: event.delta.text });
-            } else if (event.delta.type === 'thinking_delta' && event.delta.thinking) {
-              writeEvent({ type: 'stream_delta', deltaType: 'thinking', text: event.delta.thinking });
-            } else {
-              log('unmapped stream delta:', JSON.stringify(event.delta).slice(0, 300));
-            }
-          }
-          break;
-        }
-        case 'assistant': {
-          const content = message.message.content as unknown[];
-          writeEvent({ type: 'assistant_message', content });
-          for (const block of content) {
-            const b = block as { type: string; id?: string; name?: string; input?: Record<string, unknown> };
-            if (b.type === 'tool_use' && b.id && b.name) {
-              writeEvent({ type: 'tool_started', toolUseId: b.id, name: b.name, input: b.input ?? {} });
-            }
-          }
-          break;
-        }
-        case 'user': {
-          const content = message.message.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              const b = block as {
-                type: string;
-                tool_use_id?: string;
-                content?: unknown;
-                is_error?: boolean;
-              };
-              if (b.type === 'tool_result' && b.tool_use_id) {
-                const full = toolResultToString(b.content);
-                writeEvent({
-                  type: 'tool_result',
-                  toolUseId: b.tool_use_id,
-                  isError: b.is_error === true,
-                  output: full.slice(0, TOOL_OUTPUT_LIMIT),
-                  truncated: full.length > TOOL_OUTPUT_LIMIT,
-                });
-              }
-            }
-          }
-          break;
-        }
-        case 'result':
-          writeEvent({
-            type: 'turn_complete',
-            stopReason: message.subtype,
-            usage: message.usage,
-            costUsd: message.total_cost_usd,
-            durationMs: message.duration_ms,
-            numTurns: message.num_turns,
-            model: currentModel,
-          });
-          break;
-        case 'rate_limit_event' as never: {
-          // surface only non-nominal rate-limit statuses so the UI shows trouble, not noise
-          const rl = (message as unknown as { rate_limit?: { status?: string } }).rate_limit;
-          if (rl?.status && rl.status !== 'allowed') {
-            writeEvent({
-              type: 'error',
-              message: `provider rate limit: ${JSON.stringify(rl).slice(0, 300)}`,
-              fatal: false,
-            });
-          }
-          break;
-        }
-        default:
-          log('unhandled SDK message type:', (message as { type: string }).type);
-      }
+      const { events, logs } = translateSdkMessage(message, modelState);
+      for (const event of events) writeEvent(event);
+      for (const line of logs) log(line);
     }
   } catch (e) {
     writeEvent({ type: 'error', message: String(e instanceof Error ? e.stack ?? e.message : e), fatal: true });

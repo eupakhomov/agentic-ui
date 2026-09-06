@@ -1,11 +1,12 @@
 name: CI
 
 # Minimal safety net (docs/plan/phase-9-production-hardening.md T7): compile the backend
-# and run its DB-less unit tests, typecheck both sidecars and guard their synced protocol
-# files (T5), and typecheck+build the frontend. No Postgres service here on purpose —
-# ApplicationTests (@SpringBootTest, needs a live DB) is tagged "integration" and stays
-# out of this run; it's still the manual-test-script's job locally. Everything after this
-# workflow lands on green CI.
+# and run its DB-less unit tests, typecheck+test both sidecars (T4) and guard their synced
+# protocol files (T5), and typecheck+test+build the frontend (T6). No Postgres service here
+# on purpose — ApplicationTests and every *DbTest (T3, @SpringBootTest, need a live DB) are
+# tagged "integration" and stay out of this run; they're still the manual-test-script's job
+# locally, where Postgres is already required. Everything after this workflow lands on
+# green CI.
 
 on:
   push:
@@ -37,7 +38,7 @@ jobs:
         run: ./mvnw -B -Dskip.installnodenpm -Dskip.npm -DexcludedGroups=integration test
 
   sidecars:
-    name: Sidecars (typecheck + protocol-sync guard)
+    name: Sidecars (typecheck + test + protocol-sync guard)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,19 +48,21 @@ jobs:
       # Pure Node, no deps — runs before the (slower) npm installs so a real drift fails fast.
       - name: Check sidecar/sidecar-codex protocol files are in sync
         run: node scripts/check-protocol-sync.mjs
-      - name: Typecheck sidecar
+      - name: Test and typecheck sidecar
         working-directory: sidecar
         run: |
           npm ci
+          npm test
           npm run build
-      - name: Typecheck sidecar-codex
+      - name: Test and typecheck sidecar-codex
         working-directory: sidecar-codex
         run: |
           npm ci
+          npm test
           npm run build
 
   frontend:
-    name: Frontend (typecheck + build)
+    name: Frontend (typecheck + test + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,4 +74,5 @@ jobs:
       - working-directory: frontend
         run: |
           npm ci
+          npm test
           npm run build

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/rest';
-import type { AssetKind, LibraryAsset, LibraryAssetContent, LibrarySource, ScanCandidate, ScanResult, Settings } from '../protocol';
+import type { AssetKind, LibraryAsset, LibraryAssetContent, LibrarySource, ScanCandidate, ScanResult } from '../protocol';
 import { AgentAsset, AiSuggest, Close, LocalSource, RemoteSource, SkillAsset } from '../icons';
 
 const PAGE_SIZE = 20;
@@ -40,11 +40,6 @@ function Pagination({ page, total, onPage }: { page: number; total: number; onPa
 
 export default function LibraryDialog({ onClose }: { onClose: () => void }) {
   const [view, setView] = useState<View>('library');
-  const [settings, setSettings] = useState<Settings | null>(null);
-
-  useEffect(() => {
-    api.getSettings().then(setSettings).catch(() => setSettings(null));
-  }, []);
 
   // --- library view state ---
   const [assets, setAssets] = useState<LibraryAsset[] | null>(null);
@@ -73,7 +68,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
     if (!textFilter.trim()) { setSemanticHits(null); return; }
     api.librarySearch(textFilter.trim(), 20)
       .then((hits) => {
-        setSemanticHits(new Map(hits.map((h) => [h.asset.id, h.distance])));
+        setSemanticHits(new Map(hits.map((h) => [h.asset.id, h.score])));
         setLibraryError('');
       })
       .catch((e) => setLibraryError(String((e as Error).message ?? e)));
@@ -283,11 +278,10 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
   // --- render ---
 
   const detailSource = detailAsset ? (sources ?? []).find((s) => s.id === detailAsset.sourceId) ?? null : null;
-  const semanticAvailable = !!settings?.voyageConfigured && !!settings?.libraryVectorize;
   const shownAssets = (assets ?? [])
     .filter((a) => !semantic || !semanticHits || semanticHits.has(a.id))
     .sort((a, b) => semantic && semanticHits
-      ? (semanticHits.get(a.id) ?? 9) - (semanticHits.get(b.id) ?? 9)
+      ? (semanticHits.get(b.id) ?? -1) - (semanticHits.get(a.id) ?? -1)
       : a.name.localeCompare(b.name));
   const assetPage = shownAssets.slice(libraryPage * PAGE_SIZE, (libraryPage + 1) * PAGE_SIZE);
   const awaitingSemanticSearch = semantic && !semanticHits && textFilter.trim().length > 0;
@@ -328,20 +322,18 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                 onChange={(e) => { setTextFilter(e.target.value); if (!semantic) setSemanticHits(null); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && semantic) runSemanticSearch(); }}
               />
-              {semanticAvailable && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                  <input
-                    type="checkbox"
-                    checked={semantic}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setSemantic(on);
-                      if (on && textFilter.trim()) { runSemanticSearch(); } else { setSemanticHits(null); }
-                    }}
-                  />
-                  semantic
-                </label>
-              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={semantic}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setSemantic(on);
+                    if (on && textFilter.trim()) { runSemanticSearch(); } else { setSemanticHits(null); }
+                  }}
+                />
+                semantic
+              </label>
             </div>
             {libraryError && <div className="error-text">{libraryError}</div>}
             {assets === null && !libraryError && <div style={{ color: 'var(--muted)' }}>loading…</div>}
@@ -400,7 +392,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
                       {a.tags.map((t) => <span key={t} className="chip">{t}</span>)}
                       {a.status === 'ARCHIVED' && <span className="chip" style={{ color: 'var(--amber)', borderColor: 'var(--amber)' }}>archived</span>}
                       {semantic && semanticHits?.has(a.id) && (
-                        <span className="idle" title="cosine distance">{semanticHits.get(a.id)!.toFixed(3)}</span>
+                        <span className="idle" title="relevance score (higher is more relevant)">{semanticHits.get(a.id)!.toFixed(3)}</span>
                       )}
                       <span style={{ marginLeft: 'auto', display: 'flex', gap: 5 }}>
                         <button onClick={() => openDetails(a)}>Details</button>

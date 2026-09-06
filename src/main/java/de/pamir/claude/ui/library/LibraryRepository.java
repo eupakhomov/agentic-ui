@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -20,8 +21,12 @@ public class LibraryRepository {
 							   List<String> tags, Instant createdAt, Instant updatedAt) {
 	}
 
-	public record SearchHit(AssetEntity asset, double distance) {
+	/** {@code score} is an RRF fusion score (higher = more relevant) — see {@link #hybridSearch}. */
+	public record SearchHit(AssetEntity asset, double score) {
 	}
+
+	private static final int ARM_LIMIT = 50;
+	private static final double RRF_K = 60.0;
 
 	private static final String SELECT = """
 			SELECT a.*, coalesce(array_agg(t.tag ORDER BY t.tag) FILTER (WHERE t.tag IS NOT NULL), '{}') AS tags
@@ -138,23 +143,81 @@ public class LibraryRepository {
 				.params(assetId, PgVector.literal(embedding), model).update();
 	}
 
-	public List<SearchHit> searchByEmbedding(float[] query, int limit, String kind) {
-		StringBuilder sql = new StringBuilder("""
-				SELECT a.*, coalesce(array_agg(t.tag ORDER BY t.tag) FILTER (WHERE t.tag IS NOT NULL), '{}') AS tags,
-					min(e.embedding <=> ?::vector) AS distance
-				FROM asset_embedding e
-				JOIN library_asset a ON a.id = e.asset_id AND a.status = 'ACTIVE'
-				LEFT JOIN asset_tag t ON t.asset_id = a.id""");
-		List<Object> params = new java.util.ArrayList<>();
-		params.add(PgVector.literal(query));
-		if (kind != null && !kind.isBlank()) {
-			sql.append(" WHERE a.kind = ?");
-			params.add(kind);
+	/**
+	 * Dense (pgvector cosine, over {@code asset_embedding}) + sparse (Postgres FTS over name+
+	 * description) + trigram (name) search, fused with Reciprocal Rank Fusion — same shape as
+	 * {@code MemoryRepository.hybridSearch} (docs/plan/phase-9-production-hardening.md O3).
+	 * {@code queryEmbedding} null skips the dense arm (Voyage unconfigured, or an asset was
+	 * simply never embedded) — sparse/trigram still work, so search is never all-or-nothing.
+	 */
+	public List<SearchHit> hybridSearch(String queryText, float[] queryEmbedding, String kind, int limit) {
+		// bare-table filter (sparse/trgm arms query "library_asset" directly); "a." for the dense
+		// arm, which joins it as alias a
+		String barefilter = kind != null && !kind.isBlank() ? " AND status = 'ACTIVE' AND kind = ?"
+				: " AND status = 'ACTIVE'";
+		String aliasedFilter = kind != null && !kind.isBlank() ? " AND a.status = 'ACTIVE' AND a.kind = ?"
+				: " AND a.status = 'ACTIVE'";
+		List<Object> filterParams = kind != null && !kind.isBlank() ? List.of(kind) : List.of();
+
+		StringBuilder sql = new StringBuilder("WITH ");
+		List<Object> params = new ArrayList<>();
+		List<String> arms = new ArrayList<>();
+		if (queryEmbedding != null) {
+			sql.append("""
+							dense AS (
+								SELECT id, rnk FROM (
+									SELECT a.id, row_number() OVER (ORDER BY e.embedding <=> ?::vector) AS rnk
+									FROM asset_embedding e JOIN library_asset a ON a.id = e.asset_id
+									WHERE true""").append(aliasedFilter).append("""
+							) x ORDER BY rnk LIMIT %d
+						),
+						""".formatted(ARM_LIMIT));
+			params.add(PgVector.literal(queryEmbedding));
+			params.addAll(filterParams);
+			arms.add("dense");
 		}
-		sql.append(" GROUP BY a.id ORDER BY distance LIMIT ?");
+		sql.append("""
+						sparse AS (
+							SELECT id, rnk FROM (
+								SELECT id, row_number() OVER (
+									ORDER BY ts_rank_cd(tsv, websearch_to_tsquery('english', ?)) DESC) AS rnk
+								FROM library_asset WHERE tsv @@ websearch_to_tsquery('english', ?)""")
+				.append(barefilter).append("""
+						) x ORDER BY rnk LIMIT %d
+					),
+					""".formatted(ARM_LIMIT));
+		params.add(queryText);
+		params.add(queryText);
+		params.addAll(filterParams);
+		arms.add("sparse");
+
+		sql.append("""
+						trgm AS (
+							SELECT id, rnk FROM (
+								SELECT id, row_number() OVER (ORDER BY similarity(name, ?) DESC) AS rnk
+								FROM library_asset WHERE name % ?""")
+				.append(barefilter).append("""
+						) x ORDER BY rnk LIMIT %d
+					),
+					""".formatted(ARM_LIMIT));
+		params.add(queryText);
+		params.add(queryText);
+		params.addAll(filterParams);
+		arms.add("trgm");
+
+		sql.append("fused AS (SELECT id, SUM(1.0 / (").append(RRF_K).append(" + rnk)) AS score FROM (")
+				.append(String.join(" UNION ALL ", arms.stream().map(a -> "SELECT * FROM " + a).toList()))
+				.append(") u GROUP BY id) ")
+				.append("""
+						SELECT a.*, coalesce(array_agg(t.tag ORDER BY t.tag) FILTER (WHERE t.tag IS NOT NULL), '{}') AS tags,
+							f.score AS score
+						FROM fused f JOIN library_asset a ON a.id = f.id
+						LEFT JOIN asset_tag t ON t.asset_id = a.id
+						GROUP BY a.id, f.score
+						ORDER BY f.score DESC LIMIT ?""");
 		params.add(limit);
 		return jdbc.sql(sql.toString()).params(params)
-				.query((rs, n) -> new SearchHit(mapRow(rs, n), rs.getDouble("distance"))).list();
+				.query((rs, n) -> new SearchHit(mapRow(rs, n), rs.getDouble("score"))).list();
 	}
 
 	private AssetEntity mapRow(ResultSet rs, int rowNum) throws SQLException {

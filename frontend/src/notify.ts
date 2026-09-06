@@ -1,5 +1,7 @@
 // Desktop notifications for unattended sessions: agent finished, needs input, crashed.
 
+import type { Envelope } from './protocol';
+
 const PREF_KEY = 'claude-ui.notifications';
 
 export function notificationsEnabled(): boolean {
@@ -52,4 +54,27 @@ function show(title: string, body: string): void {
     window.focus();
     n.close();
   };
+}
+
+/**
+ * Journal-event → desktop-notification mapping for a single session widget (docs/plan/
+ * phase-9-production-hardening.md O4) — one place instead of an inline if/else chain in
+ * SessionWidget, in case a future event type needs the same treatment.
+ */
+export function notificationForEvent(who: string, e: Envelope): { title: string; body: string } | null {
+  if (e.type === 'permission_request') {
+    return { title: `${who} needs your input`, body: `${e.payload['toolName']} permission requested` };
+  }
+  if (e.type === 'turn_complete') {
+    return { title: `${who} finished`, body: 'the agent completed its turn' };
+  }
+  if (e.type === 'state_changed' && e.payload['state'] === 'CRASHED') {
+    return { title: `${who} crashed`, body: 'the session needs a resume' };
+  }
+  if (e.type === 'pr_status_changed') {
+    const status = e.payload['status'];
+    if (status === 'SUCCESS') return { title: `${who}'s PR passed CI`, body: 'checks succeeded' };
+    if (status === 'FAILURE') return { title: `${who}'s PR failed CI`, body: 'checks failed — take a look' };
+  }
+  return null;
 }

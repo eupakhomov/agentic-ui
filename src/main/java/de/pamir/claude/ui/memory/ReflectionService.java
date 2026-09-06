@@ -1,5 +1,7 @@
 package de.pamir.claude.ui.memory;
 
+import de.pamir.claude.ui.concurrent.FireAndForget;
+import de.pamir.claude.ui.concurrent.InFlightGuard;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.journal.EventJournal;
 import de.pamir.claude.ui.journal.JournalPublisher;
@@ -22,7 +24,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * End-of-session memory retrospective: one structured system-session turn distills a
@@ -52,7 +53,7 @@ public class ReflectionService {
 	private final MemoryProposalRepository proposals;
 	private final EmbeddingClient embeddings;
 	private final ObjectMapper mapper;
-	private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
+	private final InFlightGuard<UUID> inFlight = new InFlightGuard<>();
 
 	public ReflectionService(SessionRepository sessions, SystemTurnClient systemTurnClient, EventJournal journal,
 							  JournalPublisher journalPublisher, SettingsService settings, MemoryDocService docService,
@@ -73,13 +74,8 @@ public class ReflectionService {
 
 	@EventListener
 	public void onReflectionRequested(ReflectionRequested event) {
-		Thread.ofVirtual().name("reflect-" + event.sessionId()).start(() -> {
-			try {
-				reflect(event.sessionId());
-			} catch (RuntimeException e) {
-				log.warn("reflection failed for session {}: {}", event.sessionId(), e.getMessage());
-			}
-		});
+		FireAndForget.run("reflect-" + event.sessionId(), log,
+				"reflection failed for session " + event.sessionId(), () -> reflect(event.sessionId()));
 	}
 
 	/**
@@ -101,13 +97,13 @@ public class ReflectionService {
 		if (settings.memoryReflectionApprovalRequired() && proposals.findPendingForSession(sessionId).isPresent()) {
 			throw new IllegalStateException("a reflection proposal is already pending approval for this session");
 		}
-		if (!inFlight.add(sessionId)) {
+		if (!inFlight.tryAcquire(sessionId)) {
 			throw new IllegalStateException("a reflection is already in progress for this session");
 		}
 		try {
 			runReflection(session, lastSeq);
 		} finally {
-			inFlight.remove(sessionId);
+			inFlight.release(sessionId);
 		}
 	}
 

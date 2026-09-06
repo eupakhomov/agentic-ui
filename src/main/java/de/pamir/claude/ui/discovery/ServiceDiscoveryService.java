@@ -1,5 +1,7 @@
 package de.pamir.claude.ui.discovery;
 
+import de.pamir.claude.ui.concurrent.FireAndForget;
+import de.pamir.claude.ui.concurrent.InFlightGuard;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitCommandRunner;
 import de.pamir.claude.ui.library.EmbeddingClient;
@@ -17,9 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Ecosystem service discovery (docs/plan/phase-8-service-discovery.md): regenerates a short
@@ -38,7 +38,7 @@ public class ServiceDiscoveryService {
 	private final GitCommandRunner git;
 	private final ServiceProfileRepository profiles;
 	private final EmbeddingClient embeddings;
-	private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+	private final InFlightGuard<String> inFlight = new InFlightGuard<>();
 
 	public ServiceDiscoveryService(SettingsService settings, SystemTurnClient systemTurnClient, GitCommandRunner git,
 									ServiceProfileRepository profiles, EmbeddingClient embeddings) {
@@ -51,13 +51,8 @@ public class ServiceDiscoveryService {
 
 	@EventListener
 	public void onServiceDiscoveryRequested(ServiceDiscoveryRequested event) {
-		Thread.ofVirtual().name("service-discovery-" + event.sessionId()).start(() -> {
-			try {
-				discover(event.repoPath(), event.sessionId(), false);
-			} catch (RuntimeException e) {
-				log.warn("service discovery failed for {}: {}", event.repoPath(), e.getMessage());
-			}
-		});
+		FireAndForget.run("service-discovery-" + event.repoPath(), log,
+				"service discovery failed for " + event.repoPath(), () -> discover(event.repoPath(), event.sessionId(), false));
 	}
 
 	/** Manual rediscover (dashboard "Rediscover" button / "Scan ecosystem now" loop) — always bypasses staleness. */
@@ -103,7 +98,7 @@ public class ServiceDiscoveryService {
 		if (!Files.exists(path.resolve(".git"))) {
 			return; // best-effort for the close-triggered path — the manual path validates up front
 		}
-		if (!inFlight.add(repoPath)) {
+		if (!inFlight.tryAcquire(repoPath)) {
 			return; // another discovery for this exact repo is already running
 		}
 		try {
@@ -119,7 +114,7 @@ public class ServiceDiscoveryService {
 			}
 			generate(path, repoPath, sessionId, sha);
 		} finally {
-			inFlight.remove(repoPath);
+			inFlight.release(repoPath);
 		}
 	}
 

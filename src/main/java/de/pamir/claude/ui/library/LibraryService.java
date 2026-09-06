@@ -224,11 +224,14 @@ public class LibraryService {
 		}
 	}
 
+	/**
+	 * Hybrid (dense+sparse+trigram) search — dense arm skipped when Voyage isn't configured, same
+	 * as memory search (docs/plan/phase-9-production-hardening.md O3); never throws for that case
+	 * anymore, only for a genuine embed failure once configured.
+	 */
 	public List<LibraryRepository.SearchHit> search(String query, int limit, String kind) {
-		if (!embeddings.configured()) {
-			throw new IllegalStateException("semantic search not configured (set CLAUDE_UI_VOYAGE_API_KEY)");
-		}
-		return assets.searchByEmbedding(embeddings.embed(query, true), limit, kind);
+		float[] embedding = embeddings.configured() ? embeddings.embed(query, true) : null;
+		return assets.hybridSearch(query, embedding, kind, limit);
 	}
 
 	/** Full text of an asset's primary file, for the library detail drawer; capped for display. */

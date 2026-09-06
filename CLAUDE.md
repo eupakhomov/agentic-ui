@@ -72,11 +72,14 @@ can be excluded:
 ./mvnw -Dskip.installnodenpm -Dskip.npm -DexcludedGroups=integration test
 ```
 
-CI (`.github/workflows/ci.yml`) runs exactly this, plus `tsc` for both sidecars (guarded
-by `scripts/check-protocol-sync.mjs`, which fails the build if `sidecar-codex/src/
-protocol.ts`/`stdio.ts` drift from their documented `sidecar/` originals — see that
-package's file-header comments) and a full frontend `npm run build`. It does not run
-`ApplicationTests` — no Postgres service is wired up in CI yet.
+CI (`.github/workflows/ci.yml`) runs exactly this, plus `npm test`+`tsc` for both
+sidecars (guarded by `scripts/check-protocol-sync.mjs`, which fails the build if
+`sidecar-codex/src/protocol.ts`/`stdio.ts` drift from their documented `sidecar/`
+originals — see that package's file-header comments) and `npm test` + a full frontend
+`npm run build`. It does not run `ApplicationTests` or any other `@Tag("integration")`
+test — no Postgres service is wired up in CI yet, so those (including the
+`*RepositoryDbTest`/`*DbTest` classes added in phase-9's T3) only run as part of a full
+local `mvn`/`mvnw test` or `verify` against the compose DB.
 
 ## Database
 
@@ -177,6 +180,7 @@ simply times out.
 
 ```bash
 cd sidecar && npm install && npm run build    # tsc build to dist/
+npm test                                      # vitest — permissions.ts, session.ts translation
 npm run drive -- --cwd /path/to/dir           # manual REPL driver for the NDJSON protocol
 ```
 
@@ -188,6 +192,7 @@ The NDJSON contract is the provider adapter interface — keep it provider-neutr
 
 ```bash
 cd sidecar-codex && npm install && npm run build   # tsc build to dist/
+npm test                                            # vitest — rpc.ts, mcp.ts, approvals.ts
 ```
 
 Second adapter implementation, wrapping `codex app-server`'s JSON-RPC-over-stdio
@@ -217,6 +222,7 @@ live-confirmed protocol quirks: `docs/plan/phase-5.13-codex-provider.md`.
 
 ```bash
 cd frontend && npm install && npm run dev     # Vite on :5173, proxies /api and /ws to :8080
+npm test                                      # vitest — store/store.ts, protocol.ts helpers
 ```
 
 Production build is wired into `mvn package` (frontend-maven-plugin → `static/`), so

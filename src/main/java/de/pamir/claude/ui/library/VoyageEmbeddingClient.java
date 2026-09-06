@@ -3,6 +3,7 @@ package de.pamir.claude.ui.library;
 import de.pamir.claude.ui.config.AppProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.JsonNode;
 
 import java.util.List;
@@ -41,11 +42,23 @@ public class VoyageEmbeddingClient implements EmbeddingClient {
 		if (input.length() > MAX_INPUT_CHARS) {
 			input = input.substring(0, MAX_INPUT_CHARS);
 		}
-		JsonNode response = rest.post().uri("/embeddings")
-				.header("Authorization", "Bearer " + props.voyageApiKey())
-				.body(Map.of("model", MODEL, "input", List.of(input), "input_type", query ? "query" : "document"))
-				.retrieve()
-				.body(JsonNode.class);
+		JsonNode response;
+		try {
+			response = rest.post().uri("/embeddings")
+					.header("Authorization", "Bearer " + props.voyageApiKey())
+					.body(Map.of("model", MODEL, "input", List.of(input), "input_type", query ? "query" : "document"))
+					.retrieve()
+					.body(JsonNode.class);
+		} catch (RestClientResponseException e) {
+			// docs/plan/phase-9-production-hardening.md O5: a present-but-invalid key otherwise
+			// surfaces as an opaque "4xx ... <html body>" per-call warning — name the actual cause
+			// so it's diagnosable from the one log line tryEmbed() already logs.
+			if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
+				throw new IllegalStateException(
+						"Voyage API key rejected (" + e.getStatusCode().value() + ") — check CLAUDE_UI_VOYAGE_API_KEY", e);
+			}
+			throw new IllegalStateException("Voyage embeddings request failed (" + e.getStatusCode().value() + ")", e);
+		}
 		JsonNode values = response == null ? null : response.path("data").path(0).path("embedding");
 		if (values == null || !values.isArray() || values.isEmpty()) {
 			throw new IllegalStateException("unexpected Voyage embeddings response");

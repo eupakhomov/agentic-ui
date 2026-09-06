@@ -44,6 +44,8 @@ public class SessionService {
 	private final SystemSessionService systemSessionService;
 	private final AutoTitleService autoTitleService;
 	private final Map<UUID, Object> locks = new ConcurrentHashMap<>();
+	/** Guards the enforceSessionLimit()+insert critical section — see {@link #enforceSessionLimitAndInsert}. */
+	private final Object sessionLimitLock = new Object();
 
 	public SessionService(AppProperties props, SettingsService settings, SessionRepository sessions,
 						  GitWorktreeService worktrees, GitCommandRunner git,
@@ -101,12 +103,11 @@ public class SessionService {
 	}
 
 	public SessionEntity create(CreateOptions options) {
-		enforceSessionLimit();
 		UUID id = UUID.randomUUID();
 		Path worktree = Path.of(props.worktreeRoot()).resolve(id.toString());
 		SessionConfigFactory.Prepared prepared = configFactory.prepare(id, worktree, options);
 		SessionEntity entity = prepared.entity();
-		sessions.insert(entity);
+		enforceSessionLimitAndInsert(entity);
 		record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 		for (String warning : prepared.warnings()) {
 			record(id, "warning", mapper.createObjectNode().put("message", warning));
@@ -468,11 +469,25 @@ public class SessionService {
 		record(id, "queue_updated", payload);
 	}
 
-	/** Package-private: also called by {@link SystemSessionService#createSystemSession}. */
+	/** Package-private: also called (standalone, no insert to pair it with) by {@link #resume}. */
 	void enforceSessionLimit() {
 		long live = sessions.countByStates(List.copyOf(SessionState.LIVE));
 		if (live >= props.maxSessions()) {
 			throw new IllegalStateException("max concurrent sessions reached (" + props.maxSessions() + ")");
+		}
+	}
+
+	/**
+	 * Package-private: also called by {@link SystemSessionService#createSystemSession}. Checking
+	 * the live-session count and inserting the new row must be atomic — otherwise two concurrent
+	 * creates (7.4's spawn_child_session fans a parent out into several) can both read a count
+	 * under the limit and both insert, overshooting it (docs/plan/phase-9-production-hardening.md
+	 * O1). The lock only spans the count query + insert, not the rest of provisioning.
+	 */
+	void enforceSessionLimitAndInsert(SessionEntity entity) {
+		synchronized (sessionLimitLock) {
+			enforceSessionLimit();
+			sessions.insert(entity);
 		}
 	}
 

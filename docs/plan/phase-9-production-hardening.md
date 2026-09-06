@@ -1,6 +1,8 @@
 # Phase 9 — Architectural review & production hardening
 
-Status: **Runs A, B, C, D, and E done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
+Status: **Runs A–F done (2026-09-06)**. Run F closed out the remaining backlog (T3, T4, T6,
+O1, O3, O4, O5, G6); nothing actionable is left open (see "Suggested pick order" for what
+each run covered). This phase is different from earlier ones:
 it is a curated backlog produced by a full architectural review (2026-09-06), not one
 feature plan. Each item below is self-contained with enough context to be picked up as
 its own run; pick order suggestions are at the bottom. Security is explicitly out of
@@ -64,18 +66,53 @@ from this phase onward is unguarded — so test items come first, and the dedup 
   behavior itself (S2) — proving it would need controllable time, not just fakes;
   `SessionHousekeeping`'s scheduled tick (never had a dedicated test, split or not).
   Unit test count 88 → 116.
-- **T3 — Repository/SQL tests against real Postgres.** `mvn verify` already requires
-  the compose DB, so `@JdbcTest`-style slices cost nothing new. Priorities:
-  `MemoryRepository.search` (the 3-arm RRF SQL — dense off/on, scope visibility
-  filters), `SessionRepository.findAwaitingPrCheck` cutoff logic, journal
-  `deleteDeltasBefore`/`costToDate`, proposal unique-pending index. Optional stretch:
-  Testcontainers so tests stop depending on the ambient compose stack (decide
-  deliberately — it changes the documented "Postgres must be up" workflow).
-- **T4 — Sidecar tests (vitest, both packages).** `permissions.ts` `readOnlyDenial`
-  (worktree containment, symlink edge), Claude-message→NDJSON translation in
-  `session.ts` (feed canned SDK messages, assert emitted events), sidecar-codex
-  `rpc.ts` request/response framing, `mcp.ts` Claude-shaped→Codex config translation
-  (bearer-token→env-var rule), `approvals.ts` mapping.
+- **T3 — DONE (2026-09-06, Run F).** `@SpringBootTest` + `@Transactional` slices against
+  the live compose Postgres (each test's writes roll back automatically) — `@Tag(
+  "integration")`, same convention as `ApplicationTests`, so they don't run in CI (no
+  Postgres service there) but do run locally as part of `mvn`/`mvnw test`/`verify`.
+  `SessionRepositoryDbTest` (3 tests: `findAwaitingPrCheck` cutoff+status filtering,
+  `resetPrCheckPending` only touching sessions with a PR, `countByStates`),
+  `EventJournalDbTest` (4: `deleteDeltasBefore` dropping only pre-cutoff `stream_delta`
+  rows, `costToDate` summing only `turn_complete` payloads, zero-with-no-turns,
+  `hasEventType` across the flush/buffer boundary), `MemoryProposalRepositoryDbTest` (4:
+  the partial unique index actually rejects a second pending proposal per session,
+  deciding one frees the slot, deciding an already-decided one fails, two different
+  sessions don't contend), `MemoryRepositoryDbTest` (5: sparse/trgm arms finding a
+  never-embedded doc, the dense arm finding an embedded one by cosine distance with
+  sparse/trgm arms empty, service-path visibility, tag filtering, archived exclusion),
+  and `LibraryRepositoryDbTest` (5, new alongside O3's `hybridSearch` — same shape:
+  sparse, trgm-by-name-similarity, dense, kind filter, archived exclusion). Turned up a
+  real gap along the way: `SessionEntity.Builder` left `skillSources`/`agentSources`
+  defaulting to `null` (S3 only gave `contextDirs`/`allowedTools`/`disallowedTools`
+  sensible defaults), which every production call site papers over by always setting
+  them explicitly — but the column is `NOT NULL`, so any test building a bare-minimum
+  entity via the builder failed on insert against a real Postgres the moment T3 started
+  exercising it. Fixed by defaulting both to an empty `JsonNodeFactory` array node in the
+  Builder itself, so `SessionEntity.builder()...build()` is genuinely usable standalone.
+  Not done: the "Testcontainers instead of the ambient compose stack" stretch goal — left
+  as valid future backlog, unchanged decision-not-to from the original writeup.
+- **T4 — DONE (2026-09-06, Run F).** vitest added to both `sidecar/` and `sidecar-codex/`
+  (neither had a test runner; `"test": "vitest run"` + a `vitest.config.ts` each).
+  `sidecar/test/permissions.test.ts` (8): `readOnlyDenial` worktree containment,
+  `notebook_path`, Bash exemption, and a sibling-directory string-prefix edge case
+  (`/work/session1` vs `/work/session10/...`). `sidecar/test/session.test.ts` (13):
+  Claude SDK message → NDJSON event translation, covering system/init, stream deltas
+  (text/thinking/unmapped), tool_use/tool_result (incl. truncation), turn_complete,
+  rate_limit_event, unhandled types. The translation logic was inline in `runSession`'s
+  loop, entangled with `writeEvent`/mutable model state — extracted into a pure,
+  exported `translateSdkMessage(message, modelState): {events, logs}` (no behavior
+  change; `runSession` now just loops the returned arrays) so it's testable without a
+  real `claude` CLI process. `sidecar-codex/test/approvals.test.ts` (7):
+  `allowDecision`/`denyDecision` mapping incl. the no-`availableDecisions` fallback.
+  `sidecar-codex/test/mcp.test.ts` (7): stdio passthrough, Bearer-token→env-var
+  extraction (the raw token never lands in the translated config, only a named env var
+  on the spawned child), name slugification, both config shapes, unrecognized-entry
+  skip. `sidecar-codex/test/rpc.test.ts` (10, `vi.mock('node:child_process')`):
+  request/response id-correlation, error responses, out-of-order resolution,
+  server-request vs. notification routing, malformed-JSON resilience,
+  `rejectAllPending`, env merging for MCP bearer tokens. 45 tests total across both
+  packages; `npm test`/`npm run build` green in both, `check-protocol-sync.mjs` still
+  clean (protocol.ts/stdio.ts untouched).
 - **T5 — DONE (2026-09-06).** `sidecar-codex/src/protocol.ts`/`stdio.ts` turned out
   *not* to be byte-identical to `sidecar/`'s — they intentionally differ in exactly
   three documented spots (the header comment, each package's own `*_CAPABILITIES`
@@ -87,9 +124,25 @@ from this phase onward is unguarded — so test items come first, and the dedup 
   while staying green on the legitimate differences. Verified against both: passes on
   the current files, fails with a line-numbered diff when a synthetic field was added
   to only one copy. Wired into CI (T7) as its own fast first step.
-- **T6 — Frontend store tests** (vitest): event application in `store/store.ts`
-  (state_changed / queue_updated / pr_status_changed / reflection events → view
-  updates), `protocol.ts` guards. Lower priority than backend. Not done.
+- **T6 — DONE (2026-09-06, Run F).** vitest added to `frontend/` (`"test": "vitest run"`,
+  a minimal `vitest.config.ts`, node environment — no jsdom needed since `store.ts` and
+  `protocol.ts` touch no browser API). `store/store.test.ts` (17 tests, driven through
+  the store's public `apply`/`setWsStatus`/`seed`/`remove` actions rather than the
+  unexported `reduce` directly): `state_changed` (state update, pending-permission clear
+  on IDLE and on CRASHED), `queue_updated` replacing the list, all three reflection
+  events (proposed/complete's created-updated-archived summary incl. the no-ops case/
+  discarded), `budget_updated`/`budget_exhausted`, transcript reduction (stream_delta
+  text coalescing, turn_complete closing an open block + accumulating cost across two
+  turns, tool_result attaching to its `tool_started` by id, permission_response
+  resolving the matching pending request). Turned up that `pr_status_changed` is *not*
+  handled by the store at all — `SessionWidget` updates its own local `SessionEntity`
+  state for that event instead — so T6's original wording was slightly off; documented
+  here rather than testing a code path that doesn't exist. `protocol.test.ts` (5): the
+  two actual pure helpers there, `placeholdersOf` (extraction order, dedup, none-found,
+  malformed braces) and `assetStub` (TemplateAsset → LibraryAsset field mapping) — there
+  are no type-guard functions in `protocol.ts` to test (it's interfaces + these two
+  helpers only). 22 tests total; `npm test` and `npm run build` (`tsc --noEmit && vite
+  build`) both green.
 - **T7 — DONE (2026-09-06).** `.github/workflows/ci.yml`, three parallel jobs: `backend`
   (`./mvnw -Dskip.installnodenpm -Dskip.npm -DexcludedGroups=integration test` —
   compiles everything and runs T1's unit tests; `ApplicationTests` is now `@Tag(
@@ -97,6 +150,10 @@ from this phase onward is unguarded — so test items come first, and the dedup 
   then `npm run build`/`tsc` for both `sidecar/` and `sidecar-codex/`), `frontend`
   (`npm run build`, which is already `tsc --noEmit && vite build`). No ESLint added —
   out of scope for this pass; ESLint config for the sidecars is still open.
+  **Updated 2026-09-06 (Run F)** once T4/T6 added test runners: `sidecars` now runs
+  `npm test` before `npm run build` in each package, `frontend` now runs `npm test`
+  before `npm run build`. Still no Postgres service in CI, so T3's `*DbTest` classes
+  (also `@Tag("integration")`) stay local-only, same as `ApplicationTests`.
 
 ## 9.2 Claude-only coupling (Codex-only install breaks LLM features)
 
@@ -216,11 +273,16 @@ LLM feature assumes a working `claude` CLI login:
   and `TemplateManager` (whose "session default" provider choice now correctly shows
   free text instead of assuming Claude's model list, since there's no capabilities
   object to key off an empty provider id).
-- **G6 — (optional) Event-listener + virtual-thread + `inFlight` guard pattern** is
-  duplicated between `ReflectionService` and `ServiceDiscoveryService`; the
-  scheduled-tick-with-settings-cutoff pattern across the four background services is
-  similar-but-fine. Only worth touching if a third copy appears — noted so it isn't
-  "discovered" again.
+- **G6 — DONE (2026-09-06, Run F).** New `concurrent` package: `InFlightGuard<K>`
+  (`tryAcquire`/`release` over a `ConcurrentHashMap` key set) and `FireAndForget.run(
+  threadName, log, failureContext, task)` (the "start a virtual thread, log-and-swallow
+  a `RuntimeException`" body every `@EventListener` used to hand-roll). `ReflectionService`
+  and `ServiceDiscoveryService` both now delegate to these instead of each keeping its
+  own `Set<K> inFlight = ConcurrentHashMap.newKeySet()` field and inline
+  `Thread.ofVirtual()...` block — same behavior, same log messages, one place instead of
+  two. The scheduled-tick-with-settings-cutoff pattern across the four background
+  services was left alone, as originally scoped (noted as "similar-but-fine", not part
+  of this item). New tests: `InFlightGuardTest`, `FireAndForgetTest`.
 
 ## 9.4 Simplification
 
@@ -288,20 +350,53 @@ LLM feature assumes a working `claude` CLI login:
 
 ## 9.5 Other observations (reviewer's discretion)
 
-- **O1 — `enforceSessionLimit` is check-then-insert with no lock** — two concurrent
-  creates can both pass the count. Single-user makes it near-impossible today, but
-  7.4's `spawn_child_session` makes concurrent creates real (a parent fanning out).
-  Cheap fix: synchronize the count+insert, or re-check after insert and fail the loser.
+- **O1 — DONE (2026-09-06, Run F).** `SessionService.enforceSessionLimitAndInsert(entity)`
+  wraps the count-check and the `insert` in one `synchronized (sessionLimitLock)` block
+  — the critical section is exactly those two calls, not the rest of provisioning, so a
+  slow worktree clone doesn't hold the lock. Both call sites that used to call
+  `enforceSessionLimit()` then `sessions.insert(...)` separately (`SessionService.create`,
+  `SystemSessionService.createSystemSession`) now call this instead. New
+  `SessionServiceEnforceLimitTest`: a fake `SessionRepository` blocks the first caller's
+  `countByStates` on a latch so the second caller's attempt to enter is provably still
+  waiting on the lock (deterministic, no sleep-and-hope) — proves the second create is
+  rejected with "max concurrent sessions reached" rather than both squeezing through.
 - **O2 — Auto-title cost is unaccounted** (raw CLI call — folded into P2).
-- **O3 — `library.vectorize` vs memory search asymmetry**: library search is
-  dense-only when vectorized, memory search is a 3-arm hybrid. Fine functionally, but
-  once G3 lands, promoting library search to the same hybrid helper is ~free and makes
-  the two search boxes behave consistently.
-- **O4 — Frontend `notify()` strings and event-type dispatch live inline in
-  `SessionWidget`/`Dashboard`** — fine at this size; consider a single
-  event→notification map only if more event types are added.
-- **O5 — No graceful backend handling if the Voyage/Linear key is present but
-  invalid** — errors surface per-call as warnings. Acceptable; noted for awareness.
+- **O3 — DONE (2026-09-06, Run F).** `LibraryRepository.hybridSearch` replaces the old
+  dense-only `searchByEmbedding` with the same dense+sparse+trigram RRF fusion
+  `MemoryRepository` already had — new migration `V13__library_hybrid_search.sql` adds
+  a generated `tsv` column (name weight A, description weight B) and trigram indexes on
+  `library_asset`. `LibraryService.search` no longer throws when Voyage isn't
+  configured (`embeddings.configured() ? embeddings.embed(query, true) : null`, dense
+  arm just skipped, exactly like `MemoryController.search`'s existing pattern) — sparse/
+  trigram now work even with no Voyage key or an asset that was simply never (re-)
+  embedded. `SearchHit.distance` renamed to `.score` (RRF fusion score, higher = more
+  relevant, replacing cosine distance where lower was better) — propagated through
+  `LibraryController.SearchHitView` and the frontend's `LibrarySearchHit`/
+  `LibraryDialog` (sort order flipped, tooltip reworded, and the toggle is no longer
+  gated behind `voyageConfigured && libraryVectorize` since hybrid search works
+  regardless — the dialog's now-unused `settings` fetch was removed with it). New
+  `LibraryRepositoryDbTest` (5 tests, same shape as `MemoryRepositoryDbTest`).
+- **O4 — DONE (2026-09-06, Run F).** `notify.ts` gained `notificationForEvent(who, e)`,
+  a pure event→`{title, body}|null` mapping — `SessionWidget`'s inline if/else chain
+  now just calls it and fires `notify(...)` on a non-null result, with the
+  `pr_status_changed` local-state update (`setEntity`) kept separate since that part
+  isn't a notification. One place instead of an inline chain, ready for a future event
+  type without touching the component. `Dashboard.tsx`'s two unrelated `notify()` calls
+  (skill-library sync, pending-reflection count) were left as-is — they're one-off
+  settings-driven checks, not part of this per-session event dispatch.
+- **O5 — DONE (2026-09-06, Run F).** Only the Voyage half was actionable — Linear
+  failures happen entirely inside an agent turn's MCP tool call (`TicketImportService`
+  has no direct HTTP call to Linear at all), so there's no backend call site to add
+  handling to; that failure already surfaces via `SystemTurnClient`'s existing
+  truncated-raw-preview exception, which is as graceful as it gets without instrumenting
+  the sidecar's MCP error surfacing (out of scope here). `VoyageEmbeddingClient.embed`
+  now catches `RestClientResponseException`: a 401/403 raises "Voyage API key rejected
+  (401) — check CLAUDE_UI_VOYAGE_API_KEY" instead of an opaque "4xx ... <html body>",
+  and any other non-2xx gets a "Voyage embeddings request failed (nnn)" message — both
+  still flow through `tryEmbed`'s existing log-and-continue, just diagnosable now from
+  that one log line. New `VoyageEmbeddingClientTest` (5, `MockRestServiceServer`
+  against `RestClient`): success, 401, 403, a generic 500 (message doesn't claim "key
+  rejected"), and the already-existing unconfigured case.
 
 ## 9.6 Documentation drift
 
@@ -379,5 +474,20 @@ LLM feature assumes a working `claude` CLI login:
    (still valid backlog, `to taste`). `SessionService` 1,166 → 561 lines; unit test
    count 88 → 116. Full `mvn`/`npm run build` (both sidecars + frontend) and
    `check-protocol-sync.mjs` all green.
+6. **Run F (close the backlog) — DONE 2026-09-06.** Everything left: T3 (5 new
+   `*DbTest` classes against live Postgres) + T4 (vitest in both sidecars, 45 tests) +
+   T6 (vitest in frontend, 22 tests) + O1 (`enforceSessionLimitAndInsert`, one lock) +
+   O3 (`LibraryRepository.hybridSearch`, migration V13) + O4 (`notificationForEvent`) +
+   O5 (`VoyageEmbeddingClient` 401/403 handling) + G6 (`InFlightGuard`/`FireAndForget`).
+   `.github/workflows/ci.yml`'s `sidecars`/`frontend` jobs now run `npm test` before
+   `npm run build`. Backend unit test count 116 → 126 (DB-less, CI-run); 22 new
+   `@Tag("integration")` tests run locally against Postgres (148 total). Frontend/
+   sidecar test counts: sidecar 21, sidecar-codex 24, frontend 22 — all new, all green.
+   Found and fixed one real bug along the way (not in the original review): `SessionEntity.
+   Builder` left `skillSources`/`agentSources` defaulting to `null` against a `NOT NULL`
+   column, invisible until a real-Postgres-backed test actually inserted a
+   bare-minimum-built entity. Full `mvn test` (incl. integration), `npm test` + `npm run
+   build` in `frontend`/`sidecar`/`sidecar-codex`, and `check-protocol-sync.mjs` all green.
 
-Items not picked stay valid backlog.
+Items not picked stay valid backlog. As of Run F, the only thing left open is T3's
+optional Testcontainers stretch goal (deliberately deferred, not forgotten).

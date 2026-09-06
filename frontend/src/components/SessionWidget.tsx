@@ -3,7 +3,7 @@ import { api, ApiError } from '../api/rest';
 import { WsSession } from '../api/ws';
 import type { Envelope, PermissionMode, SessionEntity } from '../protocol';
 import { useStore } from '../store/store';
-import { notify } from '../notify';
+import { notify, notificationForEvent } from '../notify';
 import { registerWidget, unregisterWidget } from '../hotkeys/widgetRegistry';
 import {
   ChildOf, Close, ContinuedFrom, DownloadIcon, Duplicate, EcosystemContext, GitPanelIcon,
@@ -94,19 +94,13 @@ export default function SessionWidget({
         return;
       }
       const who = nameRef.current || 'session';
-      if (e.type === 'permission_request') {
-        notify(`${who} needs your input`, `${e.payload['toolName']} permission requested`);
-      } else if (e.type === 'turn_complete') {
-        notify(`${who} finished`, 'the agent completed its turn');
-      } else if (e.type === 'state_changed' && e.payload['state'] === 'CRASHED') {
-        notify(`${who} crashed`, 'the session needs a resume');
-      } else if (e.type === 'pr_status_changed') {
+      if (e.type === 'pr_status_changed') {
         const status = e.payload['status'] as SessionEntity['prCheckStatus'];
         const url = e.payload['url'] as string | undefined;
         setEntity((prev) => (prev ? { ...prev, prCheckStatus: status ?? prev.prCheckStatus, prUrl: url ?? prev.prUrl } : prev));
-        if (status === 'SUCCESS') notify(`${who}'s PR passed CI`, 'checks succeeded');
-        else if (status === 'FAILURE') notify(`${who}'s PR failed CI`, 'checks failed — take a look');
       }
+      const n = notificationForEvent(who, e);
+      if (n) notify(n.title, n.body);
     };
     const ws = new WsSession(sessionId, onEvent, (s) => {
       setWsStatus(sessionId, s);

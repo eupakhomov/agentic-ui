@@ -142,7 +142,6 @@ public class SystemSessionService {
 	}
 
 	private SessionEntity createSystemSession() {
-		sessionService.enforceSessionLimit();
 		UUID id = UUID.randomUUID();
 		Path scratch = Path.of(props.worktreeRoot(), "_system", id.toString());
 		try {
@@ -167,7 +166,7 @@ public class SystemSessionService {
 				.skillSources(mapper.createArrayNode()).agentSources(mapper.createArrayNode())
 				.state(SessionState.CREATING).kind("system").reflectionEnabled(false)
 				.build();
-		sessions.insert(entity);
+		sessionService.enforceSessionLimitAndInsert(entity);
 		journalPublisher.record(id, "state_changed", mapper.createObjectNode().put("state", "CREATING"));
 		try {
 			sessionService.transition(id, SessionState.PROVISIONING);
