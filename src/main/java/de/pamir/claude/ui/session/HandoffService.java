@@ -41,7 +41,7 @@ public class HandoffService {
 				+ "Write it as direct instructions to the next agent, not a narrative summary. Respond with ONLY "
 				+ "the Markdown brief — no commentary, no code fence around the whole thing.\n\n"
 				+ "Transcript digest:\n%s").formatted(session.name(), session.branch(), digest);
-		String summary = systemTurnClient.text(prompt, TIMEOUT);
+		String summary = systemTurnClient.text(prompt, SystemTurnLane.INTERACTIVE, TIMEOUT);
 		if (summary.isBlank()) {
 			throw new IllegalStateException("handoff summary was empty");
 		}

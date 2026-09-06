@@ -19,23 +19,23 @@ import java.util.Locale;
 @Service
 public class SystemTurnClient {
 
-	private final SessionService sessionService;
+	private final SystemSessionService systemSessionService;
 	private final ObjectMapper mapper;
 
-	public SystemTurnClient(SessionService sessionService, ObjectMapper mapper) {
-		this.sessionService = sessionService;
+	public SystemTurnClient(SystemSessionService systemSessionService, ObjectMapper mapper) {
+		this.systemSessionService = systemSessionService;
 		this.mapper = mapper;
 	}
 
 	/** Runs a system turn and returns the assistant's text verbatim (stripped of surrounding whitespace). */
-	public String text(String prompt, Duration timeout) {
-		return sessionService.runSystemTurn(prompt, timeout).strip();
+	public String text(String prompt, SystemTurnLane lane, Duration timeout) {
+		return systemSessionService.runSystemTurn(prompt, lane, timeout).strip();
 	}
 
-	/** Same as {@link #text(String, Duration)} but on a one-off model override — see {@link
-	 * SessionService#runSystemTurn(String, String, Duration)}. */
-	public String text(String prompt, String modelOverride, Duration timeout) {
-		return sessionService.runSystemTurn(prompt, modelOverride, timeout).strip();
+	/** Same as {@link #text(String, SystemTurnLane, Duration)} but on a one-off model override — see {@link
+	 * SystemSessionService#runSystemTurn(String, String, SystemTurnLane, Duration)}. */
+	public String text(String prompt, String modelOverride, SystemTurnLane lane, Duration timeout) {
+		return systemSessionService.runSystemTurn(prompt, modelOverride, lane, timeout).strip();
 	}
 
 	/**
@@ -45,13 +45,13 @@ public class SystemTurnClient {
 	 * propagate) just catch {@link RuntimeException} around the call instead of the previous
 	 * two-stage try/catch.
 	 */
-	public JsonNode json(String prompt, Duration timeout) {
-		return parseJson(sessionService.runSystemTurn(prompt, timeout));
+	public JsonNode json(String prompt, SystemTurnLane lane, Duration timeout) {
+		return parseJson(systemSessionService.runSystemTurn(prompt, lane, timeout));
 	}
 
-	/** Same as {@link #json(String, Duration)} but on a one-off model override. */
-	public JsonNode json(String prompt, String modelOverride, Duration timeout) {
-		return parseJson(sessionService.runSystemTurn(prompt, modelOverride, timeout));
+	/** Same as {@link #json(String, SystemTurnLane, Duration)} but on a one-off model override. */
+	public JsonNode json(String prompt, String modelOverride, SystemTurnLane lane, Duration timeout) {
+		return parseJson(systemSessionService.runSystemTurn(prompt, modelOverride, lane, timeout));
 	}
 
 	private JsonNode parseJson(String raw) {

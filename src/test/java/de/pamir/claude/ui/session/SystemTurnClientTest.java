@@ -11,38 +11,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * SessionService.runSystemTurn is stubbed via a tiny subclass (same pattern as
- * SessionServiceTest's fakeSettings) rather than a mock — see
+ * SystemSessionService.runSystemTurn is stubbed via a tiny subclass (same pattern as
+ * SessionConfigFactoryTest's fakeSettings) rather than a mock — see
  * docs/plan/phase-9-production-hardening.md G1/T1.
  */
 class SystemTurnClientTest {
 
-	private static SessionService fakeSessionService(String reply) {
-		return new SessionService(null, null, null, null, null, null, null, null, null, null,
-				new JsonMapper(), null, null, 8080) {
+	private static SystemSessionService fakeSystemSessionService(String reply) {
+		return new SystemSessionService(null, null, null, null, null, new JsonMapper(), null) {
 			@Override
-			public String runSystemTurn(String prompt, String modelOverride, Duration timeout) {
+			public String runSystemTurn(String prompt, String modelOverride, SystemTurnLane lane, Duration timeout) {
 				return reply;
 			}
 		};
 	}
 
 	private SystemTurnClient clientReturning(String reply) {
-		return new SystemTurnClient(fakeSessionService(reply), new JsonMapper());
+		return new SystemTurnClient(fakeSystemSessionService(reply), new JsonMapper());
 	}
 
 	@Test
 	void textStripsSurroundingWhitespaceButNotFences() {
 		SystemTurnClient client = clientReturning("  ```\nhello\n```  ");
 
-		assertThat(client.text("prompt", Duration.ofSeconds(1))).isEqualTo("```\nhello\n```");
+		assertThat(client.text("prompt", SystemTurnLane.INTERACTIVE, Duration.ofSeconds(1))).isEqualTo("```\nhello\n```");
 	}
 
 	@Test
 	void jsonStripsAWrappingCodeFenceBeforeParsing() {
 		SystemTurnClient client = clientReturning("```json\n{\"a\":1}\n```");
 
-		JsonNode node = client.json("prompt", Duration.ofSeconds(1));
+		JsonNode node = client.json("prompt", SystemTurnLane.INTERACTIVE, Duration.ofSeconds(1));
 
 		assertThat(node.path("a").asInt()).isEqualTo(1);
 	}
@@ -51,7 +50,7 @@ class SystemTurnClientTest {
 	void jsonParsesAPlainUnfencedObject() {
 		SystemTurnClient client = clientReturning("{\"a\":1}");
 
-		assertThat(client.json("prompt", Duration.ofSeconds(1)).path("a").asInt()).isEqualTo(1);
+		assertThat(client.json("prompt", SystemTurnLane.INTERACTIVE, Duration.ofSeconds(1)).path("a").asInt()).isEqualTo(1);
 	}
 
 	@Test
@@ -59,15 +58,15 @@ class SystemTurnClientTest {
 		SystemTurnClient client = clientReturning("not json at all");
 
 		IllegalStateException e = assertThrows(IllegalStateException.class,
-				() -> client.json("prompt", Duration.ofSeconds(1)));
+				() -> client.json("prompt", SystemTurnLane.INTERACTIVE, Duration.ofSeconds(1)));
 		assertThat(e.getMessage()).contains("not json at all");
 	}
 
 	@Test
-	void jsonWithModelOverrideDelegatesToTheThreeArgRunSystemTurn() {
+	void jsonWithModelOverrideDelegatesToTheFourArgRunSystemTurn() {
 		SystemTurnClient client = clientReturning("{\"ok\":true}");
 
-		assertThat(client.json("prompt", "haiku", Duration.ofSeconds(1)).path("ok").asBoolean()).isTrue();
+		assertThat(client.json("prompt", "haiku", SystemTurnLane.INTERACTIVE, Duration.ofSeconds(1)).path("ok").asBoolean()).isTrue();
 	}
 
 	@Test

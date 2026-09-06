@@ -59,7 +59,7 @@ public class LibraryAiService {
 				+ "human-readable, 2-5 words\", \"description\": \"one sentence (max ~25 words) saying what it does "
 				+ "and when to use it\", \"tags\": [\"3-6 short lowercase keyword tags\"]}. Return one object per "
 				+ "file, in the same order.\n\n%s").formatted(files);
-		return parse(systemTurnClient.json(prompt, TIMEOUT), paths);
+		return parse(systemTurnClient.json(prompt, de.pamir.claude.ui.session.SystemTurnLane.INTERACTIVE, TIMEOUT), paths);
 	}
 
 	private String readContent(Path root, String path) {

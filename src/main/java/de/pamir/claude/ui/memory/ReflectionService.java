@@ -139,7 +139,7 @@ public class ReflectionService {
 		JsonNode result;
 		try {
 			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.memoryReflectionModel()).orElse(null);
-			result = systemTurnClient.json(prompt, modelOverride, TIMEOUT);
+			result = systemTurnClient.json(prompt, modelOverride, de.pamir.claude.ui.session.SystemTurnLane.BACKGROUND, TIMEOUT);
 		} catch (RuntimeException e) {
 			warn(session.id(), "reflection failed: " + e.getMessage());
 			return;

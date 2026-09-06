@@ -25,7 +25,10 @@ decision log in `docs/plan/README.md` remains the authority on *why*; this file 
 ┌────────────────────────────  Spring Boot backend  ───────────────────────────┐
 │ Controllers: sessions · templates · git ops · meta (services/branches/skills)│
 │              maintenance (orphans) · SPA fallback                            │
-│ SessionService ── state machine, FIFO queue, budgets, parking, auto-title    │
+│ SessionService ── state machine, FIFO queue, budgets (create/close/sidecar   │
+│   events); SystemSessionService (singleton system session + runSystemTurn),  │
+│   SessionConfigFactory (create-config/MCP defaults), AutoTitleService,       │
+│   SessionHousekeeping (parking/orphan sweep) split out — Phase 9 Run E       │
 │   │        │                                                                 │
 │   │        ├─ GitWorktreeService / GitOpsService (shell git, gh CLI)         │
 │   │        ├─ AssetProvisioningService (skills/agents → .claude/, symlinks)  │
@@ -88,7 +91,7 @@ Curated library on top of per-session skill sources (`de.pamir.claude.ui.library
   embeds (`VoyageEmbeddingClient` behind `EmbeddingClient`, key
   `CLAUDE_UI_VOYAGE_API_KEY`, model voyage-3.5-lite).
 - **AI-fill** (`LibraryAiService`): batches ≤5 file contents per Haiku system-session
-  turn (`SessionService.runSystemTurn`), returns name/description/tags per path.
+  turn (`SystemSessionService.runSystemTurn`, via `SystemTurnClient`), returns name/description/tags per path.
 - **Sync** (`LibrarySyncService`): 60s tick, interval as `last_synced_at` cutoff
   (PrCheckPollingService shape). Changed hash → refresh copy + re-embed; vanished →
   ARCHIVED (files kept); reappeared → restored; unimported → `source_discovery`.
@@ -123,9 +126,10 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   trigger. `TranscriptDigest.render()` (`de.pamir.claude.ui.journal` — provider-
   neutral, not memory-specific, so it also backs 5.9's transcript export via the
   sibling `renderMarkdown()`) renders the journal into a capped text digest;
-  `SessionService.runSystemTurn(prompt, model, timeout)` gained a model-override
-  overload so reflection can run on a different model than the system session's
-  default haiku. The model's JSON response (`episode` + up to 10 `semantic` ops)
+  `SystemSessionService.runSystemTurn(prompt, model, lane, timeout)` gained a
+  model-override overload so reflection can run on a different model than the
+  system session's default haiku (the `lane` param is Phase 9 Run E's S2 — reflection
+  runs on the BACKGROUND lane so it never blocks an interactive system-session caller). The model's JSON response (`episode` + up to 10 `semantic` ops)
   is, **by default, held for human approval rather than applied** (`memory.
   reflection-approval-required`, default true): a `memory_proposal` row
   (V10, `PENDING`/`APPROVED`/`DISCARDED`, partial unique index enforcing at most
@@ -147,13 +151,13 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   (Streamable-HTTP) at `/api/mcp/memory`, which — because it's mounted under
   `/api/**` — is already covered by the existing bearer-token `AuthTokenFilter`,
   no new auth code. Every session's `mcpConfig.memory` entry is the same static
-  `{type: "http", headers: {Authorization}}` block `SessionService.
+  `{type: "http", headers: {Authorization}}` block `SessionConfigFactory.
   memoryMcpServer()` builds (same shape as `linearMcpServer()`, same reused
   `CLAUDE_UI_TOKEN` — not a new secret). Since MCP transport context doesn't
   cleanly expose the inbound session identity to a WebMVC tool method, each tool
   takes an explicit `sessionId` argument instead (resolved server-side to that
   session's `repoPath` for the scope filter); the session learns its own id from
-  the episodic-window system-prompt block `SessionService.
+  the episodic-window system-prompt block `SessionConfigFactory.
   memorySystemPromptBlock()` adds at every spawn (`SidecarManager.spawn` gained
   an `extraSystemPrompt` parameter, combined with the session's own
   `instructions` into one `--append-system-prompt`).
@@ -236,7 +240,7 @@ Full design + decisions: `docs/plan/phase-8-service-discovery.md`.
   `dist`, `build`) — same "backend reads a small bounded set of files itself" posture
   as the library's AI-fill, deliberately not an agentic exploration.
   `ServiceDiscoveryService.generate` runs one system-session turn
-  (`SessionService.runSystemTurn`, `service-discovery.model` setting, default haiku)
+  (`SystemSessionService.runSystemTurn`, `service-discovery.model` setting, default haiku)
   asking for a JSON `{description, tags[]}`, best-effort embeds it (`EmbeddingClient`,
   same as memory/library), and upserts `service_profile`.
 - **Agent-facing tools are on the same shared in-process MCP server** as memory/
@@ -261,7 +265,8 @@ Also shipped alongside Phase 8 (not part of its own decision log): **quick sessi
 creation** — `QuickSessionDialog` (`q` hotkey) is a minimal service+ticket dialog; every
 other field (model, permission mode, tools, MCP servers, skills, agents, instructions,
 ecosystem) is copied from whichever session was created most recently, via the same
-`SessionService.lastSessionConfig()`/`configOverridesFrom()` snapshot logic the
+`SessionService.lastSessionConfig()` (delegating to `SessionConfigFactory.
+configOverridesFrom()`) snapshot logic the
 per-session Duplicate button already used. Ticket import reuses the full New Session
 dialog's Linear flow (fetch by ref, or browse tickets assigned to the user); a resolved
 `recommendedModel` overrides the copied model when it's a valid Claude alias. Falls back
@@ -307,7 +312,8 @@ Two small standalone features, no design doc of their own:
 
 ### 5.4 Templates v2 — remaining gap
 Shipped: "duplicate session" action (`POST /api/sessions/{id}/duplicate` —
-`SessionService.duplicate`/`configOverridesFrom` snapshot the source session's config
+`SessionService.duplicate` (delegating to `SessionConfigFactory.configOverridesFrom`)
+snapshots the source session's config
 onto a fresh branch; also backs the quick-session flow, §3d). Template config already
 carries every session field. Missing: per-template default base branch + per-service
 default template (add a `service_path` column to `session_template`, dialog picks the

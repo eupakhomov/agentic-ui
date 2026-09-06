@@ -5,6 +5,7 @@ import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.session.ModelCatalog;
 import de.pamir.claude.ui.session.SystemTurnClient;
+import de.pamir.claude.ui.session.SystemTurnLane;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -80,7 +81,7 @@ public class TicketImportService {
 				+ "\"eng-123-fix-login-bug\".%s")
 				.formatted(ticketRef.strip(), guidance, recommendedModelField(models), recommendedModelGuidance(models));
 		Set<String> validModels = models.stream().map(ModelCatalog.ModelInfo::id).collect(Collectors.toSet());
-		return parse(systemTurnClient.json(prompt, TIMEOUT), validModels);
+		return parse(systemTurnClient.json(prompt, SystemTurnLane.INTERACTIVE, TIMEOUT), validModels);
 	}
 
 	private static String recommendedModelField(List<ModelCatalog.ModelInfo> models) {
@@ -117,7 +118,7 @@ public class TicketImportService {
 				+ "in a completed or canceled state. Then respond with ONLY a JSON array — no markdown fences, "
 				+ "no commentary — of objects of the form {\"ref\": \"ENG-123\", \"title\": \"...\", \"status\": "
 				+ "\"...\"}. If there are no matching issues, respond with an empty array [].";
-		return parseTickets(systemTurnClient.json(prompt, TIMEOUT));
+		return parseTickets(systemTurnClient.json(prompt, SystemTurnLane.INTERACTIVE, TIMEOUT));
 	}
 
 	// package-private (not private): unit-tested directly without mocking the system-session

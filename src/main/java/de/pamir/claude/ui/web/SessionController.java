@@ -62,9 +62,11 @@ public class SessionController {
 		if (request.name() == null || request.branch() == null || request.baseBranch() == null) {
 			throw new IllegalArgumentException("name, branch and baseBranch are required");
 		}
-		return service.create(request.name(), request.branch(), request.baseBranch(), request.repoPath(),
-				request.templateId(), request.overrides(), request.kickoffValues(),
-				Boolean.TRUE.equals(request.syncBaseBranch()), request.continuedFromId());
+		SessionService.CreateOptions options = new SessionService.CreateOptions(request.name(), request.branch(),
+				request.baseBranch(), request.repoPath(), request.templateId(), request.overrides(),
+				request.kickoffValues(), Boolean.TRUE.equals(request.syncBaseBranch()))
+				.withContinuedFrom(request.continuedFromId());
+		return service.create(options);
 	}
 
 	/** Backs the "quick session" dialog: the config a new session would inherit if created now. */

@@ -135,7 +135,7 @@ public class ServiceDiscoveryService {
 		JsonNode result;
 		try {
 			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.serviceDiscoveryModel()).orElse(null);
-			result = systemTurnClient.json(prompt, modelOverride, TIMEOUT);
+			result = systemTurnClient.json(prompt, modelOverride, de.pamir.claude.ui.session.SystemTurnLane.BACKGROUND, TIMEOUT);
 		} catch (RuntimeException e) {
 			log.warn("service discovery failed for {}: {}", repoPath, e.getMessage());
 			return;

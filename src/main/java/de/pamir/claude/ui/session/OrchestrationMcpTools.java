@@ -111,8 +111,8 @@ public class OrchestrationMcpTools {
 		}
 		overrides.put("kickoffPrompt", childPrompt);
 		String childName = Path.of(servicePath).getFileName() + ": " + branch;
-		SessionEntity child = sessionService.create(childName, branch, baseBranch, servicePath, null, overrides,
-				null, false, null, parent.id());
+		SessionEntity child = sessionService.create(new SessionService.CreateOptions(childName, branch, baseBranch,
+				servicePath, null, overrides, null, false).withParent(parent.id()));
 		return Map.of("childId", child.id().toString(), "name", child.name());
 	}
 

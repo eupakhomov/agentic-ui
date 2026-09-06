@@ -1,6 +1,6 @@
 # Phase 9 — Architectural review & production hardening
 
-Status: **Runs A, B, C, and D done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
+Status: **Runs A, B, C, D, and E done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
 it is a curated backlog produced by a full architectural review (2026-09-06), not one
 feature plan. Each item below is self-contained with enough context to be picked up as
 its own run; pick order suggestions are at the bottom. Security is explicitly out of
@@ -40,13 +40,30 @@ from this phase onward is unguarded — so test items come first, and the dedup 
   made `static` where they touched no instance field) — logic untouched, just enough to
   test without mocking dependencies the method doesn't use. Still true: full extraction
   into a helper class is G2/S1's job, not done here.
-- **T2 — Session state-machine tests** (mocked `SidecarManager`/repositories, or a
-  thin fake handle). This is the riskiest logic in the codebase and it changes often:
-  `sendUserMessage` routing per state (IDLE dispatch / PARKED wake+enqueue / RUNNING
-  enqueue / CLOSED reject), `becomeIdleAndDrainQueue` (peek-not-pop retry semantics,
-  budget-exhausted hold), `close` dirty-mode branches, `resume` guard, park/wake,
-  `onSidecarExit` crash vs shutdown-requested, `runSystemTurn` timeout/model-restore/
-  crash completion. Requires modest constructor-injection refactoring or Mockito.
+- **T2 — DONE (2026-09-06, Run E).** Session state-machine tests, fake `SidecarManager`/
+  `SessionRepository`/`EventJournal`/`GitWorktreeService` doubles — no Mockito, no DB, no
+  real OS process (`FakeSidecar` builds a real `SidecarHandle` over an in-memory
+  `Process` subclass instead). `SessionStateMachineTest` (25 tests): `sendUserMessage`
+  routing per state (IDLE dispatch / IDLE-but-dead-handle reject / PARKED wake+enqueue /
+  CREATING..WAITING_INPUT enqueue / terminal reject / budget-exhausted reject on both
+  IDLE and PARKED), `becomeIdleAndDrainQueue` (peek-not-pop retry semantics on a broken
+  handle, budget-exhausted hold), `close` (already-closed no-op, dirty-mode branches
+  incl. unknown-mode rejection, system-session skips the dirty check, reflection/
+  service-discovery event publishing), `resume`'s CRASHED-only guard, `onSidecarExit`
+  (terminal-state no-op, shutdownRequested no-op, unexpected-exit → CRASHED, unknown
+  session no-op). `SystemSessionServiceRunTurnTest` (4 tests, a fully-wired real
+  SessionService/SystemSessionService pair — the actual two-way collaboration
+  production uses, not mocks): successful completion via the onAssistantMessage/
+  completeTurn hooks, timeout, a fatal-error crash surfaced as failure, and the
+  model-override/restore dance (asserted via the raw `set_model` lines sent, since the
+  fake sidecar never echoes back a `model_changed` event). The SystemSessionService↔
+  SessionService constructor cycle (real in production via `@Lazy`) is seeded in these
+  tests via one reflection call setting the private field directly — documented as
+  standing in for what Spring's lazy proxy resolves automatically, not a pattern to
+  reuse elsewhere. Not covered: `SystemSessionService`'s fail-fast lock-contention
+  behavior itself (S2) — proving it would need controllable time, not just fakes;
+  `SessionHousekeeping`'s scheduled tick (never had a dedicated test, split or not).
+  Unit test count 88 → 116.
 - **T3 — Repository/SQL tests against real Postgres.** `mvn verify` already requires
   the compose DB, so `@JdbcTest`-style slices cost nothing new. Priorities:
   `MemoryRepository.search` (the 3-arm RRF SQL — dense off/on, scope visibility
@@ -207,39 +224,67 @@ LLM feature assumes a working `claude` CLI login:
 
 ## 9.4 Simplification
 
-- **S1 — Split `SessionService` (1,164 lines, ~8 responsibilities).** It currently
-  owns: create-config parsing/merging, provisioning orchestration, message routing +
-  queue drain, budget guard, the system-session singleton + pending-turn machinery,
-  Codex cost rewriting, auto-titling, idle parking, and the startup orphan sweep.
-  Natural seams, each independently extractable:
-  - `SystemSessionService` — `runSystemTurn`, `getOrCreate/createSystemSession`, the
-    `pendingSystemTurn`/`pendingSystemText` trio (subtle volatile handshake; isolating
-    it makes T2 testable), plus a hook SessionService calls from
-    `onSidecarEvent`/`onSidecarExit`.
-  - `SessionConfigFactory` — template merge, codex validation, MCP layering,
-    `configOverridesFrom`/`lastSessionConfig`. The codex `if`-cascade should read
-    from a per-provider capability/`unsupportedFields` declaration rather than
-    hand-written checks.
-  - `AutoTitleService` (merges with P2).
-  - Parking + orphan sweep into a small `SessionHousekeeping`.
-- **S2 — Revisit `runSystemTurn`'s single global lock.** Every system-turn consumer
-  serializes behind one `synchronized` block held for up to the caller's timeout —a
-  close-triggered 3-minute reflection blocks an interactive ticket import (user sits
-  watching a spinner). Options: (a) leave it, but split timeouts into
-  interactive (45 s) vs background lanes and document; (b) a fair queue with priority
-  for interactive callers; (c) allow N system sessions. (a) or (b) recommended;
-  (c) fights the session cap.
-- **S3 — `SessionEntity`'s ~40-arg positional constructor.** Two call sites
-  (`create`, `createSystemSession`) already differ by long `null, null, …` runs that
-  are easy to misalign silently — a builder (or grouping into small records:
-  identity/provider/config/limits/lifecycle) turns the next added column from a
-  40-arg diff into a one-liner. `configOverridesFrom`'s 20-field hand copy could
-  likewise become entity→JSON with an exclusion list so new fields are copied by
-  default instead of forgotten.
-- **S4 — Collapse the three stacked `create(...)` overloads** into one signature with
-  a small `CreateOptions` record (name/branch/base/repo/template/overrides/kickoff/
-  sync/continuedFrom/parent) — the overload ladder exists only to avoid touching call
-  sites, and it's grown twice already (7.3, 7.4).
+- **S1 — DONE (2026-09-06, Run E).** Split `SessionService` (1,166 lines → 561) into:
+  - `SystemSessionService` — `runSystemTurn` (now lane-aware, see S2),
+    `getOrCreate/createSystemSession`, the `pendingSystemTurn`/`pendingSystemText` trio,
+    and the `onAssistantMessage`/`completeTurn`/`failTurn` hooks SessionService's
+    `onSidecarEvent`/`onSidecarExit` call into. A genuine two-way dependency (this class
+    calls back into SessionService's package-private session-mechanics — `wake`/`spawn`/
+    `transition`/`writeMcpConfig`/`enforceSessionLimit`, plus the already-public
+    `sendUserMessage`/`setModel`/`resume`) — SessionService's own dependency on this
+    class is a plain constructor edge, while this class's dependency back on
+    SessionService is `@Lazy` (only one side of a cycle needs to be, and this is the
+    side Spring can construct lazily without anything ever calling a method on it
+    mid-construction).
+  - `SessionConfigFactory` — template merge, codex validation, default MCP-server
+    layering (`withDefaultLinearMcp`/`withDefaultMemoryMcp`, `linearMcpServer`/
+    `memoryMcpServer`), the memory/orchestration system-prompt blocks (now
+    `extraSystemPrompt(session)`, one method SessionService's `spawn` calls instead of
+    two), and `configOverridesFrom` (still surfaced via `SessionService.
+    lastSessionConfig()`/`duplicate()`, which stay put as the public API). The codex
+    `if`-cascade was left as hand-written checks, not turned into a capability
+    declaration — out of scope for a pure extraction, still valid backlog.
+  - `AutoTitleService` (merges with P2/O2) — routes its title-generation turn through
+    `SystemTurnClient` on the `BACKGROUND` lane (S2) instead of calling
+    `runSystemTurn` directly.
+  - `SessionHousekeeping` — parking tick + startup orphan sweep; one-way dependency on
+    SessionService (no `@Lazy` needed, since SessionService never calls into it).
+  Each new class's methods needed for cross-class access are package-private (same
+  `session` package), matching T1's established "widen from private, don't leak public
+  API" convention — no new public surface beyond what each class already exposed.
+- **S2 — DONE (2026-09-06, Run E).** Went with (a): the single system session / single
+  lock stays (still exactly one system-session sidecar, so true parallelism would need
+  (c) anyway), but the lock is now a fair `ReentrantLock` with a lane-aware **wait-for-
+  the-lock** budget — not a lane-aware turn timeout, which every caller already set for
+  itself. A new `SystemTurnLane` (`INTERACTIVE`/`BACKGROUND`) is a required param on
+  `SystemSessionService.runSystemTurn`/`SystemTurnClient.text|json`: `INTERACTIVE`
+  callers (`GitAssistService`, `HandoffService`, `LibraryAiService`,
+  `TicketImportService`) give up after 10s with a clear "system session is busy with
+  another task" `IllegalStateException` if a background turn is holding the lock,
+  instead of silently blocking for however long that turn's own timeout is and then
+  running out of their own budget too; `BACKGROUND` callers (`ReflectionService`,
+  `ServiceDiscoveryService`, `AutoTitleService`) wait out their full turn timeout, same
+  as before, since they're not blocking a human.
+- **S3 — DONE (2026-09-06, Run E).** `SessionEntity.Builder` (named setters, sensible
+  empty/null defaults) replaces the ~35-arg positional constructor at its two call
+  sites (`SessionConfigFactory.prepare`, `SystemSessionService.createSystemSession`);
+  `SessionRepository.mapRow` keeps the positional constructor since it's already an
+  unambiguous 1:1 ResultSet-column-to-field mapping, not a `null, null, …` run. Also
+  added `toBuilder()` (seeds a Builder from an existing entity, for a "copy with one
+  field changed" update) — not needed by any production call site yet, but used
+  throughout T2's `FakeSessionRepository` and general enough to be worth keeping.
+  `configOverridesFrom`'s 20-field hand copy was left as-is (moved to
+  `SessionConfigFactory`, not restructured) — the entity→JSON exclusion-list idea is
+  still valid backlog.
+- **S4 — DONE (2026-09-06, Run E).** The three stacked `create(...)` overloads
+  collapsed into one `SessionService.create(CreateOptions)`, where `CreateOptions` is a
+  record (name/branch/baseBranch/repoPath/templateId/overrides/kickoffValues/
+  syncBaseBranch/continuedFromId/parentSessionId) with an 8-arg secondary constructor
+  for the common case plus `withContinuedFrom`/`withParent` fluent methods for the two
+  optional links — so a call site that needs one doesn't have to spell out the other as
+  `null`. All three call sites updated: `SessionController.create` (`.
+  withContinuedFrom(...)`), `OrchestrationMcpTools.spawnChild` (`.withParent(...)`),
+  `SessionService.duplicate` (plain constructor, no link).
 
 ## 9.5 Other observations (reviewer's discretion)
 
@@ -323,6 +368,16 @@ LLM feature assumes a working `claude` CLI login:
    `mvn`/`npm run build` (both sidecars + frontend) and `check-protocol-sync.mjs` all
    green. Re-review S2's lock trade-off (auto-titling now shares it) once this sees
    real use.
-5. **Run E (structural):** S1–S4 + T2, then T3/T4/T6 to taste.
+5. **Run E (structural) — DONE 2026-09-06.** S1 (four new classes: `SystemSessionService`/
+   `SessionConfigFactory`/`AutoTitleService`/`SessionHousekeeping`) → S2 (fair lock +
+   `SystemTurnLane` wait budget, folded into the S1 extraction since it's the same
+   class) → S3 (`SessionEntity.Builder`/`toBuilder()`) → S4 (`CreateOptions` record) →
+   T2 (25 new `SessionStateMachineTest` cases + 4 `SystemSessionServiceRunTurnTest`
+   cases, against hand-rolled in-memory fakes — including `FakeSidecar`, a real
+   `SidecarHandle` over an in-memory `Process` subclass, so dispatch/queue-drain/
+   terminate are exercised without Mockito or a spawned sidecar). T3/T4/T6 not picked
+   (still valid backlog, `to taste`). `SessionService` 1,166 → 561 lines; unit test
+   count 88 → 116. Full `mvn`/`npm run build` (both sidecars + frontend) and
+   `check-protocol-sync.mjs` all green.
 
 Items not picked stay valid backlog.

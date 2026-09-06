@@ -57,7 +57,7 @@ public class GitAssistService {
 				+ "characters excluding any ticket prefix. %sRespond with ONLY a single JSON object — no markdown "
 				+ "fences, no commentary — of the form {\"message\": \"...\"}.\n\nDiff:\n```diff\n%s\n```")
 				.formatted(prefixInstruction, SystemTurnClient.truncate(diff, MAX_DIFF_CHARS));
-		JsonNode node = systemTurnClient.json(prompt, TIMEOUT);
+		JsonNode node = systemTurnClient.json(prompt, SystemTurnLane.INTERACTIVE, TIMEOUT);
 		String message = node.path("message").asText("").strip();
 		if (message.isBlank()) {
 			throw new IllegalStateException("commit message suggestion was empty");
@@ -88,7 +88,7 @@ public class GitAssistService {
 				+ "form {\"title\": \"a concise PR title\", \"body\": \"a short GitHub-flavored markdown "
 				+ "description: a 1-2 sentence summary followed by a bullet list of the key changes, no "
 				+ "top-level heading\"}.").formatted(SystemTurnClient.truncate(diff, MAX_DIFF_CHARS), ticketNote);
-		JsonNode node = systemTurnClient.json(prompt, TIMEOUT);
+		JsonNode node = systemTurnClient.json(prompt, SystemTurnLane.INTERACTIVE, TIMEOUT);
 		String body = node.path("body").asText("").strip();
 		String llmTitle = node.path("title").asText("").strip();
 		// deterministic: a PR's title is the newest commit's subject when one exists, rather than a
