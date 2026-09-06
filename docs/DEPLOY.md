@@ -14,6 +14,7 @@ localhost-relay tricks: loopback binding just works, and LAN access is a plain
 | Docker Desktop | any recent | docker.com | Postgres via `docker compose` (alternative: native `postgresql@17` + pgvector, then point the datasource at it) |
 | git | ≥ 2.40 | ships with Xcode CLT | worktrees, all git ops |
 | Claude Code CLI | latest | `curl -fsSL https://claude.ai/install.sh \| bash` (or `npm i -g @anthropic-ai/claude-code`) | **log in once with `claude`** — sidecars authenticate via `~/.claude`, and auto-titling shells out to `claude -p` |
+| Codex CLI | latest | follow Codex CLI's own install instructions | optional — only for `provider: codex` sessions; `codex login` once, interactively (`sidecar-codex` uses the invoking user's `~/.codex` credentials, same posture as the Claude Code CLI row above) |
 | gh CLI | latest | `brew install gh`, then `gh auth login` | optional — only for the widget "Open PR" button |
 
 Verify before building:
@@ -39,14 +40,20 @@ The repo currently lives only on the dev machine. Either:
 ## 3. Configure for the Mac
 
 Most settings are env vars (see CLAUDE.md "Limits & caps" for the full table).
-The three that must change from the WSL defaults are paths:
+The ones that must change from the WSL defaults are paths:
 
 ```bash
 # ~/.zshrc (or a run script)
 export CLAUDE_UI_REPO="$HOME/projects/<default-repo>"  # default service (per-session selectable anyway)
 export CLAUDE_UI_WORKTREE_ROOT="$HOME/claude-worktrees"
 export CLAUDE_UI_SKILLS_ROOT="$HOME/claude-skills"     # optional; create + drop SKILL.md dirs in
+export CLAUDE_UI_MEMORY_ROOT="$HOME/claude-memory"     # optional; the long-term-memory vault
 ```
+
+`CLAUDE_UI_SKILLS_ROOT`/`CLAUDE_UI_MEMORY_ROOT` are only *defaults* — both are also
+persisted, UI-editable settings (`library.skills-root`, `memory.root` in the Settings
+dialog → "Skill library"/"Memory"), so the env var only matters for a fresh DB's first
+boot.
 
 Alternatively keep a gitignored `application-local.yaml` next to the jar and run
 with `--spring.config.additional-location=file:./application-local.yaml`.
@@ -77,10 +84,13 @@ mvn package -DskipTests        # or: ./mvnw package -DskipTests
 
 First build is slow: it downloads a Node distro into `target/` and npm-installs the
 frontend (native APFS is far faster than the WSL/DrvFS dev box — expect ~2–3 min,
-not 10+). Then build the sidecar once:
+not 10+). Then build both sidecars once — `sidecar-codex/` is only needed if you plan
+to use `provider: codex` sessions, but it's cheap (a handful of dependencies) so
+building it unconditionally is simplest:
 
 ```bash
 cd sidecar && npm install && npm run build && cd ..
+cd sidecar-codex && npm install && npm run build && cd ..
 ```
 
 Rebuilds that don't touch the frontend: `mvn package -DskipTests -Dskip.installnodenpm -Dskip.npm`.
@@ -117,11 +127,22 @@ without it — just restarts cleanly once the DB is there).
 ## 7. First use checklist
 
 1. Open the URL, enter the token (stored in the browser afterwards).
-2. Click **🔔** to enable desktop notifications (finished / needs input / crashed).
-3. **+ New Session** → pick a service (auto-discovered from the ecosystem root set in
-   Settings), branch, model, permissions — go.
-4. The **⎇** button per widget: status/diff/commit/push/PR.
-   PR button needs `gh auth login` done once.
+2. Click the notification-bell topbar button to enable desktop notifications
+   (finished / needs input / crashed).
+3. Open the **Settings** dialog (gear icon, or `,`) and set what applies: "Sessions"
+   → ecosystem root (parent folder of your services — enables the service picker +
+   read-only cross-service context); "Linear integration" → ticket import (§8 below);
+   "PR checks" → background CI polling for open PRs (on by default); "Skill library"
+   → managed skills/agents roots + optional vectorized search; "Memory" → the
+   long-term-memory vault + reflection defaults (§8a covers the shared Voyage key
+   both "Skill library" and "Memory" vectorization need). None of these need a
+   restart — see CLAUDE.md "Persisted settings" for the full list.
+4. **+ New Session** → pick a service (auto-discovered from the ecosystem root set
+   above), branch, model, permissions — go. Or press **`q`** for the quick-session
+   shortcut (service + ticket only; everything else is copied from your most
+   recently created session) once Linear ticket import is configured.
+5. The git-panel button per widget (`g`): status/diff/commit/push/PR. PR button needs
+   `gh auth login` done once.
 
 ## 8. Optional: Linear ticket import
 
@@ -141,7 +162,7 @@ your org requires SSO login, so authorize once interactively instead:
 1. On the machine running this backend, run interactively (a real terminal, not
    through the app): `claude mcp add --transport http linear https://mcp.linear.app/mcp`
 2. Complete the browser OAuth flow through your org's SSO login screen.
-3. In the dashboard: **⚙️ Settings → Linear integration**, toggle "use the ambient
+3. In the dashboard: **Settings → Linear integration**, toggle "use the ambient
    `claude` CLI's cached OAuth credential" on (leave `CLAUDE_UI_LINEAR_API_KEY` unset —
    an explicit key always takes priority over OAuth if both are set). This is a
    persisted setting (`app_setting` table, `GET`/`PATCH /api/settings`) — no restart
@@ -169,12 +190,36 @@ free-text field appended to the Haiku prompt used to generate a ticket's `branch
 `prompt`, e.g. "keep the ticket number uppercase" or "format as
 feat(TICKET)-description / fix(TICKET)-description".
 
+## 8a. Optional: semantic search (Voyage embeddings)
+
+One key unlocks dense/semantic search across three otherwise-independent features —
+the skill & agent library, long-term memory, and ecosystem service discovery — each of
+which still works sparse-only (Postgres full-text + trigram) without it:
+
+```bash
+export CLAUDE_UI_VOYAGE_API_KEY="pa-..."   # Voyage AI dashboard → API keys
+```
+
+- **Skill library**: turn on the "vectorize" toggle in Settings → "Skill library"
+  (default off) — imported skills/agents get embedded (`voyage-3.5-lite`) and the
+  library dialog's search switches from a plain name/description filter to real
+  semantic (dense-only) search.
+- **Memory**: no separate toggle — if the key is set, memory's hybrid search (dense +
+  sparse + trigram, fused with Reciprocal Rank Fusion) automatically gains its dense
+  arm; unset, it silently falls back to sparse+trigram only.
+- **Service discovery**: same as memory — the `find_service` MCP tool and the
+  dashboard's service search use the dense arm when the key is set, sparse-only
+  otherwise.
+
+Nothing else changes if this is left unset — every feature above degrades gracefully.
+
 ## 9. Updating
 
 ```bash
 kill "$(cat /tmp/claude-ui.pid)"       # a running JVM blocks jar repackaging
 git pull
 (cd sidecar && npm install && npm run build)
+(cd sidecar-codex && npm install && npm run build)
 mvn package -DskipTests                # or: ./mvnw package -DskipTests
 # start again (section 6); Flyway migrates the DB automatically on boot
 ```
@@ -189,4 +234,5 @@ mvn package -DskipTests                # or: ./mvnw package -DskipTests
 | Health DOWN / boot fails on datasource | Postgres not up yet — `docker compose up -d`, wait for healthy |
 | PR button → 409 | `gh` missing or not authenticated, or repo has no GitHub remote — message says which |
 | Widgets empty after update | Hard-refresh the browser (cached JS) |
-| Ticket import: "needs auth" / "cannot run the OAuth flow" | `CLAUDE_UI_LINEAR_OAUTH` mode only: the interactive `claude mcp add` setup (section 8) wasn't done on this host, or its cached credential isn't visible to headless sessions — check `logs/sidecar/<system-session-id>.log` |
+| Ticket import: "needs auth" / "cannot run the OAuth flow" | OAuth mode only (Settings → "Linear integration" toggle, not `CLAUDE_UI_LINEAR_API_KEY`): the interactive `claude mcp add` setup (section 8) wasn't done on this host, or its cached credential isn't visible to headless sessions — check `logs/sidecar/<system-session-id>.log` |
+| Session stuck in STARTING, then CRASHED, only for `provider: codex` sessions | `sidecar-codex/dist/index.js` missing (build step in section 5/9 skipped), or `codex` never logged in — check `logs/sidecar/<id>.log` |

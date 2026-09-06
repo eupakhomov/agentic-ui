@@ -1,6 +1,6 @@
 # Phase 9 — Architectural review & production hardening
 
-Status: **Run A done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
+Status: **Runs A and B done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
 it is a curated backlog produced by a full architectural review (2026-09-06), not one
 feature plan. Each item below is self-contained with enough context to be picked up as
 its own run; pick order suggestions are at the bottom. Security is explicitly out of
@@ -213,26 +213,39 @@ LLM feature assumes a working `claude` CLI login:
 
 ## 9.6 Documentation drift
 
-- **D1 — DEPLOY.md is five phases stale** (last real update 2026-08-25) and is the doc
-  a fresh-machine deploy actually follows:
-  - No `codex` CLI prerequisite row and **no `sidecar-codex` build step** in sections
-    5 and 9 — a `provider: codex` session on a fresh Mac deploy fails to spawn.
-  - Missing since then: memory vault (`CLAUDE_UI_MEMORY_ROOT` + Settings → Memory),
-    `CLAUDE_UI_VOYAGE_API_KEY`, skill library settings, PR-check poller, service
-    discovery, reflection approval flow, quick-session hotkey.
-  - Section 7 refers to buttons by emoji glyphs ("🔔", "⚙️", "⎇") that the icon
-    unification (commit 44d50b7) removed from the DOM — describe by name/title text.
-  - Troubleshooting still names `CLAUDE_UI_LINEAR_OAUTH`, an env var replaced by the
-    persisted OAuth setting on 2026-08-25 (phase-5-extensions.md addendum).
-- **D2 — ARCHITECTURE.md has no Phase 8 section**: service discovery (profiles table,
-  digest→description generation, the three MCP tools, staleness/SHA gating) and the
-  quick-session flow are absent; its last touch only added the visual style section.
-- **D3 — PROTOCOL.md is missing three journaled event types**: `budget_updated`,
-  `budget_exhausted`, and `session_renamed` (verified by diffing the emitted-event
-  inventory against the doc). Everything else checked out.
-- **D4 — CLAUDE.md is current** (verified against phase 8 / quick-session); only note
-  is that once Phase 9 items land (e.g. tests, system-provider setting), its
-  "Build & test" and settings sections need the corresponding one-liners.
+- **D1 — DONE (2026-09-06).** DEPLOY.md: added a Codex CLI prereq row (§1, optional)
+  and a `sidecar-codex` build step alongside `sidecar/`'s (§5 and §9); added
+  `CLAUDE_UI_MEMORY_ROOT` to §3's path block, with a note that it and
+  `CLAUDE_UI_SKILLS_ROOT` are only *defaults* for persisted settings; added a new §8a
+  covering `CLAUDE_UI_VOYAGE_API_KEY` and exactly what it unlocks in each of the three
+  features that use it (library search is dense-*only* when vectorized — not hybrid
+  like memory/service-discovery, corrected in the writing); expanded §7's checklist
+  into a real tour of the Settings dialog's tabs (Sessions/Linear/PR checks/Skill
+  library/Memory) instead of three bullets, and added the quick-session hotkey; fixed
+  the two remaining emoji glyphs (🔔/⚙️) to name/title text (⎇ had already been fixed
+  by 44d50b7, contrary to the original finding); troubleshooting's stale
+  `CLAUDE_UI_LINEAR_OAUTH` reference corrected to the persisted setting, plus a new row
+  for a Codex session crashing when `sidecar-codex` was never built.
+- **D2 — DONE (2026-09-06), wider than scoped.** ARCHITECTURE.md gained §3d (ecosystem
+  service discovery: table, SHA-gated regeneration, the bounded non-agentic digest, the
+  three MCP tools, human-facing controller/dialog) and its quick-session addendum.
+  While fixing the top status line for internal consistency, found and fixed three
+  more stale "backlog sketch" sections in §4 that were actually already shipped:
+  **5.5** (model switching mid-session — deleted, fully covered by PROTOCOL.md's
+  command table already), **5.9** (transcript export) and **5.12** (usage dashboard,
+  plus an undocumented bonus `/api/usage/stale-sessions` endpoint) — both moved into a
+  new §3f "as-built" note. **5.13** (Codex adapter) got the same treatment as its own
+  §3e, since the status line already claimed it as complete while §4 still described
+  it as a future sketch. §4's heading and the top status line now name exactly what's
+  still actually backlog (5.4 partial, 5.6–5.8, 5.10–5.11) instead of a stale range.
+- **D3 — DONE (2026-09-06).** PROTOCOL.md's WebSocket "Outbound" event list now
+  includes `budget_updated {costBudgetUsd}`, `budget_exhausted {costBudgetUsd,
+  costToDate}`, and `session_renamed {name, auto}`, with their exact payload shapes
+  taken from `SessionService.java` (`record(...)` call sites) rather than guessed.
+- **D4 — CLAUDE.md is current.** Run A already added the fast-unit-test command + CI
+  description to "Build & test" (2026-09-06). Still true: a future run landing P1/P3
+  (system-provider/model-catalog settings) needs the corresponding one-liners in the
+  settings tables.
 
 ---
 
@@ -240,8 +253,10 @@ LLM feature assumes a working `claude` CLI login:
 
 1. **Run A (safety net first) — DONE 2026-09-06.** T1 + T5 + T7. Everything after this
    lands on green CI.
-2. **Run B (docs):** D1–D3 — pure writing, no risk, immediately useful for the next
-   Mac deploy.
+2. **Run B (docs) — DONE 2026-09-06.** D1–D4 — pure writing, no risk, immediately
+   useful for the next Mac deploy. Turned up more ARCHITECTURE.md drift than D2
+   originally scoped (three more stale "backlog" sections that were actually already
+   shipped); fixed those too rather than leave a fresh inconsistency next to the edit.
 3. **Run C (the big dedup):** G1 + G2 + G3 + G4 with tests locking each behavior
    in as it's extracted; P5 (SDK pin) rides along as a one-liner.
 4. **Run D (provider decoupling):** P3 (model catalog in capabilities) → P1 (system

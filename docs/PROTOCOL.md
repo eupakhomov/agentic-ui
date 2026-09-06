@@ -169,8 +169,13 @@ approval round-trip. Full mapping tables and rationale:
   The backend also journals/broadcasts its own event types: `state_changed {state}`,
   `user_message {text}` (inbound messages echoed into the transcript),
   `queue_updated {queued:[{pos,text}]}`, `warning {message}`, `error`,
-  `permission_response` (echo of the user's decision), and
-  `pr_status_changed {url, status, previousStatus, headSha}` — emitted by the background
+  `permission_response` (echo of the user's decision), `budget_updated {costBudgetUsd}`
+  (the session's cost budget changed via `PATCH /api/sessions/{id}`; `costBudgetUsd` is
+  `null` when the budget is cleared), `budget_exhausted {costBudgetUsd, costToDate}`
+  (a turn was refused, or a queued message held rather than sent, because cumulative
+  cost reached the budget — raise it to continue), `session_renamed {name, auto}`
+  (`auto: true` for the automatic post-first-turn title, `false` for a manual rename),
+  and `pr_status_changed {url, status, previousStatus, headSha}` — emitted by the background
   PR-check poller (`PrCheckPollingService`) whenever a session's tracked PR's aggregate
   check-suite status changes; `status`/`previousStatus` are one of
   `PENDING|SUCCESS|FAILURE|MERGED|CLOSED|ERROR`. `reflection_setting_changed

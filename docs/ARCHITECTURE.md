@@ -1,10 +1,14 @@
 # claude-ui — Architecture (as built)
 
-Status: Phases 0–4 complete plus git panel (5.1), PR creation (5.2), desktop
-notifications (5.14), per-session service/ecosystem selection (5.7), and the skill &
-agent library (Phase 6). This document describes the running system and sketches
-implementations for the remaining backlog (5.3–5.13). The dated decision log in `docs/plan/README.md` remains the
-authority on *why*; this file covers *what and how*.
+Status: Phases 0–4 complete plus git panel (5.1), PR creation (5.2), long-term memory &
+reflection (5.3), desktop notifications (5.14), model switching mid-session (5.5),
+per-session service/ecosystem selection (5.7, partial — see §4), transcript export
+(5.9), the skill & agent library (Phase 6), the usage dashboard (5.12), dashboard UX &
+orchestration (Phase 7), the Codex provider adapter (5.13), and ecosystem service
+discovery (Phase 8). This document describes the running system (§§1–3f) and sketches
+implementations for what's left of the backlog (§4: 5.4, 5.6–5.8, 5.10–5.11). The dated
+decision log in `docs/plan/README.md` remains the authority on *why*; this file covers
+*what and how*.
 
 ## 1. System overview
 
@@ -208,19 +212,106 @@ Full design + decisions: `docs/plan/phase-7-ux-and-orchestration.md`.
   `MetaController`'s pre-existing (global-root) `/api/repo/services`, parameterized
   by `Path` so the tool can scan a *session's* `ecosystemPath` instead.
 
-## 4. Backlog implementation sketches (5.4–5.13)
+## 3d. Ecosystem service discovery (Phase 8)
 
-### 5.4 Templates v2
-Template config already carries every session field. Missing: per-template default
-base branch + per-service default template (add `service_path` column to
-`session_template`, dialog picks the matching template automatically), and a
-"duplicate session" action (`POST /api/sessions/{id}/duplicate` — copy config, fresh
-branch name).
+Full design + decisions: `docs/plan/phase-8-service-discovery.md`.
 
-### 5.5 Model switching mid-session
-The SDK exposes `setModel`. Add a `set_model` command to the adapter protocol
-(mirroring `set_permission_mode`: command + `model_changed` ack event), a
-`PATCH`-like control from the model chip, and journal the change. ~2 hours.
+- **Table (V12)**: `service_profile` (`repo_path` UNIQUE, name, description, `tags[]`,
+  `last_commit_sha`, `vector(1024)` embedding + generated tsvector) — a DB-only cache,
+  unlike memory's Markdown vault, since a service description is a disposable derived
+  summary rather than curated durable fact.
+- **Regeneration is gated on the repo's own git commit SHA**, not a re-read content
+  hash of the digest inputs (`ServiceDiscoveryService.discover`): an unchanged repo
+  costs one `git rev-parse HEAD` call, nothing more. Triggered at session close
+  (`ServiceDiscoveryRequested` Spring event, same async-decoupling shape as 5.3's
+  `ReflectionRequested`) when the profile is missing or older than
+  `service-discovery.staleness-days` (default 14 days); no scheduled sweep — a "Scan
+  ecosystem now" dashboard action and a per-service "Rediscover" button both force
+  regeneration regardless of staleness (still skips the LLM call if the SHA is
+  unchanged).
+- **The digest fed to the system turn is bounded and non-agentic**
+  (`ServiceDigest.render`, `de.pamir.claude.ui.discovery`): README/CLAUDE.md/AGENTS.md
+  (capped per file), a manifest name+description sniff (`package.json`/`pom.xml`), and
+  a depth-2 directory listing that skips noise dirs (`node_modules`, `.git`, `target`,
+  `dist`, `build`) — same "backend reads a small bounded set of files itself" posture
+  as the library's AI-fill, deliberately not an agentic exploration.
+  `ServiceDiscoveryService.generate` runs one system-session turn
+  (`SessionService.runSystemTurn`, `service-discovery.model` setting, default haiku)
+  asking for a JSON `{description, tags[]}`, best-effort embeds it (`EmbeddingClient`,
+  same as memory/library), and upserts `service_profile`.
+- **Agent-facing tools are on the same shared in-process MCP server** as memory/
+  orchestration (`ServiceDiscoveryMcpTools`, decision 6): `service_description` (fetch
+  by path), `find_service` (hybrid search by natural-language query, same
+  dense+sparse+trigram RRF shape as memory search), `list_discovered_services`
+  (overview of everything discovered so far). All three scope results to the calling
+  session's own `ecosystemPath` — the same `GitWorktreeService.findRepos()` visibility
+  7.4's `list_services` already uses — and self-gate on `service-discovery.enabled`
+  independently of `memory.enabled`, since the two features toggle separately even
+  though they share a server.
+- **Human-facing**: `ServiceDiscoveryController` (`/api/service-discovery/services`,
+  left-joined against every repo under the ecosystem root so never-discovered services
+  still show up, `stale` computed from the same staleness setting) and a dashboard
+  service browser (`ServiceDiscoveryDialog.tsx`) with Rediscover / manual hand-edit
+  (writes the description/tags directly, no LLM call, still re-embeds and stamps the
+  current commit SHA so auto-discovery treats it as an override until the repo's next
+  commit — same "editing is a veto until content actually changes" posture as memory's
+  hand-edited files).
+
+Also shipped alongside Phase 8 (not part of its own decision log): **quick session
+creation** — `QuickSessionDialog` (`q` hotkey) is a minimal service+ticket dialog; every
+other field (model, permission mode, tools, MCP servers, skills, agents, instructions,
+ecosystem) is copied from whichever session was created most recently, via the same
+`SessionService.lastSessionConfig()`/`configOverridesFrom()` snapshot logic the
+per-session Duplicate button already used. Ticket import reuses the full New Session
+dialog's Linear flow (fetch by ref, or browse tickets assigned to the user); a resolved
+`recommendedModel` overrides the copied model when it's a valid Claude alias. Falls back
+to pointing at the full New Session dialog when ticket import isn't configured, since
+skipping the ticket-driven fields is the whole point of the shortcut.
+
+## 3e. Codex CLI provider adapter (5.13)
+
+The proof of provider-agnosticism: `sidecar-codex/` speaks `codex app-server`'s
+JSON-RPC-over-stdio protocol (not `codex exec`, which is non-interactive and can't do
+the approval round-trip), translated to the same adapter protocol v1 `sidecar/` speaks —
+registered under `claude-ui.providers.codex`, with the dashboard needing zero code that
+branches on the provider name, only on announced capabilities. Reduced capability set vs.
+Claude (no plan mode, no `acceptEdits`, no custom agents — confirmed no Codex equivalent
+exists for the last one, not just deferred); skills and MCP are supported (skills via
+`skills/extraRoots/set` pointing at the same materialized `.claude/skills/` Claude
+sessions use; MCP via `thread/start`'s `config.mcp_servers`, bearer tokens passed as a
+named env var on the spawned child rather than an inline header). Full capability/
+permission-mode mapping, rationale, and live-confirmed protocol quirks:
+`docs/plan/phase-5.13-codex-provider.md`; operational details (build step, cost
+estimation, skills/MCP follow-up): CLAUDE.md's "Codex provider adapter" section.
+
+## 3f. Transcript export & usage dashboard
+
+Two small standalone features, no design doc of their own:
+
+- **Transcript export** (5.9): `GET /api/sessions/{id}/export.md` (`SessionController`)
+  renders the journal via `TranscriptDigest.renderMarkdown()` — user/assistant turns
+  with timestamps, collapsed tool-call summaries, reflection events, a cost+model
+  footer — as `text/markdown` with a `Content-Disposition` filename. The dashboard has
+  no kebab menu (actions are inline header buttons), so the download is a ⬇ button
+  there instead: since a bearer-token API response can't be linked to directly from
+  `<a href>`, the frontend fetches the text itself and saves it via a `Blob` + temporary
+  anchor, same shape as any other authenticated action.
+- **Usage dashboard** (5.12): `GET /api/usage?months=N` (`UsageController`, default 6,
+  capped at 24) returns per-turn `{sessionId, sessionName, ts, model, costUsd}` rows
+  straight from `EventJournal.usageSince()`; the dashboard (`UsageDashboard.tsx`) buckets
+  and renders them as a plain-SVG bar chart — no charting library needed. A bonus beyond
+  the original sketch: `GET /api/usage/stale-sessions` surfaces PARKED/CRASHED/FAILED
+  sessions whose worktree has sat untouched for 3+ days, for manual cleanup.
+
+## 4. Backlog implementation sketches (remaining: 5.4, 5.6–5.8, 5.10–5.11)
+
+### 5.4 Templates v2 — remaining gap
+Shipped: "duplicate session" action (`POST /api/sessions/{id}/duplicate` —
+`SessionService.duplicate`/`configOverridesFrom` snapshot the source session's config
+onto a fresh branch; also backs the quick-session flow, §3d). Template config already
+carries every session field. Missing: per-template default base branch + per-service
+default template (add a `service_path` column to `session_template`, dialog picks the
+matching template automatically).
 
 ### 5.6 Mobile / PWA
 Single-column stack under 700px (CSS only), sticky input bar, `manifest.json` +
@@ -239,16 +330,6 @@ Extend AssetProvisioningService: template config key `settings` (JSONB) written 
 committed `settings.json`). Needs nothing from the sidecar — the SDK already loads
 project settings. Guard: refuse if the repo tracks `settings.local.json`.
 
-### 5.9 Transcript export
-`GET /api/sessions/{id}/export.md` (`SessionController`) renders the journal via
-`TranscriptDigest.renderMarkdown()` — user/assistant turns with timestamps,
-collapsed tool-call summaries, reflection events, a cost+model footer —
-`text/markdown` with a `Content-Disposition` filename. No schema changes. The
-dashboard has no kebab menu (actions are inline header buttons), so the download
-is a ⬇ button there instead: since a bearer-token API response can't be linked to
-directly from `<a href>`, the frontend fetches the text itself and saves it via a
-`Blob` + temporary anchor, same shape as any other authenticated action.
-
 ### 5.10 Turn checkpoints & rewind
 On `turn_complete`, if the worktree is dirty: `git add -A && git commit` onto a
 ref `refs/claude-ui/<session>/turn-<n>` (commit on the branch, then update-ref;
@@ -263,28 +344,6 @@ turns are already committed, so close becomes cleaner too.
 side-by-side with a diff summary per session (reuse `git/diff`). Defer the fancy
 diff-compare grid; a "fan out" checkbox in the create dialog + naming convention
 (`branch-1..N`) is a good first cut.
-
-### 5.12 Usage dashboard
-One query over `session_event` (`turn_complete` payloads): cost by day/session/model.
-Endpoint + a small chart page (recharts or plain SVG). Journal retention (5.3) must
-keep `turn_complete` rows or roll them into a `usage_daily` table first.
-
-### 5.13 Codex CLI provider adapter
-The proof of provider-agnosticism. Design doc with the full capability/permission-mode
-mapping and rationale: `docs/plan/phase-5.13-codex-provider.md`. Summary: new
-`sidecar-codex/` speaks `codex app-server`'s JSON-RPC-over-stdio protocol (not `codex
-exec`, which is non-interactive and can't do the approval round-trip), translated to
-adapter protocol v1 — approval requests to `permission_request`, its thread id to
-`providerSessionId`. Registered under `claude-ui.providers.codex`; the dashboard needs
-zero code that branches on the provider name — only on capabilities, same as the
-Claude adapter already requires. Reduced capabilities set vs. Claude: no plan mode, no
-`acceptEdits`, no custom agents (confirmed no Codex equivalent exists at all — not
-deferred). Skills and MCP are supported (a same-day follow-up flipped both from
-out-of-scope once confirmed live-feasible): skills via `skills/extraRoots/set`
-pointing at the same materialized `.claude/skills/` Claude sessions use; MCP via
-`thread/start`'s `config.mcp_servers`, with bearer tokens passed as a named env var on
-the spawned child rather than an inline header (Codex's own auth mechanism differs
-from Claude's).
 
 ## 5. Operational notes
 
