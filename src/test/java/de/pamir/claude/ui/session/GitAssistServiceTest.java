@@ -1,7 +1,6 @@
 package de.pamir.claude.ui.session;
 
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.UUID;
@@ -14,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class GitAssistServiceTest {
 
-	private final GitAssistService svc = new GitAssistService(null, null, null, new JsonMapper());
+	private final GitAssistService svc = new GitAssistService(null, null, null);
 
 	private static SessionEntity sessionWith(String ticketRef, String branch) {
 		return new SessionEntity(

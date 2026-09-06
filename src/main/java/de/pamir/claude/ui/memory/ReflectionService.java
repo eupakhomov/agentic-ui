@@ -2,12 +2,12 @@ package de.pamir.claude.ui.memory;
 
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.journal.EventJournal;
-import de.pamir.claude.ui.journal.SessionEventBus;
+import de.pamir.claude.ui.journal.JournalPublisher;
 import de.pamir.claude.ui.journal.TranscriptDigest;
 import de.pamir.claude.ui.library.EmbeddingClient;
 import de.pamir.claude.ui.session.SessionEntity;
 import de.pamir.claude.ui.session.SessionRepository;
-import de.pamir.claude.ui.session.SessionService;
+import de.pamir.claude.ui.session.SystemTurnClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -26,8 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * End-of-session memory retrospective: one structured system-session turn distills a
  * transcript into an episode summary plus semantic-memory ops (see docs/plan/phase-5.3-
- * memory-reflection.md, decisions 1-2). Depends on SessionService (for runSystemTurn);
- * SessionService never depends back on this — the close-time trigger is a Spring event
+ * memory-reflection.md, decisions 1-2). Depends on SystemTurnClient (for the system-session
+ * turn); SessionService never depends back on this — the close-time trigger is a Spring event
  * (ReflectionRequested) precisely to avoid that cycle, while the manual "Reflect now" endpoint
  * calls {@link #reflect} directly from the controller.
  */
@@ -41,9 +41,9 @@ public class ReflectionService {
 	private static final Set<String> VALID_SCOPES = Set.of("ecosystem", "service");
 
 	private final SessionRepository sessions;
-	private final SessionService sessionService;
+	private final SystemTurnClient systemTurnClient;
 	private final EventJournal journal;
-	private final SessionEventBus bus;
+	private final JournalPublisher journalPublisher;
 	private final SettingsService settings;
 	private final MemoryDocService docService;
 	private final MemoryRepository docs;
@@ -53,14 +53,14 @@ public class ReflectionService {
 	private final ObjectMapper mapper;
 	private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
 
-	public ReflectionService(SessionRepository sessions, SessionService sessionService, EventJournal journal,
-							  SessionEventBus bus, SettingsService settings, MemoryDocService docService,
+	public ReflectionService(SessionRepository sessions, SystemTurnClient systemTurnClient, EventJournal journal,
+							  JournalPublisher journalPublisher, SettingsService settings, MemoryDocService docService,
 							  MemoryRepository docs, MemoryEpisodeRepository episodes,
 							  MemoryProposalRepository proposals, EmbeddingClient embeddings, ObjectMapper mapper) {
 		this.sessions = sessions;
-		this.sessionService = sessionService;
+		this.systemTurnClient = systemTurnClient;
 		this.journal = journal;
-		this.bus = bus;
+		this.journalPublisher = journalPublisher;
 		this.settings = settings;
 		this.docService = docService;
 		this.docs = docs;
@@ -135,18 +135,11 @@ public class ReflectionService {
 		String digest = TranscriptDigest.render(journal.readAfter(session.id(), 0));
 		List<MemoryRepository.IndexEntry> index = docs.findIndex(session.repoPath());
 		String prompt = buildPrompt(session, digest, index);
-		String raw;
-		try {
-			raw = sessionService.runSystemTurn(prompt, settings.memoryReflectionModel(), TIMEOUT);
-		} catch (RuntimeException e) {
-			warn(session.id(), "reflection turn failed: " + e.getMessage());
-			return;
-		}
 		JsonNode result;
 		try {
-			result = mapper.readTree(stripFences(raw));
+			result = systemTurnClient.json(prompt, settings.memoryReflectionModel(), TIMEOUT);
 		} catch (RuntimeException e) {
-			warn(session.id(), "reflection response was not valid JSON: " + truncate(raw, 300));
+			warn(session.id(), "reflection failed: " + e.getMessage());
 			return;
 		}
 		String episodeSummary = result.path("episode").asText("");
@@ -212,7 +205,7 @@ public class ReflectionService {
 			switch (kind) {
 				case "create" -> {
 					docService.write(scope, servicePath, name, op.path("description").asText(""),
-							tags(op), op.path("content").asText(""));
+							SystemTurnClient.lowercaseTags(op), op.path("content").asText(""));
 					created.add(name);
 				}
 				case "update" -> {
@@ -222,7 +215,7 @@ public class ReflectionService {
 						return;
 					}
 					docService.write(scope, servicePath, name, op.path("description").asText(""),
-							tags(op), op.path("content").asText(""));
+							SystemTurnClient.lowercaseTags(op), op.path("content").asText(""));
 					updated.add(name);
 				}
 				case "archive" -> {
@@ -241,22 +234,10 @@ public class ReflectionService {
 		}
 	}
 
-	private static List<String> tags(JsonNode op) {
-		List<String> tags = new ArrayList<>();
-		if (op.path("tags").isArray()) {
-			op.path("tags").forEach(t -> tags.add(t.asText()));
-		}
-		return tags;
-	}
-
 	private void maybeEmbedEpisode(UUID episodeId, String summary) {
-		if (!embeddings.configured()) {
-			return;
-		}
-		try {
-			episodes.upsertEmbedding(episodeId, embeddings.embed(summary, false), embeddings.model());
-		} catch (RuntimeException e) {
-			log.warn("embedding failed for episode {}: {}", episodeId, e.getMessage());
+		float[] vector = embeddings.tryEmbed(summary, false);
+		if (vector != null) {
+			episodes.upsertEmbedding(episodeId, vector, embeddings.model());
 		}
 	}
 
@@ -299,18 +280,6 @@ public class ReflectionService {
 	}
 
 	private void record(UUID sessionId, String type, JsonNode payload) {
-		bus.publish(sessionId, journal.append(sessionId, type, payload));
-	}
-
-	private static String stripFences(String raw) {
-		String cleaned = raw == null ? "" : raw.strip();
-		if (cleaned.startsWith("```")) {
-			cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
-		}
-		return cleaned;
-	}
-
-	private static String truncate(String s, int max) {
-		return s != null && s.length() > max ? s.substring(0, max) + "…" : s;
+		journalPublisher.record(sessionId, type, payload);
 	}
 }

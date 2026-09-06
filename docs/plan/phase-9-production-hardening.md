@@ -1,6 +1,6 @@
 # Phase 9 — Architectural review & production hardening
 
-Status: **Runs A and B done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
+Status: **Runs A, B, and C done (2026-09-06)**; the rest of the backlog is unpicked. This phase is different from earlier ones:
 it is a curated backlog produced by a full architectural review (2026-09-06), not one
 feature plan. Each item below is self-contained with enough context to be picked up as
 its own run; pick order suggestions are at the bottom. Security is explicitly out of
@@ -117,36 +117,62 @@ LLM feature assumes a working `claude` CLI login:
   unconditionally — clicking the model chip on a Codex session sends `set_model:
   "sonnet"`. Falls out of P3 for free; worth a point-fix earlier if Codex sessions are
   in real use.
-- **P5 — Pin the Agent SDK.** `sidecar/package.json` declares
-  `"@anthropic-ai/claude-agent-sdk": "latest"` — any upstream breaking release bricks
-  every session at the next `npm install` with nothing in git to bisect. Pin an exact
-  version (renovate/manual bumps thereafter). Check `sidecar-codex`'s deps too.
+- **P5 — DONE (2026-09-06).** `sidecar/package.json` pinned
+  `"@anthropic-ai/claude-agent-sdk"` to the exact version already resolved in
+  `package-lock.json` (`0.3.241`) instead of `"latest"`, so a bare `npm install` can
+  no longer silently pick up a breaking upstream release; bump deliberately
+  thereafter. `sidecar-codex/package.json` has no such dependency (it drives the
+  `codex` CLI via subprocess, not an SDK package) — nothing to pin there.
 
 ## 9.3 Genericity & duplication cleanup
 
-- **G1 — One `SystemTurnClient` for the "LLM turn → JSON" pipeline.** The exact
-  `stripFences` + `truncate` helpers are copy-pasted **five** times
-  (`ReflectionService`, `ServiceDiscoveryService`, `TicketImportService`,
-  `LibraryAiService`, `GitAssistService`), and the surrounding
-  runSystemTurn→stripFences→`mapper.readTree`→validate-fields flow is hand-rolled in
-  all six consumers (those five + `HandoffService`, which is text-not-JSON). Extract
-  e.g. `SystemTurnClient.json(prompt, model, timeout)` / `.text(...)` with unified
-  fence-stripping, error truncation, and per-field accessors; the lowercase-tags array
-  parse is also duplicated 3×. This is the single best dedup in the codebase and makes
-  P1/P2 changes one-place edits.
-- **G2 — Merge `withDefaultLinearMcp`/`withDefaultMemoryMcp`** into one
-  `withDefaultServer(configured, key, serverBlock)` (identical logic, different key).
-- **G3 — Shared pgvector helper.** `toVectorLiteral` is copy-pasted in **four**
-  repositories (`LibraryRepository`, `MemoryRepository`, `MemoryEpisodeRepository`,
-  `ServiceProfileRepository`), and the "embed best-effort, log-and-continue" wrapper
-  is re-implemented in `ReflectionService.maybeEmbedEpisode`,
-  `ServiceDiscoveryService.embedBestEffort`, and the library path. One
-  `PgVector.literal(float[])` util + one `EmbeddingClient.tryEmbed` default method (or
-  small `EmbeddingSupport` component) removes all of it.
-- **G4 — `record(id, type, payload)` journal-publish idiom** (`bus.publish(journal.append(...))`)
-  is re-implemented in `SessionService`, `ReflectionService`, `PrCheckPollingService`.
-  A tiny `JournalPublisher` facade keeps the "journal assigns seq; subscribers see
-  exactly what replay will" invariant in one place.
+- **G1 — DONE (2026-09-06).** `SystemTurnClient` (`session/SystemTurnClient.java`)
+  centralizes the "LLM turn → JSON" pipeline: `.text(prompt, [model,] timeout)` for
+  plain-text replies (`HandoffService`), `.json(prompt, [model,] timeout)` for
+  fence-stripped-then-parsed replies, throwing `IllegalStateException` with a
+  truncated raw preview on unparsable JSON — one implementation instead of five
+  copies of `stripFences`/`truncate` (`ReflectionService`, `ServiceDiscoveryService`,
+  `TicketImportService`, `LibraryAiService`, `GitAssistService`). The five JSON
+  consumers now call `.json(...)` and validate fields on the returned `JsonNode`
+  directly, rather than hand-rolling `runSystemTurn→stripFences→mapper.readTree`;
+  `TicketImportService.parse`/`.parseTickets` and `LibraryAiService.parse` changed
+  signature from raw `String` to `JsonNode` accordingly (tests updated to match —
+  parsing-from-fenced-text cases moved to `SystemTurnClientTest`). Static
+  `SystemTurnClient.lowercaseTags(JsonNode)` also replaces the "read `tags`, strip,
+  lowercase, skip blanks" parse duplicated in `ServiceDiscoveryService`,
+  `LibraryAiService`, and `ReflectionService.applyOp` (the last of those previously
+  skipped the lowercase/blank-filter step — now consistent with the other two, a
+  deliberate small behavior tightening). `ReflectionService`/`ServiceDiscoveryService`
+  collapsed their two-stage try/catch (turn failure vs. bad JSON, separately logged)
+  into one catch around `.json(...)`, since its exception message already names the
+  failure. Not done: P1/P2 (still separate backlog items) — this just makes them
+  one-place edits when picked up.
+- **G2 — DONE (2026-09-06).** `withDefaultLinearMcp`/`withDefaultMemoryMcp`
+  (`SessionService`) now both delegate to a private `withDefaultServer(configured,
+  key, serverBlock)` carrying the shared merge rule; the two public methods stay as
+  one-line wrappers (kept public/package-private for the existing `SessionServiceTest`
+  coverage, unchanged).
+- **G3 — DONE (2026-09-06).** `PgVector.literal(float[])` (`library/PgVector.java`)
+  replaces the byte-identical `toVectorLiteral` copy-pasted in `LibraryRepository`,
+  `MemoryRepository`, `MemoryEpisodeRepository`, and `ServiceProfileRepository`.
+  `EmbeddingClient.tryEmbed(text, query)` (default method) replaces the "not
+  configured → skip; try embed, log-and-continue on failure" wrapper re-implemented
+  in `ReflectionService.maybeEmbedEpisode`, `ServiceDiscoveryService.embedBestEffort`,
+  and (found during this pass, not in the original review) `MemoryDocService.maybeEmbed`
+  — three void/log-only copies, now one. `LibraryService.maybeEmbed` was deliberately
+  left with its own try/catch: unlike the other three, it returns the failure message
+  as a user-visible import warning, which `tryEmbed`'s null-on-failure contract can't
+  carry — dedup there would have meant losing that detail from the API response.
+- **G4 — DONE (2026-09-06).** `JournalPublisher.record(sessionId, type, payload)`
+  (`journal/JournalPublisher.java`, wraps `EventJournal.append` +
+  `SessionEventBus.publish`) replaces the `bus.publish(journal.append(...))` idiom
+  hand-rolled in `SessionService`, `ReflectionService`, `PrCheckPollingService`, and
+  (a fourth copy the original review missed) `OrchestrationMcpTools`. Each consumer's
+  local `record(...)` helper now delegates to it in one line; `PrCheckPollingService`
+  had no such wrapper and now calls `journalPublisher.record(...)` directly.
+  `SessionEventBus` remains a live bean in its own right (`SessionWebSocketHandler`
+  still subscribes to it for the WS fan-out) — only the append+publish call sites
+  changed, not the bus itself.
 - **G5 — Frontend: extract the ticket-import flow.** `QuickSessionDialog` and
   `CreateSessionDialog` duplicate the whole importTicket/browseRecentTickets/
   recommendedModel/abort-controller dance (~80 lines each). Extract a
@@ -257,8 +283,16 @@ LLM feature assumes a working `claude` CLI login:
    useful for the next Mac deploy. Turned up more ARCHITECTURE.md drift than D2
    originally scoped (three more stale "backlog" sections that were actually already
    shipped); fixed those too rather than leave a fresh inconsistency next to the edit.
-3. **Run C (the big dedup):** G1 + G2 + G3 + G4 with tests locking each behavior
-   in as it's extracted; P5 (SDK pin) rides along as a one-liner.
+3. **Run C (the big dedup) — DONE 2026-09-06.** G1 + G2 + G3 + G4, each landed with
+   tests locking the extracted behavior in (`SystemTurnClientTest`, `PgVectorTest`,
+   `EmbeddingClientTest`, plus a new `LibraryAiServiceTest` and updates to
+   `TicketImportServiceTest`/`GitAssistServiceTest` for the `String`→`JsonNode`
+   signature changes); P5 (SDK pin) rode along as a one-liner. Turned up two more
+   duplicate copies the original review missed (`MemoryDocService.maybeEmbed` for G3,
+   `OrchestrationMcpTools`'s journal-publish idiom for G4) — fixed those too. Existing
+   files: +149/-344 lines, plus three new shared classes (`SystemTurnClient`/
+   `PgVector`/`JournalPublisher`) and their tests; unit test count 54 → 74. Full
+   `mvn`/`npm run build` (both sidecars) and `check-protocol-sync.mjs` all still green.
 4. **Run D (provider decoupling):** P3 (model catalog in capabilities) → P1 (system
    session provider/tier) → P2+O2 (auto-title via system turn) → P4/G5 (frontend).
 5. **Run E (structural):** S1–S4 + T2, then T3/T4/T6 to taste.

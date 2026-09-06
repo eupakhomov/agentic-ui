@@ -1,5 +1,6 @@
 package de.pamir.claude.ui.memory;
 
+import de.pamir.claude.ui.library.PgVector;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -45,7 +46,7 @@ public class MemoryEpisodeRepository {
 
 	public void upsertEmbedding(UUID id, float[] embedding, String model) {
 		jdbc.sql("UPDATE memory_episode SET embedding = ?::vector, embedding_model = ? WHERE id = ?")
-				.params(toVectorLiteral(embedding), model, id).update();
+				.params(PgVector.literal(embedding), model, id).update();
 	}
 
 	/** Most recent episodes for a service — the automatic context window injected at session spawn. */
@@ -90,7 +91,7 @@ public class MemoryEpisodeRepository {
 								) x ORDER BY rnk LIMIT %d
 							),
 							""".formatted(ARM_LIMIT));
-			params.add(toVectorLiteral(queryEmbedding));
+			params.add(PgVector.literal(queryEmbedding));
 			params.addAll(filterParams);
 			arms.add("dense");
 		}
@@ -126,14 +127,4 @@ public class MemoryEpisodeRepository {
 				rs.getString("summary"));
 	}
 
-	private static String toVectorLiteral(float[] embedding) {
-		StringBuilder sb = new StringBuilder("[");
-		for (int i = 0; i < embedding.length; i++) {
-			if (i > 0) {
-				sb.append(',');
-			}
-			sb.append(embedding[i]);
-		}
-		return sb.append(']').toString();
-	}
 }

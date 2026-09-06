@@ -2,7 +2,7 @@ package de.pamir.claude.ui.session;
 
 import de.pamir.claude.ui.git.GitWorktreeService;
 import de.pamir.claude.ui.journal.EventJournal;
-import de.pamir.claude.ui.journal.SessionEventBus;
+import de.pamir.claude.ui.journal.JournalPublisher;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
@@ -40,17 +40,17 @@ public class OrchestrationMcpTools {
 	private final SessionService sessionService;
 	private final GitWorktreeService worktrees;
 	private final EventJournal journal;
-	private final SessionEventBus bus;
+	private final JournalPublisher journalPublisher;
 	private final ObjectMapper mapper;
 
 	public OrchestrationMcpTools(SessionRepository sessions, SessionService sessionService,
-								  GitWorktreeService worktrees, EventJournal journal, SessionEventBus bus,
+								  GitWorktreeService worktrees, EventJournal journal, JournalPublisher journalPublisher,
 								  ObjectMapper mapper) {
 		this.sessions = sessions;
 		this.sessionService = sessionService;
 		this.worktrees = worktrees;
 		this.journal = journal;
-		this.bus = bus;
+		this.journalPublisher = journalPublisher;
 		this.mapper = mapper;
 	}
 
@@ -157,9 +157,9 @@ public class OrchestrationMcpTools {
 		return "reported to parent \"" + parent.name() + "\"";
 	}
 
-	/** Journal + fan out, same shape as SessionService's private helper — both sessions see this live. */
+	/** Journal + fan out, both sessions see this live. */
 	private void record(UUID id, String type, ObjectNode payload) {
-		bus.publish(id, journal.append(id, type, payload));
+		journalPublisher.record(id, type, payload);
 	}
 
 	private SessionEntity sessionOf(String sessionId) {

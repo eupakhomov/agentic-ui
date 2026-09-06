@@ -18,12 +18,12 @@ public class HandoffService {
 
 	private static final Duration TIMEOUT = Duration.ofSeconds(45);
 
-	private final SessionService sessionService;
+	private final SystemTurnClient systemTurnClient;
 	private final SessionRepository sessions;
 	private final EventJournal journal;
 
-	public HandoffService(SessionService sessionService, SessionRepository sessions, EventJournal journal) {
-		this.sessionService = sessionService;
+	public HandoffService(SystemTurnClient systemTurnClient, SessionRepository sessions, EventJournal journal) {
+		this.systemTurnClient = systemTurnClient;
 		this.sessions = sessions;
 		this.journal = journal;
 	}
@@ -41,7 +41,7 @@ public class HandoffService {
 				+ "Write it as direct instructions to the next agent, not a narrative summary. Respond with ONLY "
 				+ "the Markdown brief — no commentary, no code fence around the whole thing.\n\n"
 				+ "Transcript digest:\n%s").formatted(session.name(), session.branch(), digest);
-		String summary = sessionService.runSystemTurn(prompt, TIMEOUT).strip();
+		String summary = systemTurnClient.text(prompt, TIMEOUT);
 		if (summary.isBlank()) {
 			throw new IllegalStateException("handoff summary was empty");
 		}

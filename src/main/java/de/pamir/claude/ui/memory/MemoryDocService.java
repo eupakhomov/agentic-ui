@@ -2,8 +2,6 @@ package de.pamir.claude.ui.memory;
 
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.library.EmbeddingClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -30,7 +28,6 @@ import java.util.UUID;
 @Service
 public class MemoryDocService {
 
-	private static final Logger log = LoggerFactory.getLogger(MemoryDocService.class);
 	private static final int PAGE_CHARS = 4_000;
 	private static final int EMBED_CONTENT_CHARS = 16_000;
 
@@ -163,14 +160,10 @@ public class MemoryDocService {
 
 	/** Best-effort; a Voyage failure never blocks the write. */
 	private void maybeEmbed(MemoryRepository.MemoryDoc doc) {
-		if (!embeddings.configured()) {
-			return;
-		}
-		try {
-			String text = doc.name() + "\n" + doc.description() + "\n" + truncate(doc.content(), EMBED_CONTENT_CHARS);
-			docs.upsertEmbedding(doc.id(), embeddings.embed(text, false), embeddings.model());
-		} catch (RuntimeException e) {
-			log.warn("embedding failed for memory doc {}: {}", doc.id(), e.getMessage());
+		String text = doc.name() + "\n" + doc.description() + "\n" + truncate(doc.content(), EMBED_CONTENT_CHARS);
+		float[] vector = embeddings.tryEmbed(text, false);
+		if (vector != null) {
+			docs.upsertEmbedding(doc.id(), vector, embeddings.model());
 		}
 	}
 

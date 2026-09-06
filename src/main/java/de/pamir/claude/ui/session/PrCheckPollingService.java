@@ -2,8 +2,7 @@ package de.pamir.claude.ui.session;
 
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitOpsService;
-import de.pamir.claude.ui.journal.EventJournal;
-import de.pamir.claude.ui.journal.SessionEventBus;
+import de.pamir.claude.ui.journal.JournalPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -28,17 +27,15 @@ public class PrCheckPollingService {
 	private final SessionRepository sessions;
 	private final SettingsService settings;
 	private final GitOpsService gitOps;
-	private final EventJournal journal;
-	private final SessionEventBus bus;
+	private final JournalPublisher journalPublisher;
 	private final ObjectMapper mapper;
 
 	public PrCheckPollingService(SessionRepository sessions, SettingsService settings, GitOpsService gitOps,
-								  EventJournal journal, SessionEventBus bus, ObjectMapper mapper) {
+								  JournalPublisher journalPublisher, ObjectMapper mapper) {
 		this.sessions = sessions;
 		this.settings = settings;
 		this.gitOps = gitOps;
-		this.journal = journal;
-		this.bus = bus;
+		this.journalPublisher = journalPublisher;
 		this.mapper = mapper;
 	}
 
@@ -68,7 +65,7 @@ public class PrCheckPollingService {
 					.put("status", status)
 					.put("previousStatus", previousStatus)
 					.put("headSha", result.headSha());
-			bus.publish(session.id(), journal.append(session.id(), "pr_status_changed", payload));
+			journalPublisher.record(session.id(), "pr_status_changed", payload);
 		}
 	}
 }

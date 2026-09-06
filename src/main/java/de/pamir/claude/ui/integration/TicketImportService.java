@@ -1,10 +1,9 @@
 package de.pamir.claude.ui.integration;
 
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.SettingsService;
-import de.pamir.claude.ui.session.SessionService;
+import de.pamir.claude.ui.session.SystemTurnClient;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -30,17 +29,14 @@ public class TicketImportService {
 	public record TicketSummary(String ref, String title, String status) {
 	}
 
-	private final SessionService sessionService;
+	private final SystemTurnClient systemTurnClient;
 	private final AppProperties props;
 	private final SettingsService settings;
-	private final ObjectMapper mapper;
 
-	public TicketImportService(SessionService sessionService, AppProperties props, SettingsService settings,
-								ObjectMapper mapper) {
-		this.sessionService = sessionService;
+	public TicketImportService(SystemTurnClient systemTurnClient, AppProperties props, SettingsService settings) {
+		this.systemTurnClient = systemTurnClient;
 		this.props = props;
 		this.settings = settings;
-		this.mapper = mapper;
 	}
 
 	public boolean enabled() {
@@ -76,8 +72,7 @@ public class TicketImportService {
 				+ "well-scoped feature or bug work (the default for most tickets); \"opus\" for complex, "
 				+ "ambiguous, or high-risk work (architecture/design changes, tricky concurrency or security "
 				+ "issues, large multi-system refactors).").formatted(ticketRef.strip(), guidance);
-		String raw = sessionService.runSystemTurn(prompt, TIMEOUT);
-		return parse(raw);
+		return parse(systemTurnClient.json(prompt, TIMEOUT));
 	}
 
 	public List<TicketSummary> listMyTickets() {
@@ -90,19 +85,12 @@ public class TicketImportService {
 				+ "in a completed or canceled state. Then respond with ONLY a JSON array — no markdown fences, "
 				+ "no commentary — of objects of the form {\"ref\": \"ENG-123\", \"title\": \"...\", \"status\": "
 				+ "\"...\"}. If there are no matching issues, respond with an empty array [].";
-		String raw = sessionService.runSystemTurn(prompt, TIMEOUT);
-		return parseTickets(raw);
+		return parseTickets(systemTurnClient.json(prompt, TIMEOUT));
 	}
 
 	// package-private (not private): unit-tested directly without mocking the system-session
 	// dependencies parse()/parseTickets() don't touch — see docs/plan/phase-9-production-hardening.md T1
-	List<TicketSummary> parseTickets(String raw) {
-		JsonNode node;
-		try {
-			node = mapper.readTree(stripFences(raw));
-		} catch (RuntimeException e) {
-			throw new IllegalStateException("could not parse ticket list response: " + truncate(raw));
-		}
+	List<TicketSummary> parseTickets(JsonNode node) {
 		if (!node.isArray()) {
 			node = node.path("tickets");
 		}
@@ -118,18 +106,11 @@ public class TicketImportService {
 		return tickets;
 	}
 
-	TicketImportResult parse(String raw) {
-		String cleaned = stripFences(raw);
-		JsonNode node;
-		try {
-			node = mapper.readTree(cleaned);
-		} catch (RuntimeException e) {
-			throw new IllegalStateException("could not parse ticket import response: " + truncate(raw));
-		}
+	TicketImportResult parse(JsonNode node) {
 		String branchName = sanitizeBranch(node.path("branchName").asText(""));
 		String promptText = node.path("prompt").asText("").strip();
 		if (branchName.isBlank() || promptText.isBlank()) {
-			throw new IllegalStateException("ticket import response missing branchName/prompt: " + truncate(raw));
+			throw new IllegalStateException("ticket import response missing branchName/prompt: " + node);
 		}
 		String recommendedModel = node.path("recommendedModel").asText("").strip().toLowerCase(Locale.ROOT);
 		if (!VALID_MODELS.contains(recommendedModel)) {
@@ -139,24 +120,9 @@ public class TicketImportService {
 		return new TicketImportResult(branchName, promptText, recommendedModel, canonicalRef.isBlank() ? null : canonicalRef);
 	}
 
-	private static String stripFences(String raw) {
-		String cleaned = raw == null ? "" : raw.strip();
-		if (cleaned.startsWith("```")) {
-			cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
-		}
-		return cleaned;
-	}
-
 	static String sanitizeBranch(String s) {
 		String out = s.strip().replaceAll("[^A-Za-z0-9/_-]", "-").replaceAll("-{2,}", "-");
 		out = out.replaceAll("^[-/]+", "").replaceAll("[-/]+$", "");
 		return out.length() > 60 ? out.substring(0, 60) : out;
-	}
-
-	private static String truncate(String s) {
-		if (s == null) {
-			return "";
-		}
-		return s.length() > 300 ? s.substring(0, 300) + "…" : s;
 	}
 }

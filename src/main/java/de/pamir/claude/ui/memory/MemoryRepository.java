@@ -1,5 +1,6 @@
 package de.pamir.claude.ui.memory;
 
+import de.pamir.claude.ui.library.PgVector;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -185,7 +186,7 @@ public class MemoryRepository {
 
 	public void upsertEmbedding(UUID id, float[] embedding, String model) {
 		jdbc.sql("UPDATE memory_doc SET embedding = ?::vector, embedding_model = ? WHERE id = ?")
-				.params(toVectorLiteral(embedding), model, id).update();
+				.params(PgVector.literal(embedding), model, id).update();
 	}
 
 	// --- links ---
@@ -283,7 +284,7 @@ public class MemoryRepository {
 								) x ORDER BY rnk LIMIT %d
 							),
 							""".formatted(ARM_LIMIT));
-			params.add(toVectorLiteral(queryEmbedding));
+			params.add(PgVector.literal(queryEmbedding));
 			params.addAll(filterParams);
 			arms.add("dense");
 		}
@@ -348,17 +349,6 @@ public class MemoryRepository {
 				rs.getString("status"),
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("updated_at").toInstant());
-	}
-
-	private static String toVectorLiteral(float[] embedding) {
-		StringBuilder sb = new StringBuilder("[");
-		for (int i = 0; i < embedding.length; i++) {
-			if (i > 0) {
-				sb.append(',');
-			}
-			sb.append(embedding[i]);
-		}
-		return sb.append(']').toString();
 	}
 
 	/** Postgres array literal, e.g. {"tag1","tag2"} — bound as plain text and cast with ::text[]. */

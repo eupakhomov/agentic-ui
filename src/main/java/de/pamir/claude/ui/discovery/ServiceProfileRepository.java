@@ -1,5 +1,6 @@
 package de.pamir.claude.ui.discovery;
 
+import de.pamir.claude.ui.library.PgVector;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -80,7 +81,7 @@ public class ServiceProfileRepository {
 
 	public void upsertEmbedding(String repoPath, float[] embedding, String model) {
 		jdbc.sql("UPDATE service_profile SET embedding = ?::vector, embedding_model = ? WHERE repo_path = ?")
-				.params(toVectorLiteral(embedding), model, repoPath).update();
+				.params(PgVector.literal(embedding), model, repoPath).update();
 	}
 
 	/**
@@ -109,7 +110,7 @@ public class ServiceProfileRepository {
 								) x ORDER BY rnk LIMIT %d
 							),
 							""".formatted(ARM_LIMIT));
-			params.add(toVectorLiteral(queryEmbedding));
+			params.add(PgVector.literal(queryEmbedding));
 			params.add(pathArray);
 			arms.add("dense");
 		}
@@ -171,17 +172,6 @@ public class ServiceProfileRepository {
 				sessionIdObj == null ? null : (UUID) sessionIdObj,
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("updated_at").toInstant());
-	}
-
-	private static String toVectorLiteral(float[] embedding) {
-		StringBuilder sb = new StringBuilder("[");
-		for (int i = 0; i < embedding.length; i++) {
-			if (i > 0) {
-				sb.append(',');
-			}
-			sb.append(embedding[i]);
-		}
-		return sb.append(']').toString();
 	}
 
 	/** Postgres array literal, e.g. {"a","b"} — bound as plain text and cast with ::text[]. */

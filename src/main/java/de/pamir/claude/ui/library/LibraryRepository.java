@@ -135,7 +135,7 @@ public class LibraryRepository {
 						INSERT INTO asset_embedding (asset_id, embedding, model) VALUES (?, ?::vector, ?)
 						ON CONFLICT (asset_id) DO UPDATE SET embedding = EXCLUDED.embedding,
 							model = EXCLUDED.model, embedded_at = now()""")
-				.params(assetId, toVectorLiteral(embedding), model).update();
+				.params(assetId, PgVector.literal(embedding), model).update();
 	}
 
 	public List<SearchHit> searchByEmbedding(float[] query, int limit, String kind) {
@@ -146,7 +146,7 @@ public class LibraryRepository {
 				JOIN library_asset a ON a.id = e.asset_id AND a.status = 'ACTIVE'
 				LEFT JOIN asset_tag t ON t.asset_id = a.id""");
 		List<Object> params = new java.util.ArrayList<>();
-		params.add(toVectorLiteral(query));
+		params.add(PgVector.literal(query));
 		if (kind != null && !kind.isBlank()) {
 			sql.append(" WHERE a.kind = ?");
 			params.add(kind);
@@ -155,17 +155,6 @@ public class LibraryRepository {
 		params.add(limit);
 		return jdbc.sql(sql.toString()).params(params)
 				.query((rs, n) -> new SearchHit(mapRow(rs, n), rs.getDouble("distance"))).list();
-	}
-
-	private static String toVectorLiteral(float[] embedding) {
-		StringBuilder sb = new StringBuilder("[");
-		for (int i = 0; i < embedding.length; i++) {
-			if (i > 0) {
-				sb.append(',');
-			}
-			sb.append(embedding[i]);
-		}
-		return sb.append(']').toString();
 	}
 
 	private AssetEntity mapRow(ResultSet rs, int rowNum) throws SQLException {

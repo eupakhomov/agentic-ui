@@ -9,7 +9,7 @@ import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitCommandRunner;
 import de.pamir.claude.ui.git.GitWorktreeService;
 import de.pamir.claude.ui.journal.EventJournal;
-import de.pamir.claude.ui.journal.SessionEventBus;
+import de.pamir.claude.ui.journal.JournalPublisher;
 import de.pamir.claude.ui.memory.MemoryEpisodeRepository;
 import de.pamir.claude.ui.process.SidecarManager;
 import de.pamir.claude.ui.provision.AssetProvisioningService;
@@ -49,7 +49,7 @@ public class SessionService {
 	private final AssetProvisioningService assets;
 	private final SidecarManager sidecars;
 	private final EventJournal journal;
-	private final SessionEventBus bus;
+	private final JournalPublisher journalPublisher;
 	private final ObjectMapper mapper;
 	private final org.springframework.context.ApplicationEventPublisher events;
 	private final MemoryEpisodeRepository episodes;
@@ -65,7 +65,7 @@ public class SessionService {
 	public SessionService(AppProperties props, SettingsService settings, SessionRepository sessions,
 						  TemplateRepository templates, GitWorktreeService worktrees, GitCommandRunner git,
 						  AssetProvisioningService assets, SidecarManager sidecars, EventJournal journal,
-						  SessionEventBus bus, ObjectMapper mapper,
+						  JournalPublisher journalPublisher, ObjectMapper mapper,
 						  org.springframework.context.ApplicationEventPublisher events,
 						  MemoryEpisodeRepository episodes, @Value("${server.port:8080}") int serverPort) {
 		this.props = props;
@@ -77,7 +77,7 @@ public class SessionService {
 		this.assets = assets;
 		this.sidecars = sidecars;
 		this.journal = journal;
-		this.bus = bus;
+		this.journalPublisher = journalPublisher;
 		this.mapper = mapper;
 		this.events = events;
 		this.episodes = episodes;
@@ -521,20 +521,7 @@ public class SessionService {
 	 */
 	// package-private (not private): unit-tested directly — see docs/plan/phase-9-production-hardening.md T1
 	JsonNode withDefaultLinearMcp(JsonNode configured) {
-		ObjectNode linear = linearMcpServer();
-		if (linear == null) {
-			return configured;
-		}
-		if (configured == null || configured.isNull()) {
-			return linear;
-		}
-		if (!(configured instanceof ObjectNode existing) || existing.has("linear")) {
-			return configured;
-		}
-		ObjectNode merged = mapper.createObjectNode();
-		merged.setAll(existing);
-		merged.setAll(linear);
-		return merged;
+		return withDefaultServer(configured, "linear", linearMcpServer());
 	}
 
 	/**
@@ -562,19 +549,29 @@ public class SessionService {
 
 	/** Layers the memory MCP server into a session's mcpConfig, same merge rule as {@link #withDefaultLinearMcp}. */
 	JsonNode withDefaultMemoryMcp(JsonNode configured) {
-		ObjectNode memory = memoryMcpServer();
-		if (memory == null) {
+		return withDefaultServer(configured, "memory", memoryMcpServer());
+	}
+
+	/**
+	 * Merges a default MCP {@code serverBlock} (itself a one-key {@code {"key": {...}}} object,
+	 * or null if that default isn't configured/enabled) into a session's own {@code configured}
+	 * mcpConfig under {@code key} — unless the session already defines that key itself, which
+	 * always wins. Shared merge rule behind {@link #withDefaultLinearMcp}/{@link
+	 * #withDefaultMemoryMcp} (docs/plan/phase-9-production-hardening.md G2).
+	 */
+	private JsonNode withDefaultServer(JsonNode configured, String key, ObjectNode serverBlock) {
+		if (serverBlock == null) {
 			return configured;
 		}
 		if (configured == null || configured.isNull()) {
-			return memory;
+			return serverBlock;
 		}
-		if (!(configured instanceof ObjectNode existing) || existing.has("memory")) {
+		if (!(configured instanceof ObjectNode existing) || existing.has(key)) {
 			return configured;
 		}
 		ObjectNode merged = mapper.createObjectNode();
 		merged.setAll(existing);
-		merged.setAll(memory);
+		merged.setAll(serverBlock);
 		return merged;
 	}
 
@@ -846,7 +843,7 @@ public class SessionService {
 
 	/** Journal + fan out. The journal assigns seq; subscribers see exactly what replay will. */
 	private void record(UUID id, String type, JsonNode payload) {
-		bus.publish(id, journal.append(id, type, payload));
+		journalPublisher.record(id, type, payload);
 	}
 
 	private void recordQueue(UUID id) {

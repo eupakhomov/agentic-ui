@@ -1,9 +1,8 @@
 package de.pamir.claude.ui.library;
 
-import de.pamir.claude.ui.session.SessionService;
+import de.pamir.claude.ui.session.SystemTurnClient;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -28,14 +27,12 @@ public class LibraryAiService {
 	public record FilledMeta(String path, String name, String description, List<String> tags) {
 	}
 
-	private final SessionService sessionService;
+	private final SystemTurnClient systemTurnClient;
 	private final AssetScanService scanner;
-	private final ObjectMapper mapper;
 
-	public LibraryAiService(SessionService sessionService, AssetScanService scanner, ObjectMapper mapper) {
-		this.sessionService = sessionService;
+	public LibraryAiService(SystemTurnClient systemTurnClient, AssetScanService scanner) {
+		this.systemTurnClient = systemTurnClient;
 		this.scanner = scanner;
-		this.mapper = mapper;
 	}
 
 	public List<FilledMeta> fill(String type, String ref, List<String> paths) {
@@ -62,8 +59,7 @@ public class LibraryAiService {
 				+ "human-readable, 2-5 words\", \"description\": \"one sentence (max ~25 words) saying what it does "
 				+ "and when to use it\", \"tags\": [\"3-6 short lowercase keyword tags\"]}. Return one object per "
 				+ "file, in the same order.\n\n%s").formatted(files);
-		String raw = sessionService.runSystemTurn(prompt, TIMEOUT);
-		return parse(raw, paths);
+		return parse(systemTurnClient.json(prompt, TIMEOUT), paths);
 	}
 
 	private String readContent(Path root, String path) {
@@ -86,13 +82,8 @@ public class LibraryAiService {
 		}
 	}
 
-	private List<FilledMeta> parse(String raw, List<String> requestedPaths) {
-		JsonNode node;
-		try {
-			node = mapper.readTree(stripFences(raw));
-		} catch (RuntimeException e) {
-			throw new IllegalStateException("could not parse AI-fill response: " + truncate(raw));
-		}
+	// package-private (not private): unit-tested directly — see docs/plan/phase-9-production-hardening.md T1
+	List<FilledMeta> parse(JsonNode node, List<String> requestedPaths) {
 		List<FilledMeta> results = new ArrayList<>();
 		for (JsonNode item : node) {
 			String path = item.path("path").asText("").strip();
@@ -100,33 +91,12 @@ public class LibraryAiService {
 			if (path.isBlank() || name.isBlank() || !requestedPaths.contains(path)) {
 				continue;
 			}
-			List<String> tags = new ArrayList<>();
-			for (JsonNode tag : item.path("tags")) {
-				String value = tag.asText("").strip().toLowerCase(java.util.Locale.ROOT);
-				if (!value.isBlank()) {
-					tags.add(value);
-				}
-			}
+			List<String> tags = SystemTurnClient.lowercaseTags(item);
 			results.add(new FilledMeta(path, name, item.path("description").asText("").strip(), tags));
 		}
 		if (results.isEmpty()) {
-			throw new IllegalStateException("AI-fill returned no usable entries: " + truncate(raw));
+			throw new IllegalStateException("AI-fill returned no usable entries: " + SystemTurnClient.truncate(node.toString(), 300));
 		}
 		return results;
-	}
-
-	private static String stripFences(String raw) {
-		String cleaned = raw == null ? "" : raw.strip();
-		if (cleaned.startsWith("```")) {
-			cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
-		}
-		return cleaned;
-	}
-
-	private static String truncate(String s) {
-		if (s == null) {
-			return "";
-		}
-		return s.length() > 300 ? s.substring(0, 300) + "…" : s;
 	}
 }

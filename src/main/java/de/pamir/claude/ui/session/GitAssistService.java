@@ -1,7 +1,6 @@
 package de.pamir.claude.ui.session;
 
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import de.pamir.claude.ui.git.GitOpsService;
 import org.springframework.stereotype.Service;
 
@@ -31,17 +30,14 @@ public class GitAssistService {
 	public record PrSuggestion(String title, String body) {
 	}
 
-	private final SessionService sessionService;
+	private final SystemTurnClient systemTurnClient;
 	private final SessionRepository sessions;
 	private final GitOpsService gitOps;
-	private final ObjectMapper mapper;
 
-	public GitAssistService(SessionService sessionService, SessionRepository sessions, GitOpsService gitOps,
-							ObjectMapper mapper) {
-		this.sessionService = sessionService;
+	public GitAssistService(SystemTurnClient systemTurnClient, SessionRepository sessions, GitOpsService gitOps) {
+		this.systemTurnClient = systemTurnClient;
 		this.sessions = sessions;
 		this.gitOps = gitOps;
-		this.mapper = mapper;
 	}
 
 	public CommitSuggestion suggestCommitMessage(UUID sessionId) {
@@ -60,8 +56,8 @@ public class GitAssistService {
 				+ "\"Fixed\"/\"Added\"), describe what changed and why at a glance, and keep it under 72 "
 				+ "characters excluding any ticket prefix. %sRespond with ONLY a single JSON object — no markdown "
 				+ "fences, no commentary — of the form {\"message\": \"...\"}.\n\nDiff:\n```diff\n%s\n```")
-				.formatted(prefixInstruction, truncate(diff, MAX_DIFF_CHARS));
-		JsonNode node = parseJson(sessionService.runSystemTurn(prompt, TIMEOUT), "commit message");
+				.formatted(prefixInstruction, SystemTurnClient.truncate(diff, MAX_DIFF_CHARS));
+		JsonNode node = systemTurnClient.json(prompt, TIMEOUT);
 		String message = node.path("message").asText("").strip();
 		if (message.isBlank()) {
 			throw new IllegalStateException("commit message suggestion was empty");
@@ -91,8 +87,8 @@ public class GitAssistService {
 				+ "\n```\n\n%sRespond with ONLY a single JSON object — no markdown fences, no commentary — of the "
 				+ "form {\"title\": \"a concise PR title\", \"body\": \"a short GitHub-flavored markdown "
 				+ "description: a 1-2 sentence summary followed by a bullet list of the key changes, no "
-				+ "top-level heading\"}.").formatted(truncate(diff, MAX_DIFF_CHARS), ticketNote);
-		JsonNode node = parseJson(sessionService.runSystemTurn(prompt, TIMEOUT), "PR description");
+				+ "top-level heading\"}.").formatted(SystemTurnClient.truncate(diff, MAX_DIFF_CHARS), ticketNote);
+		JsonNode node = systemTurnClient.json(prompt, TIMEOUT);
 		String body = node.path("body").asText("").strip();
 		String llmTitle = node.path("title").asText("").strip();
 		// deterministic: a PR's title is the newest commit's subject when one exists, rather than a
@@ -114,28 +110,5 @@ public class GitAssistService {
 		}
 		Matcher m = TICKET_PATTERN.matcher(session.branch());
 		return m.find() ? m.group().toUpperCase(Locale.ROOT) : null;
-	}
-
-	private JsonNode parseJson(String raw, String what) {
-		try {
-			return mapper.readTree(stripFences(raw));
-		} catch (RuntimeException e) {
-			throw new IllegalStateException("could not parse " + what + " response: " + truncate(raw, 300));
-		}
-	}
-
-	private static String stripFences(String raw) {
-		String cleaned = raw == null ? "" : raw.strip();
-		if (cleaned.startsWith("```")) {
-			cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
-		}
-		return cleaned;
-	}
-
-	private static String truncate(String s, int max) {
-		if (s == null) {
-			return "";
-		}
-		return s.length() > max ? s.substring(0, max) + "\n… (truncated)" : s;
 	}
 }

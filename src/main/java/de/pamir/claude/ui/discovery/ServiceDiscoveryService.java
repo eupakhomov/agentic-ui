@@ -3,22 +3,19 @@ package de.pamir.claude.ui.discovery;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitCommandRunner;
 import de.pamir.claude.ui.library.EmbeddingClient;
-import de.pamir.claude.ui.session.SessionService;
+import de.pamir.claude.ui.session.SystemTurnClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,22 +33,19 @@ public class ServiceDiscoveryService {
 	private static final Duration TIMEOUT = Duration.ofSeconds(60);
 
 	private final SettingsService settings;
-	private final SessionService sessionService;
+	private final SystemTurnClient systemTurnClient;
 	private final GitCommandRunner git;
 	private final ServiceProfileRepository profiles;
 	private final EmbeddingClient embeddings;
-	private final ObjectMapper mapper;
 	private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
 
-	public ServiceDiscoveryService(SettingsService settings, SessionService sessionService, GitCommandRunner git,
-									ServiceProfileRepository profiles, EmbeddingClient embeddings,
-									ObjectMapper mapper) {
+	public ServiceDiscoveryService(SettingsService settings, SystemTurnClient systemTurnClient, GitCommandRunner git,
+									ServiceProfileRepository profiles, EmbeddingClient embeddings) {
 		this.settings = settings;
-		this.sessionService = sessionService;
+		this.systemTurnClient = systemTurnClient;
 		this.git = git;
 		this.profiles = profiles;
 		this.embeddings = embeddings;
-		this.mapper = mapper;
 	}
 
 	@EventListener
@@ -137,18 +131,11 @@ public class ServiceDiscoveryService {
 		String digest = ServiceDigest.render(path);
 		String name = path.getFileName().toString();
 		String prompt = buildPrompt(name, digest);
-		String raw;
-		try {
-			raw = sessionService.runSystemTurn(prompt, settings.serviceDiscoveryModel(), TIMEOUT);
-		} catch (RuntimeException e) {
-			log.warn("service discovery turn failed for {}: {}", repoPath, e.getMessage());
-			return;
-		}
 		JsonNode result;
 		try {
-			result = mapper.readTree(stripFences(raw));
+			result = systemTurnClient.json(prompt, settings.serviceDiscoveryModel(), TIMEOUT);
 		} catch (RuntimeException e) {
-			log.warn("service discovery response for {} was not valid JSON: {}", repoPath, truncate(raw));
+			log.warn("service discovery failed for {}: {}", repoPath, e.getMessage());
 			return;
 		}
 		String description = result.path("description").asText("").strip();
@@ -156,25 +143,15 @@ public class ServiceDiscoveryService {
 			log.warn("service discovery response for {} had no description", repoPath);
 			return;
 		}
-		List<String> tags = new ArrayList<>();
-		for (JsonNode tag : result.path("tags")) {
-			String value = tag.asText("").strip().toLowerCase(Locale.ROOT);
-			if (!value.isBlank()) {
-				tags.add(value);
-			}
-		}
+		List<String> tags = SystemTurnClient.lowercaseTags(result);
 		profiles.upsert(repoPath, name, description, tags, sha, sessionId);
 		embedBestEffort(repoPath, name, description);
 	}
 
 	private void embedBestEffort(String repoPath, String name, String description) {
-		if (!embeddings.configured()) {
-			return;
-		}
-		try {
-			profiles.upsertEmbedding(repoPath, embeddings.embed(name + " " + description, false), embeddings.model());
-		} catch (RuntimeException e) {
-			log.warn("embedding failed for service {}: {}", repoPath, e.getMessage());
+		float[] vector = embeddings.tryEmbed(name + " " + description, false);
+		if (vector != null) {
+			profiles.upsertEmbedding(repoPath, vector, embeddings.model());
 		}
 	}
 
@@ -192,15 +169,4 @@ public class ServiceDiscoveryService {
 				""".formatted(name, digest);
 	}
 
-	private static String stripFences(String raw) {
-		String cleaned = raw == null ? "" : raw.strip();
-		if (cleaned.startsWith("```")) {
-			cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
-		}
-		return cleaned;
-	}
-
-	private static String truncate(String s) {
-		return s != null && s.length() > 300 ? s.substring(0, 300) + "…" : s;
-	}
 }
