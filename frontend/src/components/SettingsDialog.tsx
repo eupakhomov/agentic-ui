@@ -19,6 +19,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [memoryRootDraft, setMemoryRootDraft] = useState('');
   const [memorySyncIntervalDraft, setMemorySyncIntervalDraft] = useState('');
   const [memoryRetentionDraft, setMemoryRetentionDraft] = useState('');
+  const [serviceDiscoveryStalenessDraft, setServiceDiscoveryStalenessDraft] = useState('');
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -33,6 +34,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setMemoryRootDraft(s.memoryRoot);
       setMemorySyncIntervalDraft(String(s.memorySyncIntervalMinutes));
       setMemoryRetentionDraft(String(s.memoryRetentionDays));
+      setServiceDiscoveryStalenessDraft(String(s.serviceDiscoveryStalenessDays));
     }).catch(() => setSettings(null));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
@@ -178,6 +180,30 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     void api.updateSettings({ memoryRetentionDays: days })
       .then((s) => { setSettings(s); setMemoryRetentionDraft(String(s.memoryRetentionDays)); })
       .catch(() => setMemoryRetentionDraft(String(settings.memoryRetentionDays)));
+  };
+
+  const toggleServiceDiscoveryEnabled = () => {
+    if (!settings) return;
+    const next = { ...settings, serviceDiscoveryEnabled: !settings.serviceDiscoveryEnabled };
+    setSettings(next);
+    void api.updateSettings({ serviceDiscoveryEnabled: next.serviceDiscoveryEnabled }).catch(() => setSettings(settings));
+  };
+
+  const saveServiceDiscoveryStaleness = () => {
+    if (!settings) return;
+    const days = Number(serviceDiscoveryStalenessDraft);
+    if (!Number.isFinite(days) || days === settings.serviceDiscoveryStalenessDays) return;
+    void api.updateSettings({ serviceDiscoveryStalenessDays: days })
+      .then((s) => { setSettings(s); setServiceDiscoveryStalenessDraft(String(s.serviceDiscoveryStalenessDays)); })
+      .catch(() => setServiceDiscoveryStalenessDraft(String(settings.serviceDiscoveryStalenessDays)));
+  };
+
+  const saveServiceDiscoveryModel = (model: string) => {
+    if (!settings) return;
+    const previous = settings.serviceDiscoveryModel;
+    setSettings({ ...settings, serviceDiscoveryModel: model });
+    void api.updateSettings({ serviceDiscoveryModel: model })
+      .catch(() => setSettings({ ...settings, serviceDiscoveryModel: previous }));
   };
 
   return (
@@ -368,6 +394,34 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 />
                 days before a closed, reflected session's raw journal is pruned (0 = never)
               </span>
+            </div>
+
+            <h3 style={{ margin: '18px 0 10px' }}>Service discovery</h3>
+            <div className="form-grid">
+              <label>Enabled</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input type="checkbox" checked={settings.serviceDiscoveryEnabled} onChange={toggleServiceDiscoveryEnabled} />
+                describe each ecosystem service at session close, and expose service_description/find_service to agents
+              </label>
+
+              <label>Staleness</label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="number"
+                  min={1}
+                  style={{ width: 90 }}
+                  value={serviceDiscoveryStalenessDraft}
+                  onChange={(e) => setServiceDiscoveryStalenessDraft(e.target.value)}
+                  onBlur={saveServiceDiscoveryStaleness}
+                />
+                days before a service's description is regenerated
+              </span>
+
+              <label>Discovery model</label>
+              <select value={settings.serviceDiscoveryModel} onChange={(e) => saveServiceDiscoveryModel(e.target.value)}>
+                <option value="haiku">haiku (default — cheap)</option>
+                <option value="sonnet">sonnet (higher quality)</option>
+              </select>
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>PR checks</h3>

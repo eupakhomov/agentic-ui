@@ -43,6 +43,10 @@ public class SettingsService {
 	private static final int MIN_MEMORY_SYNC_INTERVAL_MINUTES = 1;
 	private static final String MEMORY_RETENTION_DAYS_KEY = "memory.retention-days";
 	private static final String MEMORY_APPROVAL_REQUIRED_KEY = "memory.reflection-approval-required";
+	private static final String SERVICE_DISCOVERY_ENABLED_KEY = "service-discovery.enabled";
+	private static final String SERVICE_DISCOVERY_STALENESS_DAYS_KEY = "service-discovery.staleness-days";
+	private static final int DEFAULT_SERVICE_DISCOVERY_STALENESS_DAYS = 14;
+	private static final String SERVICE_DISCOVERY_MODEL_KEY = "service-discovery.model";
 
 	private final SettingsRepository repo;
 	private final AppProperties props;
@@ -259,5 +263,37 @@ public class SettingsService {
 
 	public void setMemoryReflectionApprovalRequired(boolean required) {
 		repo.set(MEMORY_APPROVAL_REQUIRED_KEY, Boolean.toString(required));
+	}
+
+	/**
+	 * Central on/off switch for ecosystem service discovery (docs/plan/phase-8-service-discovery.md):
+	 * gates the close-triggered/manual discovery runs AND both agent-facing tools (each also
+	 * self-gates on this same setting — decision 6), independently of {@link #memoryEnabled()}.
+	 */
+	public boolean serviceDiscoveryEnabled() {
+		return repo.get(SERVICE_DISCOVERY_ENABLED_KEY).map(Boolean::parseBoolean).orElse(true);
+	}
+
+	public void setServiceDiscoveryEnabled(boolean enabled) {
+		repo.set(SERVICE_DISCOVERY_ENABLED_KEY, Boolean.toString(enabled));
+	}
+
+	/** Days before an existing service profile is considered stale and eligible for regeneration. */
+	public int serviceDiscoveryStalenessDays() {
+		return repo.get(SERVICE_DISCOVERY_STALENESS_DAYS_KEY).map(Integer::parseInt).map(v -> Math.max(v, 1))
+				.orElse(DEFAULT_SERVICE_DISCOVERY_STALENESS_DAYS);
+	}
+
+	public void setServiceDiscoveryStalenessDays(int days) {
+		repo.set(SERVICE_DISCOVERY_STALENESS_DAYS_KEY, Integer.toString(Math.max(days, 1)));
+	}
+
+	/** Model the discovery system turn runs on; raise to sonnet if haiku's descriptions disappoint. */
+	public String serviceDiscoveryModel() {
+		return repo.get(SERVICE_DISCOVERY_MODEL_KEY).filter(v -> !v.isBlank()).orElse("haiku");
+	}
+
+	public void setServiceDiscoveryModel(String model) {
+		repo.set(SERVICE_DISCOVERY_MODEL_KEY, model == null || model.isBlank() ? "haiku" : model.strip());
 	}
 }

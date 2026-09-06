@@ -169,19 +169,29 @@ public class SessionService {
 			}
 			ecosystemPath = null;
 			contextDirs = List.of();
-		} else if (settings.memoryEnabled()) {
+		} else {
 			// allowedTools/disallowedTools are additive presets (bypass or block specific tools
 			// without switching the session into allow-list-only mode) — safe to append to
 			// regardless of whether the session configured any of its own. Claude sessions
-			// pre-approve the read-only memory tools this way; Codex rejects allowedTools
-			// entirely (handled above), so its sessions go through the normal approval flow
-			// instead (decision 10). Named explicitly (not the blanket "mcp__memory" server-level
-			// grant) since 7.4's orchestration tools now live on the same MCP server and must NOT
-			// be pre-approved — spawn_child_session needs the normal human-in-the-loop prompt.
-			allowedTools = new java.util.ArrayList<>(allowedTools);
-			allowedTools.add("mcp__memory__memory_tags");
-			allowedTools.add("mcp__memory__memory_search");
-			allowedTools.add("mcp__memory__memory_read");
+			// pre-approve these read-only tools this way; Codex rejects allowedTools entirely
+			// (handled above), so its sessions go through the normal approval flow instead
+			// (decision 10). Named explicitly (not the blanket "mcp__memory" server-level grant)
+			// since 7.4's orchestration tools — and now 8's service-discovery tools — live on the
+			// same MCP server and must NOT be pre-approved by a blanket grant.
+			if (settings.memoryEnabled()) {
+				allowedTools = new java.util.ArrayList<>(allowedTools);
+				allowedTools.add("mcp__memory__memory_tags");
+				allowedTools.add("mcp__memory__memory_search");
+				allowedTools.add("mcp__memory__memory_read");
+			}
+			if (settings.serviceDiscoveryEnabled()) {
+				// docs/plan/phase-8-service-discovery.md decision 7 — pre-approved independently
+				// of memory.enabled, since the two features are toggled separately
+				allowedTools = new java.util.ArrayList<>(allowedTools);
+				allowedTools.add("mcp__memory__service_description");
+				allowedTools.add("mcp__memory__find_service");
+				allowedTools.add("mcp__memory__list_discovered_services");
+			}
 		}
 		JsonNode mcpConfig = withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig));
 
@@ -376,6 +386,9 @@ public class SessionService {
 			if (session.reflectionEnabled()) {
 				events.publishEvent(new de.pamir.claude.ui.memory.ReflectionRequested(id));
 			}
+			if (settings.serviceDiscoveryEnabled()) {
+				events.publishEvent(new de.pamir.claude.ui.discovery.ServiceDiscoveryRequested(id, session.repoPath()));
+			}
 		}
 	}
 
@@ -524,13 +537,17 @@ public class SessionService {
 	}
 
 	/**
-	 * The memory MCP server block ({"memory": {...}}), or null if memory is disabled in Settings.
-	 * Same shape as {@link #linearMcpServer()} — an in-process Spring AI MCP server, not a
-	 * spawned child (docs/plan/phase-5.3-memory-reflection.md decision 12a) — pointed at
-	 * ourselves and authenticated with the same dashboard bearer token (decision 11).
+	 * The shared in-process MCP server block ({"memory": {...}}) — still keyed "memory" for
+	 * backward compatibility, but it now also carries the service-discovery tools (decision 6,
+	 * docs/plan/phase-8-service-discovery.md) alongside 7.4's orchestration tools, all on the same
+	 * Spring AI MCP server (docs/plan/phase-5.3-memory-reflection.md decision 12a). Null only when
+	 * BOTH memory and service discovery are disabled — each tool set still self-gates on its own
+	 * setting inside its method bodies, so one feature being off holds even when the other keeps
+	 * this entry attached. Pointed at ourselves and authenticated with the same dashboard bearer
+	 * token (decision 11).
 	 */
 	private ObjectNode memoryMcpServer() {
-		if (!settings.memoryEnabled()) {
+		if (!settings.memoryEnabled() && !settings.serviceDiscoveryEnabled()) {
 			return null;
 		}
 		ObjectNode servers = mapper.createObjectNode();

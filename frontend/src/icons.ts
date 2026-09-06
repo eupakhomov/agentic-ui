@@ -21,6 +21,7 @@ export {
   ChartLine as Usage,
   Library as SkillLibrary,
   Brain as Memory,
+  Compass as ServiceDiscovery,
   Keyboard as Shortcuts,
   LayoutGrid as Expose,
   Settings as SettingsIcon,

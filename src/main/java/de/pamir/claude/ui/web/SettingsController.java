@@ -20,7 +20,9 @@ public class SettingsController {
 								String defaultProvider, String codexPricing,
 								String memoryRoot, boolean memoryEnabled, boolean memoryReflectionDefault,
 								String memoryReflectionModel, int memorySyncIntervalMinutes, int memoryRetentionDays,
-								boolean memoryReflectionApprovalRequired) {
+								boolean memoryReflectionApprovalRequired,
+								boolean serviceDiscoveryEnabled, int serviceDiscoveryStalenessDays,
+								String serviceDiscoveryModel) {
 	}
 
 	public record SettingsUpdate(Boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot,
@@ -30,7 +32,9 @@ public class SettingsController {
 								  String defaultProvider, String codexPricing,
 								  String memoryRoot, Boolean memoryEnabled, Boolean memoryReflectionDefault,
 								  String memoryReflectionModel, Integer memorySyncIntervalMinutes,
-								  Integer memoryRetentionDays, Boolean memoryReflectionApprovalRequired) {
+								  Integer memoryRetentionDays, Boolean memoryReflectionApprovalRequired,
+								  Boolean serviceDiscoveryEnabled, Integer serviceDiscoveryStalenessDays,
+								  String serviceDiscoveryModel) {
 	}
 
 	private final SettingsService settings;
@@ -105,6 +109,15 @@ public class SettingsController {
 		if (update.memoryReflectionApprovalRequired() != null) {
 			settings.setMemoryReflectionApprovalRequired(update.memoryReflectionApprovalRequired());
 		}
+		if (update.serviceDiscoveryEnabled() != null) {
+			settings.setServiceDiscoveryEnabled(update.serviceDiscoveryEnabled());
+		}
+		if (update.serviceDiscoveryStalenessDays() != null) {
+			settings.setServiceDiscoveryStalenessDays(update.serviceDiscoveryStalenessDays());
+		}
+		if (update.serviceDiscoveryModel() != null) {
+			settings.setServiceDiscoveryModel(update.serviceDiscoveryModel());
+		}
 		return view();
 	}
 
@@ -118,6 +131,8 @@ public class SettingsController {
 				settings.defaultProvider(), settings.codexPricing(),
 				settings.memoryRoot(), settings.memoryEnabled(), settings.memoryReflectionDefault(),
 				settings.memoryReflectionModel(), settings.memorySyncIntervalMinutes(), settings.memoryRetentionDays(),
-				settings.memoryReflectionApprovalRequired());
+				settings.memoryReflectionApprovalRequired(),
+				settings.serviceDiscoveryEnabled(), settings.serviceDiscoveryStalenessDays(),
+				settings.serviceDiscoveryModel());
 	}
 }

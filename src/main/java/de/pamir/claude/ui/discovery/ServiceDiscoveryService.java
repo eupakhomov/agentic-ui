@@ -1,0 +1,206 @@
+package de.pamir.claude.ui.discovery;
+
+import de.pamir.claude.ui.config.SettingsService;
+import de.pamir.claude.ui.git.GitCommandRunner;
+import de.pamir.claude.ui.library.EmbeddingClient;
+import de.pamir.claude.ui.session.SessionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Ecosystem service discovery (docs/plan/phase-8-service-discovery.md): regenerates a short
+ * description + embedding for a service (git repo) when missing or stale, gated by the repo's own
+ * git commit SHA rather than a re-read content hash (decision 4) — an unchanged repo costs one
+ * {@code git rev-parse HEAD} call, nothing more, no digest read and no system turn.
+ */
+@Service
+public class ServiceDiscoveryService {
+
+	private static final Logger log = LoggerFactory.getLogger(ServiceDiscoveryService.class);
+	private static final Duration TIMEOUT = Duration.ofSeconds(60);
+
+	private final SettingsService settings;
+	private final SessionService sessionService;
+	private final GitCommandRunner git;
+	private final ServiceProfileRepository profiles;
+	private final EmbeddingClient embeddings;
+	private final ObjectMapper mapper;
+	private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+
+	public ServiceDiscoveryService(SettingsService settings, SessionService sessionService, GitCommandRunner git,
+									ServiceProfileRepository profiles, EmbeddingClient embeddings,
+									ObjectMapper mapper) {
+		this.settings = settings;
+		this.sessionService = sessionService;
+		this.git = git;
+		this.profiles = profiles;
+		this.embeddings = embeddings;
+		this.mapper = mapper;
+	}
+
+	@EventListener
+	public void onServiceDiscoveryRequested(ServiceDiscoveryRequested event) {
+		Thread.ofVirtual().name("service-discovery-" + event.sessionId()).start(() -> {
+			try {
+				discover(event.repoPath(), event.sessionId(), false);
+			} catch (RuntimeException e) {
+				log.warn("service discovery failed for {}: {}", event.repoPath(), e.getMessage());
+			}
+		});
+	}
+
+	/** Manual rediscover (dashboard "Rediscover" button / "Scan ecosystem now" loop) — always bypasses staleness. */
+	public ServiceProfileRepository.ServiceProfile rediscover(String repoPath) {
+		Path path = Path.of(repoPath);
+		if (!Files.exists(path.resolve(".git"))) {
+			throw new IllegalArgumentException("not a git repository: " + repoPath);
+		}
+		discover(repoPath, null, true);
+		return profiles.findByRepoPath(repoPath)
+				.orElseThrow(() -> new IllegalStateException("discovery did not produce a profile for " + repoPath));
+	}
+
+	/**
+	 * Human hand-edit from the dashboard's service browser: writes the given description/tags
+	 * directly (no system turn) and re-embeds them. Stamps the current commit SHA exactly like a
+	 * real discovery would, so the edit participates correctly in the skip-logic above — it stands
+	 * as an override until the repo's next commit, at which point auto-discovery is free to
+	 * regenerate over it (same "editing is a veto, until content actually changes" posture as
+	 * memory's hand-edited files).
+	 */
+	public ServiceProfileRepository.ServiceProfile updateDescription(String repoPath, String description,
+																	  List<String> tags) {
+		Path path = Path.of(repoPath);
+		if (!Files.exists(path.resolve(".git"))) {
+			throw new IllegalArgumentException("not a git repository: " + repoPath);
+		}
+		if (description == null || description.isBlank()) {
+			throw new IllegalArgumentException("description must not be blank");
+		}
+		String name = path.getFileName().toString();
+		String sha = currentCommitSha(path);
+		var profile = profiles.upsert(repoPath, name, description.strip(), tags == null ? List.of() : tags, sha, null);
+		embedBestEffort(repoPath, name, description.strip());
+		return profile;
+	}
+
+	private void discover(String repoPath, UUID sessionId, boolean force) {
+		if (!settings.serviceDiscoveryEnabled()) {
+			return;
+		}
+		Path path = Path.of(repoPath);
+		if (!Files.exists(path.resolve(".git"))) {
+			return; // best-effort for the close-triggered path — the manual path validates up front
+		}
+		if (!inFlight.add(repoPath)) {
+			return; // another discovery for this exact repo is already running
+		}
+		try {
+			var existing = profiles.findByRepoPath(repoPath);
+			if (!force && existing.isPresent() && existing.get().discoveredAt()
+					.isAfter(Instant.now().minus(settings.serviceDiscoveryStalenessDays(), ChronoUnit.DAYS))) {
+				return;
+			}
+			String sha = currentCommitSha(path);
+			if (existing.isPresent() && sha != null && sha.equals(existing.get().lastCommitSha())) {
+				profiles.bumpDiscoveredAt(repoPath);
+				return;
+			}
+			generate(path, repoPath, sessionId, sha);
+		} finally {
+			inFlight.remove(repoPath);
+		}
+	}
+
+	private String currentCommitSha(Path repoPath) {
+		var result = git.run(repoPath, "rev-parse", "HEAD");
+		return result.ok() ? result.stdout().strip() : null;
+	}
+
+	private void generate(Path path, String repoPath, UUID sessionId, String sha) {
+		String digest = ServiceDigest.render(path);
+		String name = path.getFileName().toString();
+		String prompt = buildPrompt(name, digest);
+		String raw;
+		try {
+			raw = sessionService.runSystemTurn(prompt, settings.serviceDiscoveryModel(), TIMEOUT);
+		} catch (RuntimeException e) {
+			log.warn("service discovery turn failed for {}: {}", repoPath, e.getMessage());
+			return;
+		}
+		JsonNode result;
+		try {
+			result = mapper.readTree(stripFences(raw));
+		} catch (RuntimeException e) {
+			log.warn("service discovery response for {} was not valid JSON: {}", repoPath, truncate(raw));
+			return;
+		}
+		String description = result.path("description").asText("").strip();
+		if (description.isBlank()) {
+			log.warn("service discovery response for {} had no description", repoPath);
+			return;
+		}
+		List<String> tags = new ArrayList<>();
+		for (JsonNode tag : result.path("tags")) {
+			String value = tag.asText("").strip().toLowerCase(Locale.ROOT);
+			if (!value.isBlank()) {
+				tags.add(value);
+			}
+		}
+		profiles.upsert(repoPath, name, description, tags, sha, sessionId);
+		embedBestEffort(repoPath, name, description);
+	}
+
+	private void embedBestEffort(String repoPath, String name, String description) {
+		if (!embeddings.configured()) {
+			return;
+		}
+		try {
+			profiles.upsertEmbedding(repoPath, embeddings.embed(name + " " + description, false), embeddings.model());
+		} catch (RuntimeException e) {
+			log.warn("embedding failed for service {}: {}", repoPath, e.getMessage());
+		}
+	}
+
+	private static String buildPrompt(String name, String digest) {
+		return """
+				You are cataloguing a service in a multi-service ecosystem so other services' coding
+				agents can quickly learn what it does and where to look. Given the digest below (README/
+				docs, a manifest sniff, and a shallow directory listing) for the service "%s", respond with
+				ONLY a JSON object — no markdown fences, no commentary — of the form {"description": "3-8
+				sentences covering the service's purpose, its main subsystems/responsibilities, and WHERE
+				they live (real paths from the listing) — specific enough to answer 'where is X
+				implemented'", "tags": ["3-6 short lowercase keyword tags"]}.
+
+				%s
+				""".formatted(name, digest);
+	}
+
+	private static String stripFences(String raw) {
+		String cleaned = raw == null ? "" : raw.strip();
+		if (cleaned.startsWith("```")) {
+			cleaned = cleaned.replaceFirst("^```(json)?", "").replaceFirst("```$", "").strip();
+		}
+		return cleaned;
+	}
+
+	private static String truncate(String s) {
+		return s != null && s.length() > 300 ? s.substring(0, 300) + "…" : s;
+	}
+}

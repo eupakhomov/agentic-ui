@@ -155,6 +155,9 @@ export interface Settings {
   memorySyncIntervalMinutes: number;
   memoryRetentionDays: number;
   memoryReflectionApprovalRequired: boolean;
+  serviceDiscoveryEnabled: boolean;
+  serviceDiscoveryStalenessDays: number;
+  serviceDiscoveryModel: string;
 }
 
 // --- layered memory (phase 5.3) ---
@@ -236,6 +239,17 @@ export interface MemorySearchHit {
   sessionName: string | null;
   ts: string | null;
   score: number;
+}
+
+// --- ecosystem service discovery (phase 8) ---
+
+export interface ServiceProfileView {
+  name: string;
+  path: string;
+  description: string | null;
+  tags: string[];
+  discoveredAt: string | null;
+  stale: boolean;
 }
 
 // --- skill & agent library ---

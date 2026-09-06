@@ -1,4 +1,4 @@
-import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, ProviderView, ScanResult, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
+import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -94,7 +94,8 @@ export const api = {
     | 'libraryVectorize' | 'librarySyncEnabled' | 'librarySyncIntervalMinutes'
     | 'defaultProvider' | 'codexPricing' | 'memoryRoot' | 'memoryEnabled' | 'memoryReflectionDefault'
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
-    | 'memoryReflectionApprovalRequired'>>) =>
+    | 'memoryReflectionApprovalRequired' | 'serviceDiscoveryEnabled' | 'serviceDiscoveryStalenessDays'
+    | 'serviceDiscoveryModel'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
   listProviders: () => request<ProviderView[]>('GET', '/api/providers'),
   libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>
@@ -167,4 +168,9 @@ export const api = {
     if (offset !== undefined) params.set('offset', String(offset));
     return request<MemoryEpisode[]>('GET', `/api/memory/episodes?${params.toString()}`);
   },
+  serviceDiscoveryServices: () => request<ServiceProfileView[]>('GET', '/api/service-discovery/services'),
+  serviceDiscoveryRediscover: (repoPath: string) =>
+    request<ServiceProfileView>('POST', '/api/service-discovery/services/rediscover', { repoPath }),
+  serviceDiscoveryUpdate: (repoPath: string, patch: { description: string; tags: string[] }) =>
+    request<ServiceProfileView>('PATCH', '/api/service-discovery/services', { repoPath, ...patch }),
 };

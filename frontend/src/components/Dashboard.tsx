@@ -9,6 +9,7 @@ import SettingsDialog from './SettingsDialog';
 import UsageDashboard from './UsageDashboard';
 import LibraryDialog from './LibraryDialog';
 import MemoryDialog from './MemoryDialog';
+import ServiceDiscoveryDialog from './ServiceDiscoveryDialog';
 import HotkeyCheatsheet from './HotkeyCheatsheet';
 import DockStrip from './DockStrip';
 import ExposeOverlay from './ExposeOverlay';
@@ -16,7 +17,7 @@ import { useStore } from '../store/store';
 import { notificationsEnabled, notify, toggleNotifications } from '../notify';
 import { useHotkeys } from '../hotkeys/useHotkeys';
 import {
-  Expose, Memory, New, NotifyOff, NotifyOn, Refresh, SettingsIcon, Shortcuts, SkillLibrary,
+  Expose, Memory, New, NotifyOff, NotifyOn, Refresh, ServiceDiscovery, SettingsIcon, Shortcuts, SkillLibrary,
   SystemSession, Templates, Usage,
 } from '../icons';
 
@@ -68,6 +69,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [showUsage, setShowUsage] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
+  const [showServiceDiscovery, setShowServiceDiscovery] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [showExpose, setShowExpose] = useState(false);
   // maximize is transient (not persisted); minimize survives reload like layout does
@@ -198,8 +200,10 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     if (showUsage) { setShowUsage(false); return true; }
     if (showLibrary) { setShowLibrary(false); return true; }
     if (showMemory) { setShowMemory(false); return true; }
+    if (showServiceDiscovery) { setShowServiceDiscovery(false); return true; }
     return false;
-  }, [showCheatsheet, showCreate, showTemplates, showSettings, showUsage, showLibrary, showMemory]);
+  }, [showCheatsheet, showCreate, showTemplates, showSettings, showUsage, showLibrary, showMemory,
+    showServiceDiscovery]);
 
   const toggleMaximize = useCallback((id: string) => {
     setMaximizedId((cur) => (cur === id ? null : id));
@@ -248,7 +252,8 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     toggleMinimizeFocused: () => { if (focusedId) toggleMinimize(focusedId); },
     openExpose: () => setShowExpose(true),
     anyDialogOpen: () =>
-      showCreate || showTemplates || showSettings || showUsage || showLibrary || showMemory || showCheatsheet || showExpose,
+      showCreate || showTemplates || showSettings || showUsage || showLibrary || showMemory
+        || showServiceDiscovery || showCheatsheet || showExpose,
     closeTopDialog,
     exitOverlay,
   });
@@ -297,6 +302,9 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         >
           <Memory />{pendingMemoryCount > 0 && <span className="count-badge">{pendingMemoryCount}</span>}
         </button>
+        <button className="icon-btn" title="Service discovery" onClick={() => setShowServiceDiscovery(true)}>
+          <ServiceDiscovery />
+        </button>
         <button className="icon-btn" title="Keyboard shortcuts (?)" onClick={() => setShowCheatsheet(true)}><Shortcuts /></button>
         <button className="icon-btn" title="Exposé — all sessions (e)" onClick={() => setShowExpose(true)}><Expose /></button>
         <button className="icon-btn" title="Settings (,)" onClick={() => setShowSettings(true)}><SettingsIcon /></button>
@@ -338,6 +346,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
       {showUsage && <UsageDashboard onClose={() => { setShowUsage(false); refreshStale(); }} />}
       {showLibrary && <LibraryDialog onClose={() => { setShowLibrary(false); refreshDiscoveries(); }} />}
       {showMemory && <MemoryDialog onClose={() => { setShowMemory(false); refreshPendingMemory(); }} />}
+      {showServiceDiscovery && <ServiceDiscoveryDialog onClose={() => setShowServiceDiscovery(false)} />}
       {showCheatsheet && <HotkeyCheatsheet onClose={() => setShowCheatsheet(false)} />}
       {showExpose && (
         <ExposeOverlay
