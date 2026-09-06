@@ -104,7 +104,8 @@ public class GitAssistService {
 		return new PrSuggestion(title, body);
 	}
 
-	private String resolveTicketRef(SessionEntity session) {
+	// package-private (not private): unit-tested directly — see docs/plan/phase-9-production-hardening.md T1
+	String resolveTicketRef(SessionEntity session) {
 		if (session.ticketRef() != null && !session.ticketRef().isBlank()) {
 			return session.ticketRef();
 		}

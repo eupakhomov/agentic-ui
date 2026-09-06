@@ -63,6 +63,21 @@ mvn clean verify              # full build + tests — REQUIRES Postgres running
 mvn clean verify -DskipTests  # compile-only, no DB needed
 ```
 
+**Fast unit tests, no DB needed** (either OS, swap `mvn`/`./mvnw` per above): most backend
+tests are plain JUnit against pure logic (no `@SpringBootTest`); the one exception —
+`ApplicationTests`, which boots the full context — is tagged `@Tag("integration")` so it
+can be excluded:
+
+```bash
+./mvnw -Dskip.installnodenpm -Dskip.npm -DexcludedGroups=integration test
+```
+
+CI (`.github/workflows/ci.yml`) runs exactly this, plus `tsc` for both sidecars (guarded
+by `scripts/check-protocol-sync.mjs`, which fails the build if `sidecar-codex/src/
+protocol.ts`/`stdio.ts` drift from their documented `sidecar/` originals — see that
+package's file-header comments) and a full frontend `npm run build`. It does not run
+`ApplicationTests` — no Postgres service is wired up in CI yet.
+
 ## Database
 
 ```bash

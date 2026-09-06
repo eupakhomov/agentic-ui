@@ -519,7 +519,8 @@ public class SessionService {
 	 * which wins. Regular sessions go through the normal permission-approval flow for its tools
 	 * (unlike the system session, which pre-approves them — see createSystemSession).
 	 */
-	private JsonNode withDefaultLinearMcp(JsonNode configured) {
+	// package-private (not private): unit-tested directly — see docs/plan/phase-9-production-hardening.md T1
+	JsonNode withDefaultLinearMcp(JsonNode configured) {
 		ObjectNode linear = linearMcpServer();
 		if (linear == null) {
 			return configured;
@@ -560,7 +561,7 @@ public class SessionService {
 	}
 
 	/** Layers the memory MCP server into a session's mcpConfig, same merge rule as {@link #withDefaultLinearMcp}. */
-	private JsonNode withDefaultMemoryMcp(JsonNode configured) {
+	JsonNode withDefaultMemoryMcp(JsonNode configured) {
 		ObjectNode memory = memoryMcpServer();
 		if (memory == null) {
 			return configured;
@@ -700,7 +701,7 @@ public class SessionService {
 	}
 
 	/** Text of the last assistant_message in a turn (there may be several around a tool call). */
-	private static String extractText(JsonNode content) {
+	static String extractText(JsonNode content) {
 		if (content == null || !content.isArray()) {
 			return "";
 		}
@@ -865,8 +866,8 @@ public class SessionService {
 	 * Merges a template's live-linked library assets (skipping ARCHIVED ones, which are reported
 	 * back via {@code warnings}) with any free-form sources already in the config's own key.
 	 */
-	private ArrayNode combineTemplateSources(JsonNode existing, List<TemplateRepository.TemplateAsset> templateAssets,
-											 String kind, String sourceType, List<String> warnings) {
+	ArrayNode combineTemplateSources(JsonNode existing, List<TemplateRepository.TemplateAsset> templateAssets,
+									  String kind, String sourceType, List<String> warnings) {
 		ArrayNode combined = mapper.createArrayNode();
 		if (existing != null && existing.isArray()) {
 			combined.addAll((ArrayNode) existing);
@@ -976,7 +977,8 @@ public class SessionService {
 		return config;
 	}
 
-	private String fillPlaceholders(String prompt, Map<String, String> values) {
+	// package-private static (not private): unit-tested directly — see docs/plan/phase-9-production-hardening.md T1
+	static String fillPlaceholders(String prompt, Map<String, String> values) {
 		if (prompt == null || values == null) {
 			return prompt;
 		}

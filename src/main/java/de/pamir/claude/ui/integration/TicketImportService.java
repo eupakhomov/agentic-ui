@@ -94,7 +94,9 @@ public class TicketImportService {
 		return parseTickets(raw);
 	}
 
-	private List<TicketSummary> parseTickets(String raw) {
+	// package-private (not private): unit-tested directly without mocking the system-session
+	// dependencies parse()/parseTickets() don't touch — see docs/plan/phase-9-production-hardening.md T1
+	List<TicketSummary> parseTickets(String raw) {
 		JsonNode node;
 		try {
 			node = mapper.readTree(stripFences(raw));
@@ -116,7 +118,7 @@ public class TicketImportService {
 		return tickets;
 	}
 
-	private TicketImportResult parse(String raw) {
+	TicketImportResult parse(String raw) {
 		String cleaned = stripFences(raw);
 		JsonNode node;
 		try {
@@ -145,7 +147,7 @@ public class TicketImportService {
 		return cleaned;
 	}
 
-	private static String sanitizeBranch(String s) {
+	static String sanitizeBranch(String s) {
 		String out = s.strip().replaceAll("[^A-Za-z0-9/_-]", "-").replaceAll("-{2,}", "-");
 		out = out.replaceAll("^[-/]+", "").replaceAll("[-/]+$", "");
 		return out.length() > 60 ? out.substring(0, 60) : out;
