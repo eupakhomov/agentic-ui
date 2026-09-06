@@ -88,7 +88,7 @@ Curated library on top of per-session skill sources (`de.pamir.claude.ui.library
 - **Sync** (`LibrarySyncService`): 60s tick, interval as `last_synced_at` cutoff
   (PrCheckPollingService shape). Changed hash → refresh copy + re-embed; vanished →
   ARCHIVED (files kept); reappeared → restored; unimported → `source_discovery`.
-  Frontend polls `GET /api/library/sources` for the 📚 badge + desktop notification
+  Frontend polls `GET /api/library/sources` for the library badge + desktop notification
   (the journal/WS pipeline is per-session, so a global event has no transport).
 - **API**: `/api/library/{scan,import,ai-fill,assets,search,sources}` — see
   `LibraryController`.
@@ -115,7 +115,7 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
 - **Reflection** (`ReflectionService`): one structured system-session turn per
   session close (async — a Spring `ReflectionRequested` event, not a direct
   `SessionService` dependency, avoids a circular bean; the manual "Reflect now"
-  🧠 button calls it synchronously from `SessionController` instead) or manual
+  widget button calls it synchronously from `SessionController` instead) or manual
   trigger. `TranscriptDigest.render()` (`de.pamir.claude.ui.journal` — provider-
   neutral, not memory-specific, so it also backs 5.9's transcript export via the
   sibling `renderMarkdown()`) renders the journal into a capped text digest;
@@ -126,7 +126,7 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   reflection-approval-required`, default true): a `memory_proposal` row
   (V10, `PENDING`/`APPROVED`/`DISCARDED`, partial unique index enforcing at most
   one `PENDING` row per session) and a `reflection_proposed` journal event
-  instead of a write. The 🧠 dialog's Pending tab approves (optionally editing
+  instead of a write. The memory dialog's Pending tab approves (optionally editing
   the episode text or any op — mirrors `permission_response`'s `updatedInput`)
   or discards; either way `ReflectionService.applyReflection()` — the same
   method the auto-apply path calls directly when the setting is off — is what
@@ -154,7 +154,7 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   an `extraSystemPrompt` parameter, combined with the session's own
   `instructions` into one `--append-system-prompt`).
 - **Human-facing**: `MemoryController` (`/api/memory/{search,docs,episodes}`) and
-  the 🧠 dashboard dialog (`MemoryDialog.tsx`) — hybrid search across scopes,
+  the topbar memory dialog (`MemoryDialog.tsx`) — hybrid search across scopes,
   browse/edit/archive docs (archive keeps the file, library-style), episode list.
 - **Retention**: `MemoryRetentionService` (hourly tick) deletes the raw
   `session_event` rows of a CLOSED session once its `reflected_seq` is set and

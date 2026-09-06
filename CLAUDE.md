@@ -214,6 +214,60 @@ reload. Fix: kill and restart the `npm run dev` process after editing frontend s
 while manually verifying in a browser — don't trust HMR here. (`mvn package`'s frontend
 build is unaffected; it always reads fresh from disk.)
 
+### Visual style (read before touching UI)
+
+IntelliJ-inspired: dense, monochrome, keyboard-first; dark palette is the default and
+light is a first-class peer. The rules below are already applied across the dashboard —
+follow them rather than inventing a new look for one component.
+
+**Icons — one vocabulary, `frontend/src/icons.ts`.** Every glyph is a `lucide-react`
+icon re-exported from that file under a *role* name (`Refresh`, `PullRequest`,
+`MemoryDoc`), not a shape name. Components import from `../icons`, never from
+`lucide-react` directly, and never add a new icon library.
+- Size/stroke/colour are set once by `<LucideProvider size={16} strokeWidth={1.5}>` in
+  `main.tsx` — don't pass `size`/`strokeWidth`/`color` per icon. Larger inline contexts
+  may override size locally, but the 1.5px stroke stays (lucide's default 2 reads heavy
+  against this UI's light type).
+- **No emoji, no Unicode symbol glyphs, no CSS-dot pseudo-icons in UI text.** Emoji drag
+  in their own palettes (a pink brain beside a grey glyph) and several legacy glyphs
+  (`🗖 🗗 🗕 ⑂ ⎇`) are simply absent on macOS — the deployment target — where they render
+  as tofu. Emoji are fine in prose/comments, never in the DOM.
+- One glyph = one meaning. Before adding an icon, check `icons.ts` for a collision and
+  pick a distinguishable pair (e.g. keyboard vs. Exposé, usage vs. library).
+
+**Colour = state, never decoration.** Icons are `currentColor`, so they inherit from the
+button/chip around them: `--muted` at rest → `--text` on hover → `--accent` when active.
+Saturated colour is reserved for meaning — `--green` ok/success, `--amber`
+attention/pending, `--red` error/danger, `--purple` plan mode / merged — and at most one
+saturated element per row at rest.
+- Never hardcode a hex in a component or a rule; use the tokens on `:root` in
+  `styles.css` (`--bg --panel --panel2 --border --text --muted --accent --on-accent`,
+  the four state colours, and the tinted backgrounds `--warn-bg --error-bg --perm-bg
+  --plan-bg --ask-bg --user-bubble`).
+- A new token must be added in **all three** blocks: `:root` (dark default),
+  `@media (prefers-color-scheme: light) :root:not([data-theme="dark"])`, and
+  `:root[data-theme="light"]`. Check both themes before calling it done.
+
+**Controls.** Reuse the base classes in `styles.css` instead of one-off styling:
+`button.icon-btn` (square, centred, icon-only), `button.with-icon` (icon + label),
+`button.with-badge` (badge/state dot rides the corner so every toolbar button keeps the
+same footprint — an inline badge would make its button wider than its neighbours),
+plus `.primary`, `.danger`, `.active`, and `.pulse` for a disabled-while-in-flight
+control. Chips are `.chip` (+ a state modifier like `.mode-plan`, `.pr-SUCCESS`).
+Every icon-only control carries a `title` describing the action, with its hotkey in
+parentheses when it has one: `title="Templates (t)"`.
+
+**Type & geometry.** Font sizes are always `calc(Npx * var(--font-scale))`, never a bare
+px — the Settings font-size control scales the whole UI through that variable. Scale:
+14 body, 13 controls/inputs, 12.5 code (JetBrains Mono), 11–11.5 chips and footers.
+Radius 6px for anything rectangular, 10px for pills/chips; 1px `--border` for every
+edge; 5–6px gaps inside a control, and long-running affordances animate via the shared
+`pulse`/`spin` keyframes rather than new ones.
+
+**Feedback.** Any action that can take more than ~1s must show it: disable + `.pulse` on
+the button that fired it, and journal/render the outcome so the result is visible after
+the fact — a silent request that resolves in 45s reads as a broken button.
+
 ## Limits & caps
 
 All operational limits are env-tunable (read at backend startup; the sidecar inherits
@@ -239,8 +293,8 @@ the backend's environment):
 `costBudgetUsd` (turns are refused once cumulative cost reaches it; in-flight turns
 finish; raise via the widget's cost chip), `maxTurns` (agentic turns per prompt),
 `thinking` budget and `effort` level, `reflectionEnabled` (opt-in end-of-session memory
-retrospective — see "Long-term memory" below; the widget's 🧠 button triggers one
-manually regardless of this flag).
+retrospective — see "Long-term memory" below; the widget's reflect (brain) button
+triggers one manually regardless of this flag).
 
 **Permission modes** (create dialog, or click the widget's mode chip to cycle at
 runtime): `default` (ask for edits & commands), `acceptEdits`, `plan`, and
@@ -285,7 +339,7 @@ effect on the next use with no backend restart.
   off; needs the Voyage key), `library.sync-enabled` (default on) and
   `library.sync-interval-minutes` (default 60, floor 5) for the background source
   sync (`LibrarySyncService`, ticks every 60s, interval as cutoff — PR-checks
-  pattern). The 📚 dashboard dialog scans a local folder or GitHub repo (via `gh`,
+  pattern). The topbar library dialog scans a local folder or GitHub repo (via `gh`,
   GitHub-only for now), imports skills/agents with metadata + tags (AI-fill via the
   Haiku system session), and synced sources auto-update/archive assets and surface
   new upstream files as badge + desktop notification.
@@ -302,10 +356,10 @@ effect on the next use with no backend restart.
   from that point on), and `memory.reflection-approval-required` (**default on**) —
   a reflection is held as a pending proposal for explicit approve/discard (editable
   first, like a permission prompt's "edit before allow") rather than written
-  immediately; turn off to restore straight auto-apply. The 🧠 dashboard dialog
+  immediately; turn off to restore straight auto-apply. The topbar memory dialog
   searches (hybrid dense+sparse) and browses/edits/archives memory across services,
   plus a "Pending" tab (topbar badge count) for approving/discarding proposals; the
-  widget's 🧠 button triggers an immediate reflection on that session.
+  widget's reflect button triggers an immediate reflection on that session.
 
 **Fixed internals** (code constants, for awareness): stream_delta journal batching
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100
