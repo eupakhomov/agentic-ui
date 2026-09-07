@@ -44,7 +44,7 @@ public class MemorySyncService {
 
 	@Scheduled(fixedDelay = 60_000)
 	void tick() {
-		Instant cutoff = Instant.now().minusSeconds(settings.memorySyncIntervalMinutes() * 60L);
+		Instant cutoff = Instant.now().minusSeconds(settings.current().memorySyncIntervalMinutes() * 60L);
 		if (lastRun.isAfter(cutoff)) {
 			return;
 		}
@@ -58,7 +58,7 @@ public class MemorySyncService {
 	}
 
 	void syncOnce() {
-		String root = settings.memoryRoot();
+		String root = settings.current().memoryRoot();
 		if (!Files.exists(Path.of(root))) {
 			return;
 		}

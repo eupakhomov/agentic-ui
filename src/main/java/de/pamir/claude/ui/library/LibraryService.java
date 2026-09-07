@@ -92,7 +92,7 @@ public class LibraryService {
 		String warning = null;
 		String hash = scanner.hash(sourcePath);
 		Path destRoot = Path.of("skill".equals(item.kind())
-				? settings.librarySkillsRoot() : settings.libraryAgentsRoot());
+				? settings.current().librarySkillsRoot() : settings.current().libraryAgentsRoot());
 		Path dest = destRoot.resolve(destName(root, sourcePath, item));
 		if (Files.exists(dest)) {
 			if (hash.equals(scanner.hash(dest))) {
@@ -211,7 +211,7 @@ public class LibraryService {
 
 	/** Best-effort; returns a warning message on failure, null on success or when disabled. */
 	public String maybeEmbed(UUID assetId, String name, String description, Path location) {
-		if (!settings.libraryVectorize() || !embeddings.configured()) {
+		if (!settings.current().libraryVectorize() || !embeddings.configured()) {
 			return null;
 		}
 		try {

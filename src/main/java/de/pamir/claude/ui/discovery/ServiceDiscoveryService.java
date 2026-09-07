@@ -92,7 +92,7 @@ public class ServiceDiscoveryService {
 	}
 
 	private void discover(String repoPath, UUID sessionId, boolean force) {
-		if (!settings.serviceDiscoveryEnabled()) {
+		if (!settings.current().serviceDiscoveryEnabled()) {
 			return;
 		}
 		Path path = Path.of(repoPath);
@@ -105,7 +105,7 @@ public class ServiceDiscoveryService {
 		try {
 			var existing = profiles.findByRepoPath(repoPath);
 			if (!force && existing.isPresent() && existing.get().discoveredAt()
-					.isAfter(Instant.now().minus(settings.serviceDiscoveryStalenessDays(), ChronoUnit.DAYS))) {
+					.isAfter(Instant.now().minus(settings.current().serviceDiscoveryStalenessDays(), ChronoUnit.DAYS))) {
 				return;
 			}
 			String sha = currentCommitSha(path);
@@ -130,7 +130,7 @@ public class ServiceDiscoveryService {
 		String prompt = buildPrompt(name, digest);
 		JsonNode result;
 		try {
-			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.serviceDiscoveryModel()).orElse(null);
+			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.current().serviceDiscoveryModel()).orElse(null);
 			result = systemTurnClient.json(prompt, modelOverride, SystemTurnLane.BACKGROUND, TIMEOUT);
 		} catch (RuntimeException e) {
 			log.warn("service discovery failed for {}: {}", repoPath, e.getMessage());

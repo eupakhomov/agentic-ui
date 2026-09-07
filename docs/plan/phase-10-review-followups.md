@@ -1,7 +1,6 @@
 # Phase 10 — Post-review follow-ups
 
-Status: **R1–R8b done (2026-09-07)**, R8c/M1 not yet picked (R8c deliberately deferred —
-see §10.4). Same shape as Phase 9: a curated
+Status: **R1–R8c done (2026-09-07)**, M1 not yet picked. Same shape as Phase 9: a curated
 backlog from a fresh full-system read-through after Phase 9 Run F landed, not one feature
 plan. Each item is self-contained with enough context to be picked up as its own run.
 Security remains out of scope (LAN/single-user posture, decision 2026-08-23).
@@ -257,13 +256,163 @@ those files, not as a run of its own.
   rest.ts:36,58` logs every request/response; `useTicketImport` has timing logs. Gate
   behind `import.meta.env.DEV` (Vite inlines it, so `vite build` drops the calls) — keeps
   the diagnostics for `npm run dev`, silences the built jar.
-- **R8c — `SettingsService` is a 25-pair flat getter/setter bag mirrored in
-  `SettingsController`.** Every new setting is four edits (constant, getter, setter,
-  controller view + patch). Works, but a typed `Settings` record (`SettingsService.
-  current()` / `apply(Settings patch)`) with a single key→field table would halve it and
-  make the frontend's `Settings` type derivable from one place. This is the largest item
-  in the nits bucket and the only one with design room — do it last, and only if
-  another setting is about to be added anyway; on its own it's churn.
+- **R8c — DONE (2026-09-07).** Implemented exactly as sketched below: new `config/
+  Settings` (22-field record) and `config/SettingsPatch` (boxed-nullable mirror, plus
+  `codexPricing`, with a test-only `Builder`); `SettingsRepository.all()` (one `SELECT
+  key, value FROM app_setting`, no `WHERE`); `SettingsService` now holds a private
+  `Field<T>`-per-component table driving `current()` (cached, invalidated by `apply`) and
+  `apply(SettingsPatch)` — its public surface is `current()`/`apply()`/`systemProvider()`/
+  `pricingFor()`/`setPricingFor()`, no individual getters/setters left. `SettingsController.
+  SettingsView` became `record SettingsView(@JsonUnwrapped Settings settings, boolean
+  linearApiKeyConfigured, boolean voyageConfigured, String codexPricing)` —
+  `@JsonUnwrapped` on a record accessor **is** honored by this project's Jackson
+  (`tools.jackson.databind` 3.1.x; the annotation itself still comes from
+  `com.fasterxml.jackson.annotation`, unrebranded), confirmed live via `curl
+  localhost:8080/api/settings` before and after a `PATCH` — flat JSON, identical key set,
+  no fallback needed. All ~15 external files (~35 call sites) migrated to
+  `settings.current().xxx()`, per the recorded call-site-scope decision; two-plus-call
+  methods (`SessionConfigFactory.prepare`, `MemoryDocService.write`) hoisted a local
+  `Settings`/`memoryRoot` variable instead of calling `current()` repeatedly.
+  `SettingsServiceTest` rewritten around `SettingsPatch.Builder` +
+  `apply()`, plus two new tests (`applyIsANoOpForNullPatchFields`,
+  `currentCachesUntilApply`); `SessionConfigFactoryTest`/`SessionStateMachineTest`'s
+  hand-written `SettingsService` subclasses switched from overriding individual getters
+  to overriding `current()` with a fixed `Settings` snapshot. `./mvnw test` (full, DB up,
+  all tests incl. `integration`) green; DoD greps (no setters beyond `setPricingFor`, no
+  stray `settings.xxx()` outside the five sanctioned entry points) both clean. No frontend
+  changes needed — the wire JSON shape is unchanged.
+
+  **R8c (original sketch, kept for context).** `SettingsService` is a 25-pair flat
+  getter/setter bag mirrored in `SettingsController`. Every new setting is four edits
+  (constant, getter, setter, controller view + patch). Works, but a typed `Settings`
+  record (`SettingsService.current()` / `apply(Settings patch)`) with a single
+  key→field table would halve it and make the frontend's `Settings` type derivable from
+  one place. This is the largest item in the nits bucket and the only one with design
+  room — do it last, and only if another setting is about to be added anyway; on its own
+  it's churn. No new setting is riding along with this run (confirmed 2026-09-07) — it's
+  pure backlog paydown, so the proof that the new shape actually halves the edit count is
+  textual (the DoD below), not a real added field.
+
+  **Decisions recorded (2026-09-07).**
+  1. *Call-site scope* — migrate all ~15 external callers (`ServiceDiscoveryMcpTools`,
+     `ServiceDiscoveryService`, `TicketImportService`, `LibraryService`,
+     `LibrarySyncService`, `RepoCacheService`, `MemoryDocService`,
+     `MemoryRetentionService`, `MemorySyncService`, `ReflectionService`,
+     `AssetProvisioningService`, `AutoTitleService`, `PrCheckPollingService`,
+     `SessionConfigFactory`, `SessionService`, `SystemSessionService`, `MetaController`,
+     `ServiceDiscoveryController` — ~35 call sites total from a `grep -rn "settings\."`
+     across `src/main/java`) to `settings.current().xxx()` rather than keeping thin
+     per-field delegate getters. `SettingsService`'s public surface shrinks to
+     `current()` / `apply(SettingsPatch)` / `systemProvider()` (resolved-with-fallback,
+     stays bespoke) / `pricingFor(provider)` / `setPricingFor(provider, json)` — no
+     dead getter/setter methods left as an alternate path to the same data. Same risk
+     class as R8a's ~24-file FQN sweep: mechanical, one line per site.
+  2. *Caching* — add an invalidate-on-write cache: a `private volatile Settings cache`
+     field, built by `current()` on first read after a `null`, cleared unconditionally at
+     the end of `apply()`. Turns N settings reads between writes (e.g.
+     `SessionConfigFactory.prepare`'s 4–6 calls per session creation) into one query
+     total instead of N — same spirit as R7's aggregate-query fix earlier in this phase,
+     just for reads instead of a list endpoint. Single-user/LAN posture means no real
+     staleness risk from the cache window.
+
+  **Sketch.**
+  - New `config/Settings.java` — one record, 22 components, one per current getter
+    *except* `pricingFor` (stays per-provider-keyed, out of the record — R1 already
+    established provider-keyed pricing as a special case) and *except* the resolved form
+    of `systemProvider()` (the record's `systemProvider` component holds the **raw**
+    override, exactly what `systemProviderOverride()` returns today — needed so the API
+    can round-trip "blank = follow default provider" without losing information).
+  - New `config/SettingsPatch.java` — the same 22 components, boxed/nullable, plus
+    `codexPricing` (stays a flat field in the patch/view per R1's decision to leave the
+    *UI* un-generalized). This is today's `SettingsController.SettingsUpdate` moved out
+    of the controller into `config` so `SettingsService.apply` can depend on it without a
+    controller→service reverse dependency. Add a small nested `Builder` (one fluent
+    setter per field, e.g. `SettingsPatch.builder().memoryReflectionModel("standard").
+    build()`) purely for test ergonomics — production code (the controller) binds the
+    record straight from the PATCH body via Jackson and never touches the builder.
+  - `SettingsRepository` gains `Map<String, String> all()` — one
+    `SELECT key, value FROM app_setting` (the table has ~25 rows total, no `WHERE`
+    needed) replacing the ~22 individual `SELECT ... WHERE key = ?` calls `current()`
+    would otherwise issue.
+  - `SettingsService`:
+    - A private `List<Field<?>> FIELDS` table, one entry per component: `key`,
+      `defaultValue`, `parse` (`String -> T`), `serialize` (`T -> String`), `normalize`
+      (`UnaryOperator<T>` — the interval-floor clamps and `normalizeTier`), and
+      `fromPatch` (`SettingsPatch -> T`, boxed). Three tiny generic helpers (`boolField`,
+      `intField`, `strField`) build most entries in one line each; the handful with real
+      clamps (`prCheckPollIntervalSeconds`, `librarySyncIntervalMinutes`,
+      `memorySyncIntervalMinutes`, `memoryRetentionDays`,
+      `serviceDiscoveryStalenessDays`) and the two tier fields (`memoryReflectionModel`,
+      `serviceDiscoveryModel`, reusing today's `normalizeTier`) pass an explicit
+      `normalize`.
+    - `public Settings current()` — returns the cache if non-null; else calls
+      `repo.all()` once, resolves each of the 22 fields from that map (the three
+      fallbacks needing `props` — `librarySkillsRoot`/`libraryAgentsRoot`/`memoryRoot` —
+      are folded in here directly, since `SettingsService` already holds `props`), builds
+      `new Settings(...)`, caches it, returns it.
+    - `public void apply(SettingsPatch patch)` — loops `FIELDS`; for each whose
+      `fromPatch(patch)` is non-null, `repo.set(key, serialize(normalize(value)))`;
+      separately, `if (patch.codexPricing() != null) setPricingFor("codex",
+      patch.codexPricing())`; clears the cache once at the end regardless of how many
+      fields changed.
+    - `public String systemProvider()` stays bespoke, now one line off a local var:
+      `Settings s = current(); return s.systemProvider().isBlank() ? s.defaultProvider()
+      : s.systemProvider();`.
+    - `pricingFor`/`setPricingFor` unchanged (already provider-keyed, not part of the
+      table). `normalizeTier` unchanged, now referenced from two `Field` entries instead
+      of two setter bodies.
+  - `SettingsController`:
+    - `SettingsUpdate` deleted (moved to `config.SettingsPatch`); `update()` becomes
+      `settings.apply(patch); return view();` — no more 22-line if-cascade.
+    - `SettingsView` becomes `record SettingsView(@JsonUnwrapped Settings settings,
+      boolean linearApiKeyConfigured, boolean voyageConfigured, String codexPricing)`;
+      `view()` becomes `new SettingsView(settings.current(), apiKeyConfigured,
+      voyageConfigured, settings.pricingFor("codex"))`. **Verify early** (a one-off unit
+      test serializing `SettingsView` and asserting the JSON has no `"settings": {...}`
+      nesting) that this project's Jackson (`tools.jackson.databind`, the Jackson 3
+      rebrand) honors `@JsonUnwrapped` on a record accessor the same way it does on a
+      classic getter. Fallback if it doesn't: hand-flatten via
+      `mapper.convertValue(settings.current(), Map.class)` merged with the two "…
+      Configured" booleans + `codexPricing` into a `LinkedHashMap<String, Object>` —
+      loses the typed return on the controller method but keeps the JSON contract
+      identical either way.
+  - **External call sites** (mechanical, one line each, per decision 1 above):
+    `settings.memoryEnabled()` → `settings.current().memoryEnabled()`, etc. A few
+    methods call the settings object 2+ times (e.g. `SessionConfigFactory.prepare` calls
+    `settings.memoryEnabled()` at three separate lines) — fine to call `current()`
+    repeatedly given the cache, but cleaner to hoist one local
+    `Settings settings = this.settings.current();` at the top of such methods; worth
+    doing opportunistically while touching each file, not a hard rule for this run.
+  - `SettingsServiceTest` — the 8 existing tests call `setMemoryReflectionModel`/
+    `setDefaultProvider`/`setSystemProvider` directly; rewrite each to build a
+    `SettingsPatch` via the test-only `Builder` and call `apply()`, then assert on
+    `current()` (or the bespoke `systemProvider()` for the two fallback tests). The fake
+    repo (currently only overrides `get`/`set`) needs an `all()` override reading from
+    the same backing map. New tests: `applyIsANoOpForNullPatchFields` (an all-null patch
+    leaves the fake repo untouched) and `currentCachesUntilApply` (two `current()` calls
+    between writes return the *same* `Settings` instance — reference equality is enough
+    proof the cache short-circuited the second `repo.all()` call).
+
+  **DoD.** No individual setter methods remain on `SettingsService` (only `current()`,
+  `apply()`, `systemProvider()`, `pricingFor()`/`setPricingFor()`); `SettingsController`
+  has no field-by-field if-cascade (`update()` is `settings.apply(patch); return
+  view();` plus the one `codexPricing` special case already inside `apply`); a
+  `grep -rn "settings\.[a-z]" src/main/java --include=*.java` outside
+  `config/SettingsService.java`/`config/Settings.java`/`config/SettingsPatch.java`/
+  `config/SettingsRepository.java` matches only `settings.current()`, `settings.apply(`,
+  `settings.systemProvider()`, `settings.pricingFor(`, and `settings.setPricingFor(` —
+  proving no stray direct accessor survives outside those five sanctioned entry points.
+  `GET`/`PATCH /api/settings` produce byte-identical JSON shape to before (same top-level
+  keys) — a controller test patches one field of each type (String/boolean/int) and
+  asserts every other field round-trips unchanged. `./mvnw test` (full, DB up) green;
+  `npm test`/`npm run build` in `frontend` unaffected (the `Settings` TS interface needs
+  no change, since the wire shape is unchanged).
+
+  **Manual test.** Open the Settings dialog, change one value in each tab (Sessions,
+  Linear integration, Skill library, Memory, PR checks, Service discovery), close and
+  reopen the dialog → every value round-trips correctly, same as before.
+  `curl -s localhost:8080/api/settings | jq` → flat JSON, identical key set to today's
+  response.
 
 ## 10.5 Monorepo support (ecosystem folder == service repo)
 
@@ -416,7 +565,8 @@ those files, not as a run of its own.
 2. **Run B (bounded state + list query) — DONE 2026-09-07.** R4 done above; R7 (the
    list-query optimization) done as its own run (see the R7 bullet in §10.3).
 3. **Run C (nits) — DONE 2026-09-07.** R8a + R8b done together; R8c stayed out (no new
-   setting was on the table). See the R8a/R8b summary at the top of §10.4.
+   setting was on the table). See the R8a/R8b summary at the top of §10.4; R8c is now
+   Run F below.
 4. **Run D (provider seam) — DONE 2026-09-07.** R1, on its own, decision (a) recorded in
    `docs/plan/README.md`'s decision log first. Touched both sidecars' build (a new
    `capabilities.json` per package) and a documented contract (`Capabilities` gains three
@@ -430,6 +580,9 @@ those files, not as a run of its own.
    internal order: `ServiceDetector` + tests → V14 + entity/repo → `SessionConfigFactory`/
    `SessionService` cwd → sidecar flags → memory/discovery/orchestration scoping →
    frontend → docs.
+6. **Run F (settings refactor) — DONE 2026-09-07.** R8c, per the sketch and recorded
+   decisions in §10.4: full call-site migration to `settings.current()`, plus an
+   invalidate-on-write cache. See the R8c summary at the top of §10.4.
 
 Items not picked stay valid backlog.
 
@@ -466,6 +619,14 @@ Items not picked stay valid backlog.
   `npm run build` output contains no `console.debug` string (nor the four gated
   `console.log` lines in `useTicketImport.ts`); `npm run dev` still logs API calls
   (`import.meta.env.DEV` is true under Vite dev).
+- **R8c — done.** No individual setters remain on `SettingsService` (only `setPricingFor`,
+  which is provider-keyed and out of the generic table); `SettingsController.update()` is
+  a single `settings.apply(patch)` call; `grep -rn "settings\.[a-z]" src/main/java
+  --include=*.java` outside `config/Settings*.java`/`config/SettingsRepository.java`
+  matches only `settings.current()`/`settings.apply(`/`settings.systemProvider()`/
+  `settings.pricingFor(`/`settings.setPricingFor(`; `GET`/`PATCH /api/settings` JSON
+  shape is byte-identical to before (verified live via `curl`); `./mvnw test` (full, DB
+  up, all tests incl. `integration`) is green; no frontend changes were needed.
 - **M1**: with `ecosystem.root` pointed at a monorepo, `GET /api/repo/services` lists
   each workspace package (name = its relative path, `repoPath` = the monorepo root,
   `monorepo: true`); creating a session on `packages/foo` yields a worktree of the monorepo
@@ -509,7 +670,10 @@ Items not picked stay valid backlog.
    still spawns with the same CLI args (compare `logs/claude-ui.log`'s "sidecar pid …
    spawned (…)" line before/after). Codex turn costs still show estimated USD in the
    usage dashboard.
-7. **M1** — set up a throwaway monorepo (`git init mono && cd mono && npm init -y &&
+7. **R8c** — open the Settings dialog, change one value in each tab, close and reopen →
+   every value round-trips correctly. `curl -s localhost:8080/api/settings | jq` → flat
+   JSON, same key set as before the refactor.
+8. **M1** — set up a throwaway monorepo (`git init mono && cd mono && npm init -y &&
    npm pkg set 'workspaces[]=packages/*' && mkdir -p packages/foo packages/bar && (cd
    packages/foo && npm init -y) && (cd packages/bar && npm init -y) && git add -A && git
    commit -m init`) and point Settings → Sessions → ecosystem root at it. Open New

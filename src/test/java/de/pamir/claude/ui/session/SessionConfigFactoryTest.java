@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.session;
 
 import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -29,39 +30,17 @@ class SessionConfigFactoryTest {
 
 	private static SettingsService fakeSettings(boolean linearOAuth, boolean memoryEnabled,
 												 boolean serviceDiscoveryEnabled) {
+		// prepare() evaluates several of these eagerly as fallback-argument expressions even when
+		// the config already supplies its own value — never actually used in that case, but Java
+		// evaluates method arguments before the callee can short-circuit, so current() must not
+		// touch the (null in these tests) SettingsRepository regardless — overriding current() to
+		// return a fixed snapshot sidesteps that entirely.
+		Settings fixed = new Settings(linearOAuth, "", "", true, 180, "", "", false, true, 60, "claude", "", "",
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap");
 		return new SettingsService(null, null, null) {
 			@Override
-			public boolean linearOAuthEnabled() {
-				return linearOAuth;
-			}
-
-			@Override
-			public boolean memoryEnabled() {
-				return memoryEnabled;
-			}
-
-			@Override
-			public boolean serviceDiscoveryEnabled() {
-				return serviceDiscoveryEnabled;
-			}
-
-			@Override
-			public String defaultProvider() {
-				// prepare() evaluates these eagerly as fallback-argument expressions even when
-				// the config already supplies its own value — never actually used in that case,
-				// but Java evaluates method arguments before the callee can short-circuit, so
-				// they must not touch the (null in these tests) SettingsRepository regardless.
-				return "claude";
-			}
-
-			@Override
-			public String ecosystemRoot() {
-				return "";
-			}
-
-			@Override
-			public boolean memoryReflectionDefault() {
-				return false;
+			public Settings current() {
+				return fixed;
 			}
 		};
 	}

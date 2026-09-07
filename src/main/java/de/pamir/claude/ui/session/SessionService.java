@@ -277,7 +277,7 @@ public class SessionService {
 			if (session.reflectionEnabled()) {
 				events.publishEvent(new ReflectionRequested(id));
 			}
-			if (settings.serviceDiscoveryEnabled()) {
+			if (settings.current().serviceDiscoveryEnabled()) {
 				events.publishEvent(new ServiceDiscoveryRequested(id, session.repoPath()));
 			}
 		}

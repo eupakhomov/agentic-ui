@@ -34,7 +34,7 @@ public class MemoryRetentionService {
 
 	@Scheduled(fixedDelay = 3_600_000)
 	void tick() {
-		int days = settings.memoryRetentionDays();
+		int days = settings.current().memoryRetentionDays();
 		if (days <= 0) {
 			return;
 		}

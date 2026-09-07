@@ -50,7 +50,7 @@ public class RepoCacheService {
 		if (ref == null || ref.startsWith("-") || !SAFE_REF.matcher(ref).matches()) {
 			throw new IllegalArgumentException("invalid repo ref (expected a GitHub URL or owner/repo): " + ref);
 		}
-		Path cacheRoot = Path.of(settings.librarySkillsRoot(), ".repo-cache");
+		Path cacheRoot = Path.of(settings.current().librarySkillsRoot(), ".repo-cache");
 		Path target = cacheRoot.resolve(slug(ref));
 		try {
 			Files.createDirectories(cacheRoot);

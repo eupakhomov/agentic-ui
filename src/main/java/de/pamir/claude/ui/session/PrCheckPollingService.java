@@ -41,10 +41,10 @@ public class PrCheckPollingService {
 
 	@Scheduled(fixedDelay = 30_000)
 	void pollPrChecks() {
-		if (!settings.prChecksEnabled()) {
+		if (!settings.current().prChecksEnabled()) {
 			return;
 		}
-		Instant cutoff = Instant.now().minusSeconds(settings.prCheckPollIntervalSeconds());
+		Instant cutoff = Instant.now().minusSeconds(settings.current().prCheckPollIntervalSeconds());
 		for (SessionEntity session : sessions.findAwaitingPrCheck(cutoff)) {
 			try {
 				checkOne(session);

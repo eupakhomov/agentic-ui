@@ -105,7 +105,7 @@ public class ServiceDiscoveryMcpTools {
 	}
 
 	private void requireEnabled() {
-		if (!settings.serviceDiscoveryEnabled()) {
+		if (!settings.current().serviceDiscoveryEnabled()) {
 			throw new IllegalStateException("service discovery is disabled");
 		}
 	}

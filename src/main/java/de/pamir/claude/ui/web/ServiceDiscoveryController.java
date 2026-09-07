@@ -51,10 +51,10 @@ public class ServiceDiscoveryController {
 	/** Every ecosystem service, left-joined against its discovery profile — never-discovered ones show up too. */
 	@GetMapping("/services")
 	public List<ServiceView> services() {
-		String ecosystemRoot = settings.ecosystemRoot();
+		String ecosystemRoot = settings.current().ecosystemRoot();
 		List<GitWorktreeService.RepoInfo> repos =
 				ecosystemRoot.isBlank() ? List.of() : worktrees.findRepos(Path.of(ecosystemRoot));
-		Instant staleBefore = Instant.now().minus(settings.serviceDiscoveryStalenessDays(), ChronoUnit.DAYS);
+		Instant staleBefore = Instant.now().minus(settings.current().serviceDiscoveryStalenessDays(), ChronoUnit.DAYS);
 		return repos.stream().map(r -> {
 			var profile = profiles.findByRepoPath(r.path());
 			if (profile.isEmpty()) {

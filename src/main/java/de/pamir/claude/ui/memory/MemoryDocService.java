@@ -54,8 +54,9 @@ public class MemoryDocService {
 											 List<String> tags, String content) {
 		validateScope(scope, servicePath);
 		String slug = validateName(name);
-		Path dir = "ecosystem".equals(scope) ? paths.ecosystemDir(settings.memoryRoot())
-				: paths.serviceDir(settings.memoryRoot(), servicePath);
+		String memoryRoot = settings.current().memoryRoot();
+		Path dir = "ecosystem".equals(scope) ? paths.ecosystemDir(memoryRoot)
+				: paths.serviceDir(memoryRoot, servicePath);
 		Path file = dir.resolve(slug + ".md");
 		String today = LocalDate.now(ZoneOffset.UTC).toString();
 		String rendered = Frontmatter.render(slug, description, tags, scope, "service".equals(scope) ? servicePath : null,
@@ -66,7 +67,7 @@ public class MemoryDocService {
 		} catch (IOException e) {
 			throw new UncheckedIOException("failed to write memory doc " + file, e);
 		}
-		String relPath = paths.relPath(settings.memoryRoot(), file);
+		String relPath = paths.relPath(memoryRoot, file);
 		String hash = sha256(rendered);
 		return index(scope, servicePath, relPath, slug, description, tags, content, hash);
 	}
@@ -94,7 +95,7 @@ public class MemoryDocService {
 			throw new UncheckedIOException("failed to read memory doc " + file, e);
 		}
 		String hash = sha256(raw);
-		String relPath = paths.relPath(settings.memoryRoot(), file);
+		String relPath = paths.relPath(settings.current().memoryRoot(), file);
 		var existing = docs.findByRelPath(relPath);
 		if (existing.isPresent() && existing.get().contentHash().equals(hash)) {
 			return; // unchanged since last index

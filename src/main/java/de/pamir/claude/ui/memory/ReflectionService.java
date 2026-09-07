@@ -95,7 +95,7 @@ public class ReflectionService {
 		}
 		// fail fast before spending a system turn — checked again atomically by the unique
 		// index at proposal-insert time, but that would only surface after the expensive part
-		if (settings.memoryReflectionApprovalRequired() && proposals.findPendingForSession(sessionId).isPresent()) {
+		if (settings.current().memoryReflectionApprovalRequired() && proposals.findPendingForSession(sessionId).isPresent()) {
 			throw new IllegalStateException("a reflection proposal is already pending approval for this session");
 		}
 		if (!inFlight.tryAcquire(sessionId)) {
@@ -135,7 +135,7 @@ public class ReflectionService {
 		String prompt = buildPrompt(session, digest, index);
 		JsonNode result;
 		try {
-			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.memoryReflectionModel()).orElse(null);
+			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.current().memoryReflectionModel()).orElse(null);
 			result = systemTurnClient.json(prompt, modelOverride, SystemTurnLane.BACKGROUND, TIMEOUT);
 		} catch (RuntimeException e) {
 			warn(session.id(), "reflection failed: " + e.getMessage());
@@ -150,7 +150,7 @@ public class ReflectionService {
 		if (!ops.isArray()) {
 			ops = mapper.createArrayNode();
 		}
-		if (settings.memoryReflectionApprovalRequired()) {
+		if (settings.current().memoryReflectionApprovalRequired()) {
 			var proposal = proposals.insert(session.id(), session.name(), session.repoPath(), lastSeq,
 					episodeSummary, ops);
 			ObjectNode payload = mapper.createObjectNode();

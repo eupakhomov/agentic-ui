@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.session;
 
 import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.discovery.ServiceDiscoveryRequested;
 import de.pamir.claude.ui.journal.JournalPublisher;
@@ -63,15 +64,12 @@ class SessionStateMachineTest {
 	}
 
 	private static SettingsService fakeSettings(boolean memoryEnabled, boolean serviceDiscoveryEnabled) {
+		Settings fixed = new Settings(false, "", "", true, 180, "", "", false, true, 60, "claude", "", "",
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap");
 		return new SettingsService(null, null, null) {
 			@Override
-			public boolean memoryEnabled() {
-				return memoryEnabled;
-			}
-
-			@Override
-			public boolean serviceDiscoveryEnabled() {
-				return serviceDiscoveryEnabled;
+			public Settings current() {
+				return fixed;
 			}
 		};
 	}

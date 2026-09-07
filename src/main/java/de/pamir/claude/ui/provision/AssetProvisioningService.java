@@ -128,7 +128,7 @@ public class AssetProvisioningService {
 	}
 
 	private Path cloneOrUpdate(String url, boolean isSkill) {
-		Path cacheRoot = Path.of(settings.librarySkillsRoot(), ".repo-cache");
+		Path cacheRoot = Path.of(settings.current().librarySkillsRoot(), ".repo-cache");
 		String slug = HexFormat.of().toHexDigits(url.hashCode());
 		Path target = cacheRoot.resolve(slug);
 		try {

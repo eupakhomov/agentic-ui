@@ -44,10 +44,10 @@ public class LibrarySyncService {
 
 	@Scheduled(fixedDelay = 60_000)
 	void syncTick() {
-		if (!settings.librarySyncEnabled()) {
+		if (!settings.current().librarySyncEnabled()) {
 			return;
 		}
-		Instant cutoff = Instant.now().minusSeconds(settings.librarySyncIntervalMinutes() * 60L);
+		Instant cutoff = Instant.now().minusSeconds(settings.current().librarySyncIntervalMinutes() * 60L);
 		for (var source : sources.findSyncDue(cutoff)) {
 			syncOne(source.id());
 		}

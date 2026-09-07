@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.session;
 
 import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.memory.MemoryEpisodeRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,6 +60,7 @@ public class SessionConfigFactory {
 
 	/** Builds a fresh 'user' session entity (state CREATING) from the given options; does not persist it. */
 	public Prepared prepare(UUID id, Path worktree, SessionService.CreateOptions options) {
+		Settings s = settings.current();
 		String repo = options.repoPath() == null || options.repoPath().isBlank() ? props.repoPath() : options.repoPath();
 		if (!Files.exists(Path.of(repo).resolve(".git"))) {
 			throw new IllegalArgumentException("not a git repository: " + repo);
@@ -76,7 +78,7 @@ public class SessionConfigFactory {
 						"agent", "file", warnings));
 			}
 		}
-		String provider = text(config, "provider", settings.defaultProvider());
+		String provider = text(config, "provider", s.defaultProvider());
 		String permissionMode = text(config, "permissionMode", "default");
 		JsonNode explicitMcpConfig = config.get("mcpConfig");
 		List<String> allowedTools = stringList(config, "allowedTools");
@@ -85,7 +87,7 @@ public class SessionConfigFactory {
 		Integer maxTurns = config.hasNonNull("maxTurns") ? config.get("maxTurns").asInt() : null;
 		String fallbackModel = nullableText(config, "fallbackModel");
 		String ecosystemPath = config.has("ecosystemPath") ? nullableText(config, "ecosystemPath")
-				: nullableIfBlank(settings.ecosystemRoot());
+				: nullableIfBlank(s.ecosystemRoot());
 		List<String> contextDirs = stringList(config, "contextDirs");
 		ProviderCapabilities caps = catalog.get(provider);
 		// Unsupported controls are rejected at creation time, not silently downgraded (DoD from
@@ -116,7 +118,7 @@ public class SessionConfigFactory {
 			throw new IllegalArgumentException("provider '" + provider + "' does not support agentSources");
 		}
 		if (!caps.contextDirs()) {
-			// Ecosystem/context dirs commonly come from a global default (settings.ecosystemRoot()),
+			// Ecosystem/context dirs commonly come from a global default (settings.current().ecosystemRoot()),
 			// not explicit per-session intent, so this degrades with a visible warning rather than
 			// rejecting creation outright.
 			if (ecosystemPath != null || !contextDirs.isEmpty()) {
@@ -134,13 +136,13 @@ public class SessionConfigFactory {
 			// the blanket "mcp__memory" server-level grant) since 7.4's orchestration tools —
 			// and now 8's service-discovery tools — live on the same MCP server and must NOT be
 			// pre-approved by a blanket grant.
-			if (settings.memoryEnabled()) {
+			if (s.memoryEnabled()) {
 				allowedTools = new ArrayList<>(allowedTools);
 				allowedTools.add("mcp__memory__memory_tags");
 				allowedTools.add("mcp__memory__memory_search");
 				allowedTools.add("mcp__memory__memory_read");
 			}
-			if (settings.serviceDiscoveryEnabled()) {
+			if (s.serviceDiscoveryEnabled()) {
 				// docs/plan/phase-8-service-discovery.md decision 7 — pre-approved independently
 				// of memory.enabled, since the two features are toggled separately
 				allowedTools = new ArrayList<>(allowedTools);
@@ -166,7 +168,7 @@ public class SessionConfigFactory {
 				.kickoffPrompt(fillPlaceholders(nullableText(config, "kickoffPrompt"), options.kickoffValues()))
 				.state(SessionState.CREATING).kind("user").ticketRef(nullableText(config, "ticketRef"))
 				.continuedFromId(options.continuedFromId()).parentSessionId(options.parentSessionId())
-				.reflectionEnabled(config.path("reflectionEnabled").asBoolean(settings.memoryReflectionDefault()))
+				.reflectionEnabled(config.path("reflectionEnabled").asBoolean(s.memoryReflectionDefault()))
 				.build();
 		return new Prepared(entity, warnings);
 	}
@@ -211,7 +213,7 @@ public class SessionConfigFactory {
 	/** The Linear MCP server block ({"linear": {...}}), or null if Linear integration isn't configured. */
 	ObjectNode linearMcpServer() {
 		boolean apiKey = props.linearApiKey() != null && !props.linearApiKey().isBlank();
-		if (!apiKey && !settings.linearOAuthEnabled()) {
+		if (!apiKey && !settings.current().linearOAuthEnabled()) {
 			return null;
 		}
 		ObjectNode servers = mapper.createObjectNode();
@@ -249,7 +251,7 @@ public class SessionConfigFactory {
 	 * token (decision 11).
 	 */
 	private ObjectNode memoryMcpServer() {
-		if (!settings.memoryEnabled() && !settings.serviceDiscoveryEnabled()) {
+		if (!settings.current().memoryEnabled() && !settings.current().serviceDiscoveryEnabled()) {
 			return null;
 		}
 		ObjectNode servers = mapper.createObjectNode();
@@ -296,7 +298,7 @@ public class SessionConfigFactory {
 	 * when memory is disabled or this isn't a real-repo user session (system sessions skip it).
 	 */
 	private String memorySystemPromptBlock(SessionEntity session) {
-		if (!settings.memoryEnabled() || !"user".equals(session.kind())) {
+		if (!settings.current().memoryEnabled() || !"user".equals(session.kind())) {
 			return null;
 		}
 		StringBuilder sb = new StringBuilder();
@@ -314,13 +316,13 @@ public class SessionConfigFactory {
 
 	/**
 	 * 7.4's orchestration-tools announcement — same MCP server as memory (decision 12a), so it's
-	 * gated on the same {@code settings.memoryEnabled()}. A child session gets the report_result
+	 * gated on the same {@code settings.current().memoryEnabled()}. A child session gets the report_result
 	 * reminder instead of the spawn tools (it can't spawn — depth 1, enforced in the tool body
 	 * too); a plain session with no ecosystem configured gets nothing, since list_services would
 	 * just error for it.
 	 */
 	private String orchestrationSystemPromptBlock(SessionEntity session) {
-		if (!settings.memoryEnabled() || !"user".equals(session.kind())) {
+		if (!settings.current().memoryEnabled() || !"user".equals(session.kind())) {
 			return null;
 		}
 		if (session.parentSessionId() != null) {

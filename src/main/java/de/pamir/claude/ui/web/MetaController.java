@@ -37,7 +37,7 @@ public class MetaController {
 	@GetMapping("/repo/services")
 	public ServicesResponse services() {
 		List<ServiceInfo> services = new ArrayList<>();
-		String ecosystemRoot = settings.ecosystemRoot();
+		String ecosystemRoot = settings.current().ecosystemRoot();
 		if (!ecosystemRoot.isBlank()) {
 			worktrees.findRepos(Path.of(ecosystemRoot))
 					.forEach(r -> services.add(new ServiceInfo(r.name(), r.path())));
