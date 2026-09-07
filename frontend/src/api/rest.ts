@@ -33,7 +33,7 @@ async function requestText(path: string, method: string = 'GET'): Promise<string
 async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (authToken) headers['authorization'] = `Bearer ${authToken}`;
-  console.debug('[claude-ui] api request', method, path, body ?? '');
+  if (import.meta.env.DEV) console.debug('[claude-ui] api request', method, path, body ?? '');
   let res: Response;
   try {
     res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal });
@@ -55,7 +55,7 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
     console.error('[claude-ui] api error', method, path, res.status, detail, parsed);
     throw new ApiError(res.status, detail, parsed);
   }
-  console.debug('[claude-ui] api response', method, path, res.status);
+  if (import.meta.env.DEV) console.debug('[claude-ui] api response', method, path, res.status);
   return parsed as T;
 }
 

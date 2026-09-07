@@ -5,6 +5,7 @@ import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitWorktreeService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.file.Files;
@@ -50,7 +51,7 @@ public class MetaController {
 	}
 
 	@GetMapping("/repo/branches")
-	public List<String> branches(@org.springframework.web.bind.annotation.RequestParam(required = false) String repo) {
+	public List<String> branches(@RequestParam(required = false) String repo) {
 		Path path = Path.of(repo == null || repo.isBlank() ? props.repoPath() : repo);
 		if (!Files.exists(path.resolve(".git"))) {
 			throw new IllegalArgumentException("not a git repository: " + path);

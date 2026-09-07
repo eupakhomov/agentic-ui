@@ -19,6 +19,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -168,7 +169,7 @@ public class SidecarHandle {
 			// stdin already closed
 		}
 		try {
-			if (process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+			if (process.waitFor(5, TimeUnit.SECONDS)) {
 				return;
 			}
 		} catch (InterruptedException e) {
@@ -177,7 +178,7 @@ public class SidecarHandle {
 		process.descendants().forEach(ProcessHandle::destroy);
 		process.destroy();
 		try {
-			if (process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+			if (process.waitFor(2, TimeUnit.SECONDS)) {
 				return;
 			}
 		} catch (InterruptedException e) {

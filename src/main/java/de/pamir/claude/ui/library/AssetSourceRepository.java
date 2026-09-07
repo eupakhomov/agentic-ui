@@ -6,7 +6,10 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -60,7 +63,7 @@ public class AssetSourceRepository {
 		return jdbc.sql("""
 						SELECT * FROM asset_source
 						WHERE sync_enabled AND (last_synced_at IS NULL OR last_synced_at <= ?) ORDER BY ref""")
-				.params(java.sql.Timestamp.from(cutoff)).query(rowMapper).list();
+				.params(Timestamp.from(cutoff)).query(rowMapper).list();
 	}
 
 	public void setSyncEnabled(UUID id, boolean enabled) {
@@ -121,8 +124,8 @@ public class AssetSourceRepository {
 			jdbc.sql("DELETE FROM source_discovery WHERE source_id = ?").params(sourceId).update();
 			return;
 		}
-		String placeholders = String.join(", ", java.util.Collections.nCopies(currentPaths.size(), "?"));
-		List<Object> params = new java.util.ArrayList<>();
+		String placeholders = String.join(", ", Collections.nCopies(currentPaths.size(), "?"));
+		List<Object> params = new ArrayList<>();
 		params.add(sourceId);
 		params.addAll(currentPaths);
 		jdbc.sql("DELETE FROM source_discovery WHERE source_id = ? AND source_path NOT IN (" + placeholders + ")")

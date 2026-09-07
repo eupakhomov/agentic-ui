@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -124,7 +125,7 @@ public class SessionRepository {
 	public List<SessionEntity> findPrunableClosed(Instant cutoff) {
 		return jdbc.sql("SELECT * FROM session WHERE state = 'CLOSED' AND reflected_seq IS NOT NULL "
 						+ "AND updated_at <= ? ORDER BY updated_at")
-				.params(java.sql.Timestamp.from(cutoff))
+				.params(Timestamp.from(cutoff))
 				.query(rowMapper).list();
 	}
 
@@ -144,14 +145,14 @@ public class SessionRepository {
 
 	public void updatePrCheck(UUID id, String status, String headSha, Instant checkedAt) {
 		jdbc.sql("UPDATE session SET pr_check_status = ?, pr_head_sha = ?, pr_checked_at = ? WHERE id = ?")
-				.params(status, headSha, java.sql.Timestamp.from(checkedAt), id).update();
+				.params(status, headSha, Timestamp.from(checkedAt), id).update();
 	}
 
 	/** Sessions with an open PR whose status is still PENDING and due for another check. */
 	public List<SessionEntity> findAwaitingPrCheck(Instant cutoff) {
 		return jdbc.sql("SELECT * FROM session WHERE pr_url IS NOT NULL AND pr_check_status = 'PENDING' "
 						+ "AND (pr_checked_at IS NULL OR pr_checked_at <= ?) ORDER BY created_at")
-				.params(java.sql.Timestamp.from(cutoff))
+				.params(Timestamp.from(cutoff))
 				.query(rowMapper).list();
 	}
 

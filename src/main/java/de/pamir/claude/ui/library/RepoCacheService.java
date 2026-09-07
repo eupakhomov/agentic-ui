@@ -14,6 +14,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * Local clone cache for library repo sources, fetched exclusively through the gh CLI so the
@@ -41,7 +42,7 @@ public class RepoCacheService {
 	 * with '-' (gh's `--` sits after the ref to delimit git passthrough flags, so the
 	 * ref itself is in a flag-parsing position and must be validated, not escaped).
 	 */
-	private static final java.util.regex.Pattern SAFE_REF = java.util.regex.Pattern
+	private static final Pattern SAFE_REF = Pattern
 			.compile("^(https?://[\\w./:-]+|[A-Za-z0-9][\\w.-]*/[A-Za-z0-9][\\w.-]*)$");
 
 	/** Clones on first use, refreshes (fast-forward) afterwards; returns the local repo root. */

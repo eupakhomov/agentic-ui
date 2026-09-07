@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -234,7 +235,7 @@ public class AssetScanService {
 	}
 
 	private static Map<String, String> parseFrontmatter(String content) {
-		Map<String, String> fields = new java.util.HashMap<>();
+		Map<String, String> fields = new HashMap<>();
 		List<String> lines = content.lines().toList();
 		if (lines.isEmpty() || !lines.get(0).strip().equals("---")) {
 			return fields;

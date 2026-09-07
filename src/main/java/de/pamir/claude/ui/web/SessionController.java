@@ -15,14 +15,18 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -38,7 +42,7 @@ public class SessionController {
 
 	public record SessionSummary(UUID id, String name, String provider, String repoPath, String branch, String model,
 								 String permissionMode, String state, String kind, BigDecimal costToDate,
-								 java.time.Instant updatedAt, long lastSeq) {
+								 Instant updatedAt, long lastSeq) {
 	}
 
 	private final SessionService service;
@@ -57,7 +61,7 @@ public class SessionController {
 	}
 
 	@PostMapping
-	@org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.CREATED)
+	@ResponseStatus(HttpStatus.CREATED)
 	public SessionEntity create(@RequestBody CreateSessionRequest request) {
 		if (request.name() == null || request.branch() == null || request.baseBranch() == null) {
 			throw new IllegalArgumentException("name, branch and baseBranch are required");
@@ -93,7 +97,7 @@ public class SessionController {
 	@GetMapping("/{id}")
 	public Map<String, Object> detail(@PathVariable UUID id) {
 		SessionEntity session = sessions.get(id);
-		Map<String, Object> result = new java.util.HashMap<>();
+		Map<String, Object> result = new HashMap<>();
 		result.put("session", session);
 		result.put("queued", sessions.queued(id));
 		result.put("lastSeq", journal.lastSeq(id));
@@ -141,7 +145,7 @@ public class SessionController {
 	}
 
 	@PostMapping("/{id}/duplicate")
-	@org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.CREATED)
+	@ResponseStatus(HttpStatus.CREATED)
 	public SessionEntity duplicate(@PathVariable UUID id, @RequestBody DuplicateSessionRequest request) {
 		if (request.branch() == null || request.branch().isBlank()) {
 			throw new IllegalArgumentException("branch is required");
@@ -152,7 +156,7 @@ public class SessionController {
 	public record PatchSessionRequest(BigDecimal costBudgetUsd, String name, Boolean reflectionEnabled) {
 	}
 
-	@org.springframework.web.bind.annotation.PatchMapping("/{id}")
+	@PatchMapping("/{id}")
 	public SessionEntity patch(@PathVariable UUID id, @RequestBody PatchSessionRequest request) {
 		if (request.costBudgetUsd() != null) {
 			service.updateCostBudget(id, request.costBudgetUsd());

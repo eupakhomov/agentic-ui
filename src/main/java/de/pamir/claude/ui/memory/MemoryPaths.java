@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Locale;
 
 /**
  * Resolves the on-disk layout of the memory vault: {@code <root>/ecosystem/*.md} and
@@ -95,7 +96,7 @@ public class MemoryPaths {
 	}
 
 	private static String slugify(String name) {
-		String slug = name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9-]+", "-")
+		String slug = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9-]+", "-")
 				.replaceAll("-{2,}", "-").replaceAll("^-|-$", "");
 		return slug.isBlank() ? "service" : slug;
 	}

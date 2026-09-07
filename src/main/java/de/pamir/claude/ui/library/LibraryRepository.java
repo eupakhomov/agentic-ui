@@ -66,7 +66,7 @@ public class LibraryRepository {
 	/** limit/offset are optional — omitting both preserves the "return everything" behavior. */
 	public List<AssetEntity> findAll(String kind, String status, String query, Integer limit, Integer offset) {
 		StringBuilder sql = new StringBuilder(SELECT + " WHERE 1=1");
-		List<Object> params = new java.util.ArrayList<>();
+		List<Object> params = new ArrayList<>();
 		if (kind != null && !kind.isBlank()) {
 			sql.append(" AND a.kind = ?");
 			params.add(kind);

@@ -38,11 +38,11 @@ export function useTicketImport(validModelIds: string[]) {
     // by then; this is a client-side safety net so the button can never get stuck forever even if
     // that assumption turns out wrong in some environment
     const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
-    console.log('[claude-ui] ticket import: fetching', ref);
+    if (import.meta.env.DEV) console.log('[claude-ui] ticket import: fetching', ref);
     const started = performance.now();
     try {
       const result = await api.importTicket(ref, controller.signal);
-      console.log('[claude-ui] ticket import: succeeded in', Math.round(performance.now() - started), 'ms', result);
+      if (import.meta.env.DEV) console.log('[claude-ui] ticket import: succeeded in', Math.round(performance.now() - started), 'ms', result);
       onResult({
         branchName: result.branchName,
         prompt: result.prompt,
@@ -73,11 +73,11 @@ export function useTicketImport(validModelIds: string[]) {
     const controller = new AbortController();
     pickerAbortRef.current = controller;
     const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
-    console.log('[claude-ui] ticket browse: fetching recent tickets');
+    if (import.meta.env.DEV) console.log('[claude-ui] ticket browse: fetching recent tickets');
     const started = performance.now();
     try {
       const list = await api.listRecentTickets(controller.signal);
-      console.log('[claude-ui] ticket browse: succeeded in', Math.round(performance.now() - started), 'ms', list);
+      if (import.meta.env.DEV) console.log('[claude-ui] ticket browse: succeeded in', Math.round(performance.now() - started), 'ms', list);
       setRecentTickets(list);
     } catch (e) {
       const elapsed = Math.round(performance.now() - started);

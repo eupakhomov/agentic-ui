@@ -1,5 +1,6 @@
 package de.pamir.claude.ui.journal;
 
+import de.pamir.claude.ui.config.AppProperties;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * Append-only per-session event journal with backend-assigned monotonic seq.
@@ -41,7 +43,7 @@ public class EventJournal {
 	private final ScheduledExecutorService flusher =
 			Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual().name("journal-flusher").factory());
 
-	public EventJournal(JdbcClient jdbc, ObjectMapper mapper, de.pamir.claude.ui.config.AppProperties props) {
+	public EventJournal(JdbcClient jdbc, ObjectMapper mapper, AppProperties props) {
 		this.jdbc = jdbc;
 		this.mapper = mapper;
 		this.payloadCapBytes = props.journalPayloadCapBytes();
@@ -174,12 +176,12 @@ public class EventJournal {
 	}
 
 	/** Sum of turn_complete costUsd for the session (0 if none). */
-	public java.math.BigDecimal costToDate(UUID sessionId) {
+	public BigDecimal costToDate(UUID sessionId) {
 		flush(sessionId);
 		return jdbc.sql("""
 						SELECT coalesce(sum((payload->>'costUsd')::numeric), 0)
 						FROM session_event WHERE session_id = ? AND type = 'turn_complete'""")
-				.params(sessionId).query(java.math.BigDecimal.class).single();
+				.params(sessionId).query(BigDecimal.class).single();
 	}
 
 	public record TurnUsage(UUID sessionId, String sessionName, Instant ts, String model, BigDecimal costUsd) {
@@ -203,7 +205,7 @@ public class EventJournal {
 				.query((rs, i) -> Map.entry(rs.getObject("session_id", UUID.class),
 						new SessionStats(rs.getLong("last_seq"), rs.getBigDecimal("cost"))))
 				.stream()
-				.collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 	}
 
 	/** Per-turn cost/model rows across all sessions since {@code since}, for the usage dashboard. */

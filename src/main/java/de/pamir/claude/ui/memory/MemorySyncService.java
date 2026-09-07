@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -113,7 +114,7 @@ public class MemorySyncService {
 		}
 	}
 
-	private static java.util.List<Path> mdFiles(Path dir) {
+	private static List<Path> mdFiles(Path dir) {
 		try (Stream<Path> list = Files.list(dir)) {
 			return list.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".md")).toList();
 		} catch (IOException e) {

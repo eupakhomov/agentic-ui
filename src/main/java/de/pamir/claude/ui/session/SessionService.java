@@ -7,17 +7,22 @@ import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitCommandRunner;
 import de.pamir.claude.ui.git.GitWorktreeService;
+import de.pamir.claude.ui.discovery.ServiceDiscoveryRequested;
 import de.pamir.claude.ui.journal.EventJournal;
 import de.pamir.claude.ui.journal.JournalPublisher;
+import de.pamir.claude.ui.memory.ReflectionRequested;
 import de.pamir.claude.ui.process.SidecarManager;
 import de.pamir.claude.ui.provision.AssetProvisioningService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +44,7 @@ public class SessionService {
 	private final EventJournal journal;
 	private final JournalPublisher journalPublisher;
 	private final ObjectMapper mapper;
-	private final org.springframework.context.ApplicationEventPublisher events;
+	private final ApplicationEventPublisher events;
 	private final SessionConfigFactory configFactory;
 	private final SystemSessionService systemSessionService;
 	private final AutoTitleService autoTitleService;
@@ -52,7 +57,7 @@ public class SessionService {
 						  GitWorktreeService worktrees, GitCommandRunner git,
 						  AssetProvisioningService assets, SidecarManager sidecars, EventJournal journal,
 						  JournalPublisher journalPublisher, ObjectMapper mapper,
-						  org.springframework.context.ApplicationEventPublisher events,
+						  ApplicationEventPublisher events,
 						  SessionConfigFactory configFactory, SystemSessionService systemSessionService,
 						  AutoTitleService autoTitleService, ProviderCatalog catalog) {
 		this.props = props;
@@ -182,7 +187,7 @@ public class SessionService {
 		}
 	}
 
-	public void updateCostBudget(UUID id, java.math.BigDecimal budget) {
+	public void updateCostBudget(UUID id, BigDecimal budget) {
 		sessions.get(id);
 		sessions.updateCostBudget(id, budget);
 		record(id, "budget_updated", mapper.createObjectNode()
@@ -270,10 +275,10 @@ public class SessionService {
 			transition(id, SessionState.CLOSED);
 			releaseSessionState(id);
 			if (session.reflectionEnabled()) {
-				events.publishEvent(new de.pamir.claude.ui.memory.ReflectionRequested(id));
+				events.publishEvent(new ReflectionRequested(id));
 			}
 			if (settings.serviceDiscoveryEnabled()) {
-				events.publishEvent(new de.pamir.claude.ui.discovery.ServiceDiscoveryRequested(id, session.repoPath()));
+				events.publishEvent(new ServiceDiscoveryRequested(id, session.repoPath()));
 			}
 		}
 	}
@@ -431,7 +436,7 @@ public class SessionService {
 		}
 		try {
 			JsonNode pricing = mapper.readTree(settings.pricingFor(session.provider()));
-			java.math.BigDecimal estimated = CodexCostEstimator.estimate(pricing, turnComplete.path("model").asText(""),
+			BigDecimal estimated = CodexCostEstimator.estimate(pricing, turnComplete.path("model").asText(""),
 					turnComplete.path("usage"));
 			turnComplete.put("costUsd", estimated);
 		} catch (RuntimeException e) {
@@ -534,7 +539,7 @@ public class SessionService {
 				}
 				Files.createDirectories(exclude.getParent());
 				Files.writeString(exclude, "\n.claude/skills/\n.claude/agents/\n.claude-ui.pid\n",
-						java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+						StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 			}
 		} catch (IOException e) {
 			log.warn("could not write per-worktree exclude: {}", e.getMessage());

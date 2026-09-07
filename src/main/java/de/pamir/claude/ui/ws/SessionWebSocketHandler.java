@@ -3,6 +3,7 @@ package de.pamir.claude.ui.ws;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
+import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.journal.EventJournal;
 import de.pamir.claude.ui.journal.EventJournal.JournalEvent;
 import de.pamir.claude.ui.journal.SessionEventBus;
@@ -48,7 +49,7 @@ public class SessionWebSocketHandler extends TextWebSocketHandler implements Sub
 
 	public SessionWebSocketHandler(SessionService service, SessionRepository sessions, EventJournal journal,
 								   SessionEventBus bus, ObjectMapper mapper,
-								   de.pamir.claude.ui.config.AppProperties props) {
+								   AppProperties props) {
 		this.service = service;
 		this.sessions = sessions;
 		this.journal = journal;

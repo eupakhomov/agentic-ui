@@ -16,7 +16,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Everything about turning a {@link SessionService.CreateOptions} (or an existing session, for
@@ -336,10 +339,10 @@ public class SessionConfigFactory {
 
 	/** The extra system-prompt text a spawn should append (memory + orchestration blocks), or null if both are empty. */
 	String extraSystemPrompt(SessionEntity session) {
-		String joined = java.util.stream.Stream
+		String joined = Stream
 				.of(memorySystemPromptBlock(session), orchestrationSystemPromptBlock(session))
-				.filter(java.util.Objects::nonNull)
-				.collect(java.util.stream.Collectors.joining("\n\n"));
+				.filter(Objects::nonNull)
+				.collect(Collectors.joining("\n\n"));
 		return joined.isBlank() ? null : joined;
 	}
 

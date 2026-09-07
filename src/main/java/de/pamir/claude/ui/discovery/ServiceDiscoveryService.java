@@ -7,6 +7,7 @@ import de.pamir.claude.ui.git.GitCommandRunner;
 import de.pamir.claude.ui.library.EmbeddingClient;
 import de.pamir.claude.ui.session.ModelCatalog;
 import de.pamir.claude.ui.session.SystemTurnClient;
+import de.pamir.claude.ui.session.SystemTurnLane;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -130,7 +131,7 @@ public class ServiceDiscoveryService {
 		JsonNode result;
 		try {
 			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), settings.serviceDiscoveryModel()).orElse(null);
-			result = systemTurnClient.json(prompt, modelOverride, de.pamir.claude.ui.session.SystemTurnLane.BACKGROUND, TIMEOUT);
+			result = systemTurnClient.json(prompt, modelOverride, SystemTurnLane.BACKGROUND, TIMEOUT);
 		} catch (RuntimeException e) {
 			log.warn("service discovery failed for {}: {}", repoPath, e.getMessage());
 			return;

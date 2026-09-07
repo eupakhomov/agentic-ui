@@ -3,6 +3,7 @@ package de.pamir.claude.ui.journal;
 import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -22,7 +23,7 @@ public final class TranscriptDigest {
 	private static final int ARG_SUMMARY_CHARS = 200;
 	private static final int ERROR_SUMMARY_CHARS = 300;
 	private static final DateTimeFormatter TS_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-			.withZone(java.time.ZoneId.systemDefault());
+			.withZone(ZoneId.systemDefault());
 
 	private TranscriptDigest() {
 	}

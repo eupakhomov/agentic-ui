@@ -1,6 +1,7 @@
 # Phase 10 — Post-review follow-ups
 
-Status: **R1–R7 done (2026-09-07)**, R8/M1 not yet picked. Same shape as Phase 9: a curated
+Status: **R1–R8b done (2026-09-07)**, R8c/M1 not yet picked (R8c deliberately deferred —
+see §10.4). Same shape as Phase 9: a curated
 backlog from a fresh full-system read-through after Phase 9 Run F landed, not one feature
 plan. Each item is self-contained with enough context to be picked up as its own run.
 Security remains out of scope (LAN/single-user posture, decision 2026-08-23).
@@ -220,7 +221,28 @@ those files, not as a run of its own.
 
 ## 10.4 Nits (one small cleanup run)
 
-- **R8a — Inline fully-qualified class names.** ~11 spots use
+- **R8a/R8b — DONE (2026-09-07).** Both done together as Run C; R8c stayed out per the
+  pick-order note below (no new setting was on the table). The actual FQN count was
+  larger than the ~11 spots sketched (grep is broader than the doc's illustrative list) —
+  ~24 files across `Application`, `EventJournal`, `TranscriptDigest`,
+  `AssetSourceRepository`, `AssetScanService`, `LibraryAiService`, `LibraryRepository`,
+  `RepoCacheService`, `MemoryPaths`, `MemorySyncService`, `MemoryRepository`,
+  `ReflectionService`, `ServiceDiscoveryService`, `SidecarManager`, `SidecarHandle`,
+  `AssetProvisioningService`, `SessionConfigFactory`, `SessionService`,
+  `SessionHousekeeping`, `SessionRepository`, `MetaController`, `SessionController`,
+  `SessionWebSocketHandler` — all mechanical FQN-to-import swaps, no behavior change.
+  R8b gated `frontend/src/api/rest.ts`'s two `console.debug` calls and
+  `frontend/src/hooks/useTicketImport.ts`'s four `console.log` calls behind
+  `import.meta.env.DEV`; `console.error` calls in both files stay ungated (real failures,
+  not diagnostics). `import.meta.env` typing needed a new `frontend/src/vite-env.d.ts`
+  (`/// <reference types="vite/client" />`, the standard Vite scaffold file — the project
+  never had one before since nothing referenced `import.meta.env`). Verified: the DoD grep
+  is empty (minus `{@link}` javadoc targets); `./mvnw test` (full, DB up, all tests incl.
+  `integration`) green; `npm run build` output has zero `console.debug`/those four
+  `console.log` strings (checked via grep on the built bundle — only the ungated
+  `console.error` diagnostics remain); `npm test` in `frontend` green.
+
+- **R8a (original sketch, kept for context).** ~11 spots use
   `org.springframework.context.ApplicationEventPublisher` (`SessionService.java:42,54`),
   `de.pamir.claude.ui.memory.ReflectionRequested`/`...discovery.ServiceDiscoveryRequested`
   (`:269,272`), `java.math.BigDecimal` (`:183,428`), `java.time.Duration`
@@ -393,7 +415,8 @@ those files, not as a run of its own.
    summary at the top of §10.2.
 2. **Run B (bounded state + list query) — DONE 2026-09-07.** R4 done above; R7 (the
    list-query optimization) done as its own run (see the R7 bullet in §10.3).
-3. **Run C (nits)** — R8a + R8b, then R8c only if a new setting is on the table.
+3. **Run C (nits) — DONE 2026-09-07.** R8a + R8b done together; R8c stayed out (no new
+   setting was on the table). See the R8a/R8b summary at the top of §10.4.
 4. **Run D (provider seam) — DONE 2026-09-07.** R1, on its own, decision (a) recorded in
    `docs/plan/README.md`'s decision log first. Touched both sidecars' build (a new
    `capabilities.json` per package) and a documented contract (`Capabilities` gains three
@@ -439,8 +462,10 @@ Items not picked stay valid backlog.
 - **R7 — done.** `GET /api/sessions` issues one journal query regardless of session count
   (verify with `logging.level.org.springframework.jdbc.core=DEBUG` — one `SELECT ...
   GROUP BY session_id`, not 2N); the new `*DbTest` passes.
-- **R8a/b**: the FQN grep above is empty; `npm run build` output contains no
-  `console.debug` string; `npm run dev` still logs API calls.
+- **R8a/b — done.** The FQN grep above is empty (minus `{@link}` javadoc targets);
+  `npm run build` output contains no `console.debug` string (nor the four gated
+  `console.log` lines in `useTicketImport.ts`); `npm run dev` still logs API calls
+  (`import.meta.env.DEV` is true under Vite dev).
 - **M1**: with `ecosystem.root` pointed at a monorepo, `GET /api/repo/services` lists
   each workspace package (name = its relative path, `repoPath` = the monorepo root,
   `monorepo: true`); creating a session on `packages/foo` yields a worktree of the monorepo

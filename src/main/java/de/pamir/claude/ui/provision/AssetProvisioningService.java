@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -163,7 +164,7 @@ public class AssetProvisioningService {
 		for (Path source : sources) {
 			String name = assetName(source, asSkillDirs);
 			Path target = targetRoot.resolve(name);
-			if (Files.exists(target, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+			if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
 				warnings.add(new Warning("asset '" + name + "' already exists in the worktree; skipped " + source));
 				continue;
 			}

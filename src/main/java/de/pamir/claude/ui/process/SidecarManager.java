@@ -21,6 +21,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /** Spawns and tracks one sidecar per session, building CLI args from the session row. */
 @Component
@@ -172,8 +174,8 @@ public class SidecarManager {
 		if (mcpConfigFile != null && Files.exists(mcpConfigFile)) {
 			args.addAll(List.of("--mcp-config", mcpConfigFile.toString()));
 		}
-		String systemPrompt = java.util.stream.Stream.of(s.instructions(), extraSystemPrompt)
-				.filter(p -> p != null && !p.isBlank()).collect(java.util.stream.Collectors.joining("\n\n"));
+		String systemPrompt = Stream.of(s.instructions(), extraSystemPrompt)
+				.filter(p -> p != null && !p.isBlank()).collect(Collectors.joining("\n\n"));
 		if (!systemPrompt.isBlank()) {
 			args.addAll(List.of("--append-system-prompt", systemPrompt));
 		}

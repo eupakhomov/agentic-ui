@@ -9,7 +9,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
@@ -123,8 +125,8 @@ public class MemoryRepository {
 	}
 
 	/** Tag → count across a session's visible scopes ("what drawers exist" — memory_tags tool). */
-	public java.util.Map<String, Long> tagCounts(String servicePath) {
-		java.util.Map<String, Long> counts = new java.util.LinkedHashMap<>();
+	public Map<String, Long> tagCounts(String servicePath) {
+		Map<String, Long> counts = new LinkedHashMap<>();
 		for (IndexEntry e : findIndex(servicePath)) {
 			for (String tag : e.tags()) {
 				counts.merge(tag, 1L, Long::sum);

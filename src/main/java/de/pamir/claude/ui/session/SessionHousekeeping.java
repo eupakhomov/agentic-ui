@@ -14,6 +14,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -32,13 +33,13 @@ public class SessionHousekeeping {
 
 	private final AppProperties props;
 	private final SessionRepository sessions;
-	private final de.pamir.claude.ui.process.SidecarManager sidecars;
+	private final SidecarManager sidecars;
 	private final JournalPublisher journalPublisher;
 	private final ObjectMapper mapper;
 	private final SessionService sessionService;
 
 	public SessionHousekeeping(AppProperties props, SessionRepository sessions,
-							   de.pamir.claude.ui.process.SidecarManager sidecars, JournalPublisher journalPublisher,
+							   SidecarManager sidecars, JournalPublisher journalPublisher,
 							   ObjectMapper mapper, SessionService sessionService) {
 		this.props = props;
 		this.sessions = sessions;
@@ -53,7 +54,7 @@ public class SessionHousekeeping {
 	/** IDLE sessions whose sidecar has been quiet past the timeout are parked. */
 	@Scheduled(fixedDelay = 60_000)
 	void parkIdleSessions() {
-		var cutoff = Instant.now().minus(java.time.Duration.ofMinutes(props.idleParkMinutes()));
+		var cutoff = Instant.now().minus(Duration.ofMinutes(props.idleParkMinutes()));
 		for (SessionEntity session : sessions.findByStates(List.of(SessionState.IDLE))) {
 			if (session.updatedAt() != null && session.updatedAt().isBefore(cutoff)
 					&& session.providerSessionId() != null && sidecars.hasLiveHandle(session.id())) {
