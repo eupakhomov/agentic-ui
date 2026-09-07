@@ -1,6 +1,7 @@
 # Phase 10 — Post-review follow-ups
 
-Status: **R1–R8c done (2026-09-07)**, M1 not yet picked. Same shape as Phase 9: a curated
+Status: **R1–R8c done (2026-09-07)** — the phase is complete; M1 (monorepo support) was
+extracted to [phase-11-monorepo.md](phase-11-monorepo.md) the same day. Same shape as Phase 9: a curated
 backlog from a fresh full-system read-through after Phase 9 Run F landed, not one feature
 plan. Each item is self-contained with enough context to be picked up as its own run.
 Security remains out of scope (LAN/single-user posture, decision 2026-08-23).
@@ -416,144 +417,17 @@ those files, not as a run of its own.
 
 ## 10.5 Monorepo support (ecosystem folder == service repo)
 
-- **M1 — The current model assumes one git repo per service, and breaks on a monorepo.**
-  Today "ecosystem" = a folder whose *direct children are git repos* (`GitWorktreeService.
-  findRepos`: `Files.exists(child/.git)`), and "service" = one of those repos. A session's
-  `repoPath` is then both the thing `git worktree add` runs against **and** the service's
-  identity: `memory_doc.service_path`/`memory_episode.service_path`/`MemoryPaths.serviceDir`
-  are keyed on it, `service_profile.repo_path` is UNIQUE on it, `ServiceDigest.render` and
-  the SHA-gated regeneration read it, `report_result` derives the service name from it,
-  `list_services`/`find_service`/`list_discovered_services` scope on `findRepos(
-  ecosystemPath)`, and the create dialog's picker is `GET /api/repo/services` = the same
-  `findRepos`. A monorepo — one git repo whose `packages/*`/`services/*`/`apps/*` folders
-  are the services, so the ecosystem folder *is* the service repo — currently yields:
-  `findRepos(root)` returns nothing (no child has `.git`), so the picker only offers the
-  configured default repo as one monolithic "service"; a session on it gets cwd = the whole
-  monorepo; memory/discovery/orchestration all see exactly one service; and `--context-dir
-  <ecosystemPath>` attaches the *original* checkout of the very repo the worktree was cut
-  from as read-only context (a stale duplicate, not siblings).
-
-  **Target behavior.** A service is a folder that identifies a unit of work; its git repo
-  is wherever the nearest enclosing `.git` is. Polyrepo (today) is the special case where
-  the two coincide. Concretely, in a monorepo: the picker lists `packages/foo`,
-  `packages/bar`, …; a session on `packages/foo` gets a worktree of the *monorepo* on its
-  own branch with **cwd = `<worktree>/packages/foo`** (so Claude Code's own CLAUDE.md
-  walk-up picks up both the monorepo root's and the service's, and relative paths mean the
-  service), the **whole worktree writable** (the git checkout is the natural write
-  boundary — cross-package edits to a shared lib are the normal case in a monorepo, and
-  the dirty-check/commit/PR flow already captures anything under the worktree), and the
-  worktree root as its ecosystem context (not the original checkout). Memory, discovery
-  and orchestration key on the service folder, so `packages/foo` and `packages/bar`
-  accumulate separate memory, separate `service_profile` rows, and `spawn_child_session`
-  on a sibling package works (another worktree of the same repo, different branch, cwd =
-  that sibling's subfolder). Concurrent sessions on different packages of one monorepo =
-  several worktrees of one repo, which git already allows and the session limit already
-  counts.
-
-  **Decisions to record before starting** (proposed answers):
-  1. *Service identity* — introduce `servicePath` as the identity and demote `repoPath`
-     to "git root for worktree ops". For polyrepo `servicePath == repoPath`, so every
-     existing row is already correct under the new meaning: `memory_*.service_path` and
-     `service_profile.repo_path` keep their columns (the latter renamed to `service_path`
-     for honesty, plus a new `repo_path` for the git ops), `session` gains `service_path`
-     (NULL = same as `repo_path`, so no data migration).
-  2. *Write boundary* — the worktree root, not the service subfolder (rationale above).
-     `readOnlyDenial` in `sidecar/src/permissions.ts` currently uses `cwd` as the root;
-     it needs a separate `writableRoot` (new `--writable-root` flag, defaulting to cwd so
-     nothing changes for polyrepo). Codex's sandbox already has exactly this knob —
-     `sandboxPolicyFor` sets `writableRoots: []` (`sidecar-codex/src/session.ts:75`);
-     it becomes `[writableRoot]`.
-  3. *Ecosystem context in monorepo mode* — the session's own worktree root (`--context-dir
-     <worktree>`), never the original checkout. Sibling *polyrepos* alongside a monorepo
-     under the same ecosystem root (mixed layout) are still attached from their original
-     checkouts as today.
-  4. *Service detection inside a git repo* — manifest-driven first, glob fallback: npm/yarn
-     `package.json#workspaces`, `pnpm-workspace.yaml`, Maven `<modules>`, Cargo
-     `[workspace].members`, `go.work` `use` lines; else a persisted setting
-     `ecosystem.monorepo-service-globs` (default `packages/*,services/*,apps/*,libs/*`)
-     filtered to folders that contain a manifest (`package.json`/`pom.xml`/`pyproject.toml`/
-     `go.mod`/`Cargo.toml`/`Dockerfile`). A repo with none of these is one service (= today).
-  5. *Layouts supported* — (a) ecosystem root **is** the monorepo; (b) ecosystem root is a
-     folder of repos, one or more of which is a monorepo (depth 2: `root/<repo>/packages/*`).
-     Deeper nesting is out of scope.
-  6. *Staleness gate for discovery* — `git log -1 --format=%H -- <servicePath>` (last commit
-     touching that subtree) instead of `rev-parse HEAD`, otherwise every commit anywhere in
-     the monorepo invalidates every service's profile. For polyrepo (`servicePath ==
-     repoPath`) the two are equivalent, so this is safe to switch unconditionally.
-
-  **Sketch, by layer** (each bullet is the actual edit site):
-  - `git/GitWorktreeService`: `findRepos(root)` → `findServices(root)` returning
-    `ServiceInfo(name, servicePath, repoPath)`; keep `findRepos` for the plain-repo
-    listing internally. New `ServiceDetector` (own class, pure — `Path` in, list out; unit
-    test with fixture trees for each manifest type + the glob fallback) does decision 4.
-    New `lastCommitTouching(repo, subpath)` for decision 6.
-  - `session/SessionEntity` + `SessionRepository` + V14 migration: `service_path` column
-    (nullable), `Builder`/`mapRow`/`insert`; `SessionEntity.servicePath()` accessor returns
-    `repoPath` when null so callers never branch. `SessionConfigFactory.prepare`: accept
-    `servicePath` in `CreateOptions`/overrides, resolve `repoPath` by walking up to `.git`
-    if the caller only gave the service folder (so `spawn_child_session` and the quick
-    dialog can pass the service alone), validate `servicePath` is inside `repoPath`.
-    `configOverridesFrom`/`lastSessionConfig`/`duplicate` carry it.
-  - `SessionService.create`: worktree still `worktreeRoot/<id>` of `repoPath`; compute
-    `cwd = worktree.resolve(repoPath.relativize(servicePath))` and persist it — either a
-    `cwd_path` column or derive on every spawn (derive; it's two `Path` ops). Provisioning
-    (`AssetProvisioningService`) materializes `.claude/skills|agents` at the **cwd**, not
-    the worktree root, since that's the project root Claude Code's `settingSources:
-    ['project']` resolves from (**verify live** that skills under `<worktree>/packages/foo/
-    .claude/skills` are discovered with cwd there — if Claude Code only reads the git-root
-    `.claude/`, materialize at the worktree root instead and this bullet becomes a one-line
-    note). `excludeProvisionedAssets` writes the matching relative path into `info/exclude`
-    either way. PID file stays at the worktree root (`SidecarManager.pidFile`) — the orphan
-    sweep reads it from `session.worktreePath()`.
-  - `process/SidecarManager.buildArgs`: `--cwd <cwd>`, new `--writable-root <worktree>`,
-    `--context-dir` = worktree root in monorepo mode (decision 3) instead of
-    `session.ecosystemPath()`; polyrepo unchanged. (If R1 lands first, `writableRoot` is
-    just another flag the adapter ignores or honors — it doesn't need a capability, both
-    adapters support it.)
-  - `sidecar/src/permissions.ts`: `readOnlyDenial(toolName, input, cwd, writableRoot =
-    cwd)`; `session.ts`/`index.ts` plumb the flag. `sidecar-codex/src/session.ts`:
-    `writableRoots: [writableRoot]`, `thread/start.cwd` = the service cwd. Both
-    `protocol.ts` copies unchanged (no event change) — `check-protocol-sync.mjs` stays
-    green.
-  - `memory/*`: every `session.repoPath()` used as a scope becomes `session.servicePath()`
-    — `SessionConfigFactory.memorySystemPromptBlock` (`episodes.recentByService`),
-    `ReflectionService` (`docs.findIndex`, `episodes.insert`, `proposals.insert`, `applyOp`'s
-    `servicePath`), `MemoryMcpTools.repoPathOf` → `servicePathOf`, `MemoryController`'s
-    `servicePath` param is already the right name. `MemoryPaths.serviceDir`'s slug is the
-    folder's base name with the existing hash-suffix collision handling — `packages/foo` in
-    two different monorepos collide on `foo` and get suffixed, which is the designed
-    behavior, not a new case.
-  - `discovery/*`: `service_profile` V14: rename `repo_path` → `service_path` (keep
-    UNIQUE), add `repo_path`; `ServiceDiscoveryService.discover/rediscover/
-    updateDescription` take `servicePath`, resolve `repoPath` for `currentCommitSha` →
-    `lastCommitTouching`; `ServiceDigest.render(servicePath)` already works on any folder
-    (README/manifest/listing relative to what it's given) — no change. `ServiceDiscoveryRequested`
-    carries `servicePath`. `ServiceDiscoveryController.services()` and
-    `ServiceDiscoveryMcpTools.visibleServicePaths` use `findServices`.
-  - `session/OrchestrationMcpTools`: `list_services` → `findServices(ecosystemPath)`;
-    `spawn_child_session`'s "not a git repository" check becomes "not a known service under
-    this session's ecosystem" (walk-up resolves the repo; `defaultBranch` on the resolved
-    repo); child inherits monorepo-mode context. `report_result`'s service name =
-    `servicePath` base name — unchanged code, correct result.
-  - `web/MetaController.services()`: `findServices`; `ServicesResponse` gains `repoPath`
-    per service and a `monorepo` flag so the dialog can show it. `branches(repo)` is
-    called with the *service's* `repoPath`, not `servicePath` — `CreateSessionDialog` line
-    ~185 currently passes `repoPath` (the picker value), which becomes the service entry's
-    `repoPath` field.
-  - `frontend`: picker shows `name` (e.g. `packages/foo`) with a small "monorepo" chip;
-    `overrides.servicePath` sent on create; `QuickSessionDialog` + `useTicketImport`
-    pass it through; `SessionWidget`'s header/Exposé card show the service name (base
-    name of `servicePath`) — today they show `repoPath`'s base name, which for a monorepo
-    would be the repo, not the package. `GitPanel` unchanged (operates on the worktree).
-  - `docs`: `ARCHITECTURE.md` §2's "Worktrees isolate work" invariant gains the monorepo
-    sentence; `CLAUDE.md`'s ecosystem-root setting bullet + `DEPLOY.md` §7's Settings tour
-    mention the globs setting; decision log entry.
-
-  **Out of scope for this pass**: per-service default templates/branches (still 5.4),
-  sparse checkout of just the service's subtree (worktrees of a large monorepo are full
-  checkouts — acceptable, `git worktree add` shares objects; note it in DEPLOY.md),
-  nesting deeper than depth 2, and Codex `skills/extraRoots/set` for a subfolder cwd
-  (follows whatever the provisioning "verify live" bullet decides).
+- **M1 — extracted to its own phase (2026-09-07).** Big enough to be a phase, not a
+  follow-up bullet: see [phase-11-monorepo.md](phase-11-monorepo.md) — the target behavior,
+  the seven decisions to confirm, and the sketch are all there, now split into eight steps
+  (a Step 0 spike on where a subfolder-cwd session finds its skills, then detector → schema
+  → creation → sidecars → scoping → frontend → docs) each with its own DoD, and verified
+  against the code as of R8c. Corrections made while extracting: `sidecar-codex`'s arg
+  parser rejects unknown flags (so `--writable-root` must be added to both parsers, not
+  "ignored by the adapter"); `useTicketImport` never touches the service selection;
+  `excludeProvisionedAssets` hardcodes `.claude/skills/`; `ServiceDiscoveryService` has three
+  `.git` checks, not one; `spawn_child_session`'s parameter and `ChildInfo.servicePath` are
+  already named `servicePath`.
 
 ---
 
@@ -572,14 +446,9 @@ those files, not as a run of its own.
    `capabilities.json` per package) and a documented contract (`Capabilities` gains three
    fields — `PROTOCOL.md` updated); the freshness guard ended up as a `git diff` CI step
    rather than a `check-protocol-sync.mjs` extension (see the R1 bullet above for why).
-5. **Run E (monorepo)** — M1, on its own, after its six decisions are confirmed and
-   written into the decision log. Independent of R1 (the new `--writable-root` flag needs
-   no capability — both adapters honor it), but the "verify live" provisioning bullet
-   should be settled first with a five-minute manual check on a real monorepo before any
-   code is written, since it decides where `.claude/skills` gets materialized. Suggested
-   internal order: `ServiceDetector` + tests → V14 + entity/repo → `SessionConfigFactory`/
-   `SessionService` cwd → sidecar flags → memory/discovery/orchestration scoping →
-   frontend → docs.
+5. **Run E (monorepo) — moved out.** M1 became Phase 11 on 2026-09-07:
+   [phase-11-monorepo.md](phase-11-monorepo.md), eight steps with a DoD each. Not part
+   of this phase any more.
 6. **Run F (settings refactor) — DONE 2026-09-07.** R8c, per the sketch and recorded
    decisions in §10.4: full call-site migration to `settings.current()`, plus an
    invalidate-on-write cache. See the R8c summary at the top of §10.4.
@@ -627,21 +496,8 @@ Items not picked stay valid backlog.
   `settings.pricingFor(`/`settings.setPricingFor(`; `GET`/`PATCH /api/settings` JSON
   shape is byte-identical to before (verified live via `curl`); `./mvnw test` (full, DB
   up, all tests incl. `integration`) is green; no frontend changes were needed.
-- **M1**: with `ecosystem.root` pointed at a monorepo, `GET /api/repo/services` lists
-  each workspace package (name = its relative path, `repoPath` = the monorepo root,
-  `monorepo: true`); creating a session on `packages/foo` yields a worktree of the monorepo
-  on the new branch with the sidecar's cwd at `<worktree>/packages/foo` (visible in the
-  "sidecar pid … spawned (… --cwd …)" log line); an `Edit` on `<worktree>/packages/bar/
-  x.ts` from that session is **allowed** (write boundary = worktree), an `Edit` on the
-  original checkout's path is auto-denied; the session's memory episodes land under
-  `memory.root/services/foo/`, not `<monorepo-name>/`; `find_service` from a session on
-  `packages/bar` returns `packages/foo`'s profile; `spawn_child_session` on `packages/bar`
-  from a `packages/foo` session works and the child's `report_result` names the service
-  `bar`. A polyrepo ecosystem behaves byte-for-byte as before (`servicePath == repoPath`,
-  `--writable-root == --cwd`, context dir = the original ecosystem folder), and every
-  pre-existing `session`/`memory_*`/`service_profile` row is valid without a data
-  migration. `ServiceDetectorTest` covers each manifest type + the glob fallback + "a repo
-  with no workspace markers is one service".
+- **M1** — moved to [phase-11-monorepo.md](phase-11-monorepo.md) (its own DoD, per step
+  and whole-phase).
 - All existing suites green: `./mvnw test` (incl. `integration`), `npm test` +
   `npm run build` in `frontend`/`sidecar`/`sidecar-codex`, `check-protocol-sync.mjs`.
 
@@ -673,18 +529,4 @@ Items not picked stay valid backlog.
 7. **R8c** — open the Settings dialog, change one value in each tab, close and reopen →
    every value round-trips correctly. `curl -s localhost:8080/api/settings | jq` → flat
    JSON, same key set as before the refactor.
-8. **M1** — set up a throwaway monorepo (`git init mono && cd mono && npm init -y &&
-   npm pkg set 'workspaces[]=packages/*' && mkdir -p packages/foo packages/bar && (cd
-   packages/foo && npm init -y) && (cd packages/bar && npm init -y) && git add -A && git
-   commit -m init`) and point Settings → Sessions → ecosystem root at it. Open New
-   Session → the service picker shows `packages/foo` and `packages/bar` with a monorepo
-   chip; pick `foo`, branch `feat-x`. In the session: ask the agent to `pwd` → ends in
-   `packages/foo`; ask it to create `packages/bar/hello.txt` → allowed, appears in the Git
-   panel as dirty; ask it to edit `<original mono path>/packages/foo/package.json` →
-   auto-denied error card. Close with "commit" → the commit lands on `feat-x` in the
-   monorepo. Enable reflection, close a second session → `memory.root/services/foo/`
-   exists (not `services/mono/`). Rediscover from the service dialog → two profiles,
-   one per package, each description mentioning only its own package. Then edit only
-   `packages/bar/README.md`, commit, Rediscover → only `bar`'s profile regenerates (log
-   shows one system turn). Finally repoint the ecosystem root at a polyrepo folder →
-   everything behaves exactly as before this phase.
+8. **M1** — moved to [phase-11-monorepo.md](phase-11-monorepo.md)'s manual test script.
