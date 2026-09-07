@@ -279,14 +279,21 @@ The proof of provider-agnosticism: `sidecar-codex/` speaks `codex app-server`'s
 JSON-RPC-over-stdio protocol (not `codex exec`, which is non-interactive and can't do
 the approval round-trip), translated to the same adapter protocol v1 `sidecar/` speaks —
 registered under `claude-ui.providers.codex`, with the dashboard needing zero code that
-branches on the provider name, only on announced capabilities. Reduced capability set vs.
-Claude (no plan mode, no `acceptEdits`, no custom agents — confirmed no Codex equivalent
-exists for the last one, not just deferred); skills and MCP are supported (skills via
-`skills/extraRoots/set` pointing at the same materialized `.claude/skills/` Claude
-sessions use; MCP via `thread/start`'s `config.mcp_servers`, bearer tokens passed as a
-named env var on the spawned child rather than an inline header). Full capability/
+branches on the provider name, only on announced capabilities. As of Phase 10's R1, the
+**backend** doesn't either: `SidecarManager.buildArgs`, `SessionConfigFactory.prepare`,
+and `SessionService.applyEstimatedCost` all branch on a `ProviderCapabilities` record
+(`unsupportedSessionFields`/`contextDirs`/`reportsCostUsd`, alongside the
+already-existing `permissionModes` etc.) loaded by `ProviderCatalog` from each adapter
+package's own committed, build-generated `capabilities.json` — no `if
+("codex".equals(provider))` branch remains anywhere in that path. Reduced capability set
+vs. Claude (no plan mode, no `acceptEdits`, no custom agents — confirmed no Codex
+equivalent exists for the last one, not just deferred); skills and MCP are supported
+(skills via `skills/extraRoots/set` pointing at the same materialized `.claude/skills/`
+Claude sessions use; MCP via `thread/start`'s `config.mcp_servers`, bearer tokens passed
+as a named env var on the spawned child rather than an inline header). Full capability/
 permission-mode mapping, rationale, and live-confirmed protocol quirks:
-`docs/plan/phase-5.13-codex-provider.md`; operational details (build step, cost
+`docs/plan/phase-5.13-codex-provider.md`; the capability-declaration mechanism itself:
+`docs/plan/phase-10-review-followups.md` R1; operational details (build step, cost
 estimation, skills/MCP follow-up): CLAUDE.md's "Codex provider adapter" section.
 
 ## 3f. Transcript export & usage dashboard

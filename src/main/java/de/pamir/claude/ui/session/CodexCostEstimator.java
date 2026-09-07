@@ -17,7 +17,7 @@ final class CodexCostEstimator {
 
 	/**
 	 * @param pricing {@code {"<model>"|"default": {"inputPer1M":n, "cachedInputPer1M":n, "outputPer1M":n}}}
-	 *                (see {@link de.pamir.claude.ui.config.SettingsService#codexPricing()})
+	 *                (see {@link de.pamir.claude.ui.config.SettingsService#pricingFor(String)})
 	 * @param model   the model that produced the turn
 	 * @param usage   the raw token-count usage node the sidecar reported in {@code turn_complete}
 	 *                (TokenUsageBreakdown-shaped: inputTokens/cachedInputTokens/outputTokens, where

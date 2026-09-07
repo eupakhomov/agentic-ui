@@ -20,12 +20,12 @@ import java.util.UUID;
 
 /**
  * Everything about turning a {@link SessionService.CreateOptions} (or an existing session, for
- * "duplicate"/"last config") into resolved, validated config: template merge, codex
- * unsupported-field validation, default MCP-server layering, and the memory/orchestration
- * system-prompt blocks a spawn needs. Extracted from SessionService (see
- * docs/plan/phase-9-production-hardening.md S1) so create-config parsing is one place instead of
- * tangled with provisioning/spawn orchestration — SessionService still owns the actual worktree
- * creation, DB insert, and sidecar spawn.
+ * "duplicate"/"last config") into resolved, validated config: template merge,
+ * capability-driven unsupported-field validation (see {@link ProviderCatalog}), default
+ * MCP-server layering, and the memory/orchestration system-prompt blocks a spawn needs.
+ * Extracted from SessionService (see docs/plan/phase-9-production-hardening.md S1) so
+ * create-config parsing is one place instead of tangled with provisioning/spawn orchestration —
+ * SessionService still owns the actual worktree creation, DB insert, and sidecar spawn.
  */
 @Component
 public class SessionConfigFactory {
@@ -36,16 +36,18 @@ public class SessionConfigFactory {
 	private final ObjectMapper mapper;
 	private final MemoryEpisodeRepository episodes;
 	private final int serverPort;
+	private final ProviderCatalog catalog;
 
 	public SessionConfigFactory(AppProperties props, SettingsService settings, TemplateRepository templates,
 								 ObjectMapper mapper, MemoryEpisodeRepository episodes,
-								 @Value("${server.port:8080}") int serverPort) {
+								 @Value("${server.port:8080}") int serverPort, ProviderCatalog catalog) {
 		this.props = props;
 		this.settings = settings;
 		this.templates = templates;
 		this.mapper = mapper;
 		this.episodes = episodes;
 		this.serverPort = serverPort;
+		this.catalog = catalog;
 	}
 
 	/** The resolved entity (still transient — not yet inserted) plus any non-fatal warnings to journal. */
@@ -82,52 +84,53 @@ public class SessionConfigFactory {
 		String ecosystemPath = config.has("ecosystemPath") ? nullableText(config, "ecosystemPath")
 				: nullableIfBlank(settings.ecosystemRoot());
 		List<String> contextDirs = stringList(config, "contextDirs");
-		if ("codex".equals(provider)) {
-			// See docs/plan/phase-5.13-codex-provider.md's DoD: unsupported controls must be
-			// rejected at creation time, not silently downgraded. mcpConfig is NOT rejected
-			// here (unlike the other codex-unsupported fields below) — the 2026-08-30 MCP
-			// follow-up confirmed sidecar-codex can translate the same Claude-shaped config
-			// every other session already gets, including the default Linear MCP layering.
-			if (!"default".equals(permissionMode) && !"bypassPermissions".equals(permissionMode)) {
-				throw new IllegalArgumentException(
-						"provider 'codex' does not support permission mode '" + permissionMode + "'");
-			}
-			if (!allowedTools.isEmpty() || !disallowedTools.isEmpty()) {
-				throw new IllegalArgumentException("provider 'codex' does not support allowedTools/disallowedTools");
-			}
-			if (thinking != null) {
-				throw new IllegalArgumentException("provider 'codex' does not support the thinking control (use effort)");
-			}
-			if (maxTurns != null) {
-				throw new IllegalArgumentException("provider 'codex' does not support maxTurns");
-			}
-			if (fallbackModel != null) {
-				throw new IllegalArgumentException("provider 'codex' does not support fallbackModel");
-			}
-			if (arrayOrEmpty(config, "agentSources").size() > 0) {
-				// Confirmed (docs/plan/phase-5.13-codex-provider.md's follow-up): Codex has no
-				// equivalent to Claude's static subagent files at all, so unlike skillSources
-				// (silently materialized and now genuinely used, see Task 9) this can't be
-				// quietly downgraded to a no-op — reject it instead.
-				throw new IllegalArgumentException("provider 'codex' does not support agentSources");
-			}
+		ProviderCapabilities caps = catalog.get(provider);
+		// Unsupported controls are rejected at creation time, not silently downgraded (DoD from
+		// docs/plan/phase-5.13-codex-provider.md, generalized in
+		// docs/plan/phase-10-review-followups.md R1 to any provider's declared capabilities —
+		// no provider name appears below, only capability lookups). mcpConfig is never rejected
+		// here — the 2026-08-30 MCP follow-up confirmed sidecar-codex can translate the same
+		// Claude-shaped config every other session already gets, including the default Linear
+		// MCP layering, and no other provider has needed a different answer since.
+		if (!caps.permissionModes().contains(permissionMode)) {
+			throw new IllegalArgumentException(
+					"provider '" + provider + "' does not support permission mode '" + permissionMode + "'");
+		}
+		if (!caps.supports("allowedTools") && (!allowedTools.isEmpty() || !disallowedTools.isEmpty())) {
+			throw new IllegalArgumentException("provider '" + provider + "' does not support allowedTools/disallowedTools");
+		}
+		if (!caps.supports("thinking") && thinking != null) {
+			throw new IllegalArgumentException(
+					"provider '" + provider + "' does not support the thinking control (use effort)");
+		}
+		if (!caps.supports("maxTurns") && maxTurns != null) {
+			throw new IllegalArgumentException("provider '" + provider + "' does not support maxTurns");
+		}
+		if (!caps.supports("fallbackModel") && fallbackModel != null) {
+			throw new IllegalArgumentException("provider '" + provider + "' does not support fallbackModel");
+		}
+		if (!caps.supports("agentSources") && arrayOrEmpty(config, "agentSources").size() > 0) {
+			throw new IllegalArgumentException("provider '" + provider + "' does not support agentSources");
+		}
+		if (!caps.contextDirs()) {
 			// Ecosystem/context dirs commonly come from a global default (settings.ecosystemRoot()),
 			// not explicit per-session intent, so this degrades with a visible warning rather than
 			// rejecting creation outright.
 			if (ecosystemPath != null || !contextDirs.isEmpty()) {
-				warnings.add("codex provider does not support context directories — skipped");
+				warnings.add("provider '" + provider + "' does not support context directories — skipped");
 			}
 			ecosystemPath = null;
 			contextDirs = List.of();
-		} else {
+		}
+		if (caps.supports("allowedTools")) {
 			// allowedTools/disallowedTools are additive presets (bypass or block specific tools
 			// without switching the session into allow-list-only mode) — safe to append to
-			// regardless of whether the session configured any of its own. Claude sessions
-			// pre-approve these read-only tools this way; Codex rejects allowedTools entirely
-			// (handled above), so its sessions go through the normal approval flow instead
-			// (decision 10). Named explicitly (not the blanket "mcp__memory" server-level grant)
-			// since 7.4's orchestration tools — and now 8's service-discovery tools — live on the
-			// same MCP server and must NOT be pre-approved by a blanket grant.
+			// regardless of whether the session configured any of its own. A provider that
+			// rejects allowedTools outright (checked above) goes through the normal approval
+			// flow instead (decision 10, phase-5.13-codex-provider.md). Named explicitly (not
+			// the blanket "mcp__memory" server-level grant) since 7.4's orchestration tools —
+			// and now 8's service-discovery tools — live on the same MCP server and must NOT be
+			// pre-approved by a blanket grant.
 			if (settings.memoryEnabled()) {
 				allowedTools = new ArrayList<>(allowedTools);
 				allowedTools.add("mcp__memory__memory_tags");

@@ -95,6 +95,16 @@ export interface Capabilities {
   modelSwitch: boolean;
   /** known model catalog for this provider; empty = no fixed list (free-text model input) */
   models: ModelInfo[];
+  /**
+   * Session/create-option field names this provider rejects outright (backend enforces
+   * at creation time — see docs/plan/phase-10-review-followups.md R1). Field names match
+   * the create-options JSON keys, e.g. "allowedTools", "maxTurns".
+   */
+  unsupportedSessionFields: string[];
+  /** supports read-only ecosystem/service context directories (--context-dir); false degrades with a warning, not a hard reject */
+  contextDirs: boolean;
+  /** turn_complete.costUsd is authoritative; false = the backend estimates from token usage against a price table */
+  reportsCostUsd: boolean;
 }
 
 export interface ReadyEvent {
@@ -234,4 +244,7 @@ export const CODEX_CAPABILITIES: Capabilities = {
   // up front (docs/plan/phase-5.13-codex-provider.md: "no hardcoded Codex model list")
   // — empty means the frontend falls back to a free-text model field.
   models: [],
+  unsupportedSessionFields: ['allowedTools', 'disallowedTools', 'thinking', 'maxTurns', 'fallbackModel', 'agentSources'],
+  contextDirs: false,
+  reportsCostUsd: false,
 };

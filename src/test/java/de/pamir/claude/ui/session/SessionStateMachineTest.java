@@ -54,12 +54,12 @@ class SessionStateMachineTest {
 		journal = new FakeEventJournal(props);
 		worktrees = new FakeGitWorktreeService();
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
-		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080);
+		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null);
 		SystemSessionService systemSessionService =
 				new SystemSessionService(props, settings, sessions, configFactory, journalPublisher, mapper, null);
 		publishedEvents = new ArrayList<>();
 		sessionService = new SessionService(props, settings, sessions, worktrees, null, null, sidecars, journal,
-				journalPublisher, mapper, publishedEvents::add, configFactory, systemSessionService, null);
+				journalPublisher, mapper, publishedEvents::add, configFactory, systemSessionService, null, null);
 	}
 
 	private static SettingsService fakeSettings(boolean memoryEnabled, boolean serviceDiscoveryEnabled) {
@@ -309,7 +309,7 @@ class SessionStateMachineTest {
 		SessionConfigFactory configFactory = new SessionConfigFactory(
 				new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills", "/memory", 4,
 						"authtoken", "", "", "logs", 30, 65536, 1048576, Map.of()),
-				fakeSettings(false, true), null, mapper, null, 8080);
+				fakeSettings(false, true), null, mapper, null, 8080, null);
 		SettingsService settings = fakeSettings(false, true);
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
 		SystemSessionService systemSessionService =
@@ -317,7 +317,7 @@ class SessionStateMachineTest {
 		AppProperties props = new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills",
 				"/memory", 4, "authtoken", "", "", "logs", 30, 65536, 1048576, Map.of());
 		SessionService withDiscovery = new SessionService(props, settings, sessions, worktrees, null, null, sidecars,
-				journal, journalPublisher, mapper, publishedEvents::add, configFactory, systemSessionService, null);
+				journal, journalPublisher, mapper, publishedEvents::add, configFactory, systemSessionService, null, null);
 		SessionEntity s = session(SessionState.IDLE).toBuilder().reflectionEnabled(true).build();
 		sessions.seed(s);
 

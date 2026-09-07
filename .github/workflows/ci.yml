@@ -60,6 +60,14 @@ jobs:
           npm ci
           npm test
           npm run build
+      # capabilities.json is committed (the backend's ProviderCatalog reads it without
+      # needing Node) but build-generated from each package's *_CAPABILITIES const (see
+      # docs/plan/phase-10-review-followups.md R1) — the build steps above just
+      # regenerated both files in place, so a leftover diff means a committed copy is
+      # stale (protocol.ts changed without re-running `npm run build`/committing the
+      # result).
+      - name: Check capabilities.json is up to date
+        run: git diff --exit-code -- sidecar/capabilities.json sidecar-codex/capabilities.json
 
   frontend:
     name: Frontend (typecheck + test + build)

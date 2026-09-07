@@ -89,6 +89,16 @@ export interface Capabilities {
   modelSwitch: boolean;
   /** known model catalog for this provider; empty = no fixed list (free-text model input) */
   models: ModelInfo[];
+  /**
+   * Session/create-option field names this provider rejects outright (backend enforces
+   * at creation time — see docs/plan/phase-10-review-followups.md R1). Field names match
+   * the create-options JSON keys, e.g. "allowedTools", "maxTurns".
+   */
+  unsupportedSessionFields: string[];
+  /** supports read-only ecosystem/service context directories (--context-dir); false degrades with a warning, not a hard reject */
+  contextDirs: boolean;
+  /** turn_complete.costUsd is authoritative; false = the backend estimates from token usage against a price table */
+  reportsCostUsd: boolean;
 }
 
 export interface ReadyEvent {
@@ -221,4 +231,7 @@ export const CLAUDE_CAPABILITIES: Capabilities = {
     { id: 'sonnet', label: 'sonnet', tier: 'standard' },
     { id: 'opus', label: 'opus', tier: 'premium' },
   ],
+  unsupportedSessionFields: [],
+  contextDirs: true,
+  reportsCostUsd: true,
 };

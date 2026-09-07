@@ -27,6 +27,14 @@ export interface Capabilities {
   modelSwitch: boolean;
   /** known model catalog for this provider; empty = no fixed list (free-text model input) */
   models: ModelInfo[];
+  /**
+   * Backend enforcement details, not read by any UI-gating code — present on a session's live
+   * `ready.capabilities` (SessionEntity.capabilities), absent from the static GET /api/providers
+   * listing (ProviderController.Capabilities doesn't carry them). See docs/PROTOCOL.md.
+   */
+  unsupportedSessionFields?: string[];
+  contextDirs?: boolean;
+  reportsCostUsd?: boolean;
 }
 
 /** GET /api/providers — static per-provider capabilities, used to gate create-dialog/

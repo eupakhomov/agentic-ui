@@ -43,6 +43,7 @@ public class SessionService {
 	private final SessionConfigFactory configFactory;
 	private final SystemSessionService systemSessionService;
 	private final AutoTitleService autoTitleService;
+	private final ProviderCatalog catalog;
 	private final Map<UUID, Object> locks = new ConcurrentHashMap<>();
 	/** Guards the enforceSessionLimit()+insert critical section — see {@link #enforceSessionLimitAndInsert}. */
 	private final Object sessionLimitLock = new Object();
@@ -53,7 +54,7 @@ public class SessionService {
 						  JournalPublisher journalPublisher, ObjectMapper mapper,
 						  org.springframework.context.ApplicationEventPublisher events,
 						  SessionConfigFactory configFactory, SystemSessionService systemSessionService,
-						  AutoTitleService autoTitleService) {
+						  AutoTitleService autoTitleService, ProviderCatalog catalog) {
 		this.props = props;
 		this.settings = settings;
 		this.sessions = sessions;
@@ -68,6 +69,7 @@ public class SessionService {
 		this.configFactory = configFactory;
 		this.systemSessionService = systemSessionService;
 		this.autoTitleService = autoTitleService;
+		this.catalog = catalog;
 	}
 
 	// ------------------------------------------------------------------ creation
@@ -296,7 +298,7 @@ public class SessionService {
 	private void onSidecarEvent(UUID id, JsonNode event) {
 		String type = event.path("type").asText("unknown");
 		if ("turn_complete".equals(type) && event instanceof ObjectNode turnComplete) {
-			applyCodexCostEstimate(id, turnComplete);
+			applyEstimatedCost(id, turnComplete);
 		}
 		record(id, type, event);
 		switch (type) {
@@ -412,24 +414,26 @@ public class SessionService {
 	}
 
 	/**
-	 * The Codex adapter always reports {@code costUsd: 0} (it has no per-turn USD figure —
-	 * see docs/plan/phase-5.13-codex-provider.md Decision 2); this rewrites the journaled
-	 * event's costUsd in place from the raw {@code usage} token counts against the
-	 * Settings-editable price table, so the cost budget guard and usage dashboard don't
-	 * need to know the number is estimated. No-op for non-Codex sessions.
+	 * A provider whose adapter declares {@code reportsCostUsd: false} (Codex today — see
+	 * docs/plan/phase-5.13-codex-provider.md Decision 2, generalized in
+	 * docs/plan/phase-10-review-followups.md R1) always reports {@code costUsd: 0} in its
+	 * {@code turn_complete}; this rewrites the journaled event's costUsd in place from the raw
+	 * {@code usage} token counts against that provider's Settings-editable price table
+	 * ({@link SettingsService#pricingFor}), so the cost budget guard and usage dashboard don't
+	 * need to know the number is estimated. No-op for a provider that reports its own cost.
 	 */
-	private void applyCodexCostEstimate(UUID id, ObjectNode turnComplete) {
+	private void applyEstimatedCost(UUID id, ObjectNode turnComplete) {
 		SessionEntity session = sessions.find(id).orElse(null);
-		if (session == null || !"codex".equals(session.provider())) {
+		if (session == null || catalog.get(session.provider()).reportsCostUsd()) {
 			return;
 		}
 		try {
-			JsonNode pricing = mapper.readTree(settings.codexPricing());
+			JsonNode pricing = mapper.readTree(settings.pricingFor(session.provider()));
 			java.math.BigDecimal estimated = CodexCostEstimator.estimate(pricing, turnComplete.path("model").asText(""),
 					turnComplete.path("usage"));
 			turnComplete.put("costUsd", estimated);
 		} catch (RuntimeException e) {
-			log.warn("codex cost estimate failed for session {}: {}", id, e.getMessage());
+			log.warn("cost estimate failed for session {}: {}", id, e.getMessage());
 		}
 	}
 

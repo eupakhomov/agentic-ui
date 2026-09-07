@@ -27,7 +27,7 @@ final class FakeSidecarManager extends SidecarManager {
 	final Set<UUID> brokenHandles = ConcurrentHashMap.newKeySet();
 
 	FakeSidecarManager() {
-		super(null, null);
+		super(null, null, null);
 	}
 
 	@Override

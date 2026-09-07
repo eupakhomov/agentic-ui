@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Provider adapter (Claude reference implementation) for claude-ui sessions. NDJSON over stdio.",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ../scripts/gen-provider-capabilities.mjs . CLAUDE_CAPABILITIES",
     "drive": "npm run build && node dist/drive.js",
     "test": "vitest run"
   },

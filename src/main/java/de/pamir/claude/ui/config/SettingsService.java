@@ -30,7 +30,7 @@ public class SettingsService {
 	private static final int MIN_LIBRARY_SYNC_INTERVAL_MINUTES = 5;
 	private static final String DEFAULT_PROVIDER_KEY = "session.default-provider";
 	private static final String SYSTEM_PROVIDER_KEY = "session.system-provider";
-	private static final String CODEX_PRICING_KEY = "codex.pricing";
+	private static final String PRICING_KEY_SUFFIX = ".pricing";
 	private static final Set<String> VALID_TIERS = Set.of("cheap", "standard", "premium");
 	/**
 	 * memory.reflection-model / service-discovery.model used to store a raw Claude alias
@@ -41,13 +41,18 @@ public class SettingsService {
 	private static final Map<String, String> LEGACY_MODEL_ALIAS_TIER =
 			Map.of("haiku", "cheap", "sonnet", "standard", "opus", "premium");
 	/**
-	 * Codex reports token counts, never a per-turn USD figure (see
-	 * docs/plan/phase-5.13-codex-provider.md Decision 2) — this is a manually
-	 * maintained, Settings-editable estimate, not tied to any real billing API.
-	 * "default" is the fallback entry for a model with no specific row.
+	 * Seed pricing for "codex", the one provider that ships without a per-turn USD figure today
+	 * (see docs/plan/phase-5.13-codex-provider.md Decision 2) — a manually maintained,
+	 * Settings-editable estimate, not tied to any real billing API. "default" is the fallback
+	 * entry for a model with no specific row. Any other provider declaring {@code
+	 * reportsCostUsd: false} (docs/plan/phase-10-review-followups.md R1) starts from an empty
+	 * table (no default seed) until someone edits it — {@link
+	 * de.pamir.claude.ui.session.CodexCostEstimator#estimate} already treats a missing rate as
+	 * zero cost, so this is safe.
 	 */
 	private static final String DEFAULT_CODEX_PRICING =
 			"{\"default\": {\"inputPer1M\": 2, \"cachedInputPer1M\": 0.5, \"outputPer1M\": 8}}";
+	private static final String EMPTY_PRICING = "{}";
 	private static final String MEMORY_ROOT_KEY = "memory.root";
 	private static final String MEMORY_ENABLED_KEY = "memory.enabled";
 	private static final String MEMORY_REFLECTION_DEFAULT_KEY = "memory.reflection-default";
@@ -210,26 +215,34 @@ public class SettingsService {
 		repo.set(SYSTEM_PROVIDER_KEY, provider == null ? "" : provider.strip());
 	}
 
-	/** Per-model $-per-million-tokens rate table used to estimate Codex turn cost. */
-	public String codexPricing() {
-		return repo.get(CODEX_PRICING_KEY).filter(v -> !v.isBlank()).orElse(DEFAULT_CODEX_PRICING);
+	/**
+	 * Per-model $-per-million-tokens rate table used to estimate a turn's cost for any provider
+	 * that reports no USD of its own ({@code reportsCostUsd: false} — see {@link
+	 * de.pamir.claude.ui.session.SessionService#applyEstimatedCost}). Key is {@code
+	 * "<provider>.pricing"} — for {@code "codex"} this is the same literal {@code codex.pricing}
+	 * key used before the R1 generalization, so existing installs need no migration.
+	 */
+	public String pricingFor(String provider) {
+		return repo.get(provider + PRICING_KEY_SUFFIX).filter(v -> !v.isBlank())
+				.orElse("codex".equals(provider) ? DEFAULT_CODEX_PRICING : EMPTY_PRICING);
 	}
 
-	public void setCodexPricing(String json) {
+	public void setPricingFor(String provider, String json) {
+		String key = provider + PRICING_KEY_SUFFIX;
 		if (json == null || json.isBlank()) {
-			repo.set(CODEX_PRICING_KEY, DEFAULT_CODEX_PRICING);
+			repo.set(key, "codex".equals(provider) ? DEFAULT_CODEX_PRICING : EMPTY_PRICING);
 			return;
 		}
 		boolean isObject;
 		try {
 			isObject = mapper.readTree(json).isObject();
 		} catch (RuntimeException e) {
-			throw new IllegalArgumentException("codexPricing is not valid JSON: " + e.getMessage());
+			throw new IllegalArgumentException(provider + " pricing is not valid JSON: " + e.getMessage());
 		}
 		if (!isObject) {
-			throw new IllegalArgumentException("codexPricing must be a JSON object");
+			throw new IllegalArgumentException(provider + " pricing must be a JSON object");
 		}
-		repo.set(CODEX_PRICING_KEY, json);
+		repo.set(key, json);
 	}
 
 	/** Managed semantic-memory root (Markdown files, source of truth — see phase-5.3 doc). */

@@ -1,0 +1,39 @@
+{
+  "permissionModes": [
+    "default",
+    "acceptEdits",
+    "plan",
+    "bypassPermissions"
+  ],
+  "thinking": true,
+  "effort": true,
+  "planMode": true,
+  "resume": true,
+  "skills": true,
+  "agents": true,
+  "mcp": true,
+  "interrupt": true,
+  "fallbackModel": true,
+  "updatedInput": true,
+  "modelSwitch": true,
+  "models": [
+    {
+      "id": "haiku",
+      "label": "haiku",
+      "tier": "cheap"
+    },
+    {
+      "id": "sonnet",
+      "label": "sonnet",
+      "tier": "standard"
+    },
+    {
+      "id": "opus",
+      "label": "opus",
+      "tier": "premium"
+    }
+  ],
+  "unsupportedSessionFields": [],
+  "contextDirs": true,
+  "reportsCostUsd": true
+}

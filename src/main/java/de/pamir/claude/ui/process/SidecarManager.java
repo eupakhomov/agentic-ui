@@ -3,6 +3,8 @@ package de.pamir.claude.ui.process;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.session.ProviderCapabilities;
+import de.pamir.claude.ui.session.ProviderCatalog;
 import de.pamir.claude.ui.session.SessionEntity;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -28,11 +30,13 @@ public class SidecarManager {
 
 	private final AppProperties props;
 	private final ObjectMapper mapper;
+	private final ProviderCatalog catalog;
 	private final Map<UUID, SidecarHandle> handles = new ConcurrentHashMap<>();
 
-	public SidecarManager(AppProperties props, ObjectMapper mapper) {
+	public SidecarManager(AppProperties props, ObjectMapper mapper, ProviderCatalog catalog) {
 		this.props = props;
 		this.mapper = mapper;
+		this.catalog = catalog;
 	}
 
 	public SidecarHandle spawn(SessionEntity session, Path mcpConfigFile, boolean resume,
@@ -131,14 +135,16 @@ public class SidecarManager {
 		handles.keySet().forEach(this::terminate);
 	}
 
-	private List<String> buildArgs(SessionEntity s, Path mcpConfigFile, boolean resume, String extraSystemPrompt) {
-		// The codex adapter (sidecar-codex) only understands a subset of these flags — see
-		// docs/plan/phase-5.13-codex-provider.md "Also out of scope". SessionService.create()
-		// already rejects a codex session that explicitly set one of the unsupported fields,
-		// so these guards are defense-in-depth, not the primary enforcement point. --mcp-config
-		// and --append-system-prompt ARE supported by sidecar-codex (see the MCP/skills
-		// follow-up), so they're passed through unconditionally below.
-		boolean codex = "codex".equals(s.provider());
+	// package-private (not private): unit-tested directly — see SidecarManagerTest /
+	// docs/plan/phase-10-review-followups.md R1's DoD.
+	List<String> buildArgs(SessionEntity s, Path mcpConfigFile, boolean resume, String extraSystemPrompt) {
+		// Not every adapter understands every flag — see the provider's own capabilities.json
+		// (docs/plan/phase-10-review-followups.md R1). SessionConfigFactory.prepare already
+		// rejects a session that explicitly set a field its provider doesn't support, so these
+		// guards are defense-in-depth, not the primary enforcement point. --mcp-config and
+		// --append-system-prompt are supported by every adapter today, so they're passed through
+		// unconditionally below.
+		ProviderCapabilities caps = catalog.get(s.provider());
 
 		List<String> args = new ArrayList<>(List.of("--cwd", s.worktreePath()));
 		if (resume && s.providerSessionId() != null) {
@@ -147,16 +153,16 @@ public class SidecarManager {
 		if (s.model() != null) {
 			args.addAll(List.of("--model", s.model()));
 		}
-		if (!codex && s.fallbackModel() != null) {
+		if (caps.supports("fallbackModel") && s.fallbackModel() != null) {
 			args.addAll(List.of("--fallback-model", s.fallbackModel()));
 		}
 		if (s.permissionMode() != null) {
 			args.addAll(List.of("--permission-mode", s.permissionMode()));
 		}
-		if (!codex && !s.allowedTools().isEmpty()) {
+		if (caps.supports("allowedTools") && !s.allowedTools().isEmpty()) {
 			args.addAll(List.of("--allowed-tools", String.join(",", s.allowedTools())));
 		}
-		if (!codex && !s.disallowedTools().isEmpty()) {
+		if (caps.supports("disallowedTools") && !s.disallowedTools().isEmpty()) {
 			args.addAll(List.of("--disallowed-tools", String.join(",", s.disallowedTools())));
 		}
 		if (mcpConfigFile != null && Files.exists(mcpConfigFile)) {
@@ -167,21 +173,21 @@ public class SidecarManager {
 		if (!systemPrompt.isBlank()) {
 			args.addAll(List.of("--append-system-prompt", systemPrompt));
 		}
-		if (!codex) {
+		if (caps.contextDirs()) {
 			if (s.ecosystemPath() != null && !s.ecosystemPath().isBlank()) {
 				args.addAll(List.of("--context-dir", s.ecosystemPath()));
 			}
 			for (String dir : s.contextDirs()) {
 				args.addAll(List.of("--context-dir", dir));
 			}
-			if (s.thinking() != null) {
-				args.addAll(List.of("--thinking", s.thinking()));
-			}
+		}
+		if (caps.supports("thinking") && s.thinking() != null) {
+			args.addAll(List.of("--thinking", s.thinking()));
 		}
 		if (s.effort() != null) {
 			args.addAll(List.of("--effort", s.effort()));
 		}
-		if (!codex && s.maxTurns() != null) {
+		if (caps.supports("maxTurns") && s.maxTurns() != null) {
 			args.addAll(List.of("--max-turns", s.maxTurns().toString()));
 		}
 		return args;

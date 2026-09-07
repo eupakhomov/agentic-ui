@@ -53,12 +53,12 @@ class SystemSessionServiceRunTurnTest {
 		sessions = new FakeSessionRepository();
 		sidecars = new FakeSidecarManager();
 		JournalPublisher journalPublisher = new JournalPublisher(new FakeEventJournal(props), new SessionEventBus());
-		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080);
+		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null);
 		systemSessionService = new SystemSessionService(props, settings, sessions, configFactory, journalPublisher,
 				mapper, null);
 		SessionService sessionService = new SessionService(props, settings, sessions, null, null, null, sidecars,
 				new FakeEventJournal(props), journalPublisher, mapper, event -> {
-		}, configFactory, systemSessionService, null);
+		}, configFactory, systemSessionService, null, null);
 		bindLazySessionService(systemSessionService, sessionService);
 
 		systemId = UUID.randomUUID();

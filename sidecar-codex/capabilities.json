@@ -1,0 +1,28 @@
+{
+  "permissionModes": [
+    "default",
+    "bypassPermissions"
+  ],
+  "thinking": false,
+  "effort": true,
+  "planMode": false,
+  "resume": true,
+  "skills": true,
+  "agents": false,
+  "mcp": true,
+  "interrupt": true,
+  "fallbackModel": false,
+  "updatedInput": false,
+  "modelSwitch": true,
+  "models": [],
+  "unsupportedSessionFields": [
+    "allowedTools",
+    "disallowedTools",
+    "thinking",
+    "maxTurns",
+    "fallbackModel",
+    "agentSources"
+  ],
+  "contextDirs": false,
+  "reportsCostUsd": false
+}

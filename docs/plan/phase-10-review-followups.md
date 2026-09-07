@@ -1,6 +1,6 @@
 # Phase 10 — Post-review follow-ups
 
-Status: **planned (2026-09-06)**, nothing picked yet. Same shape as Phase 9: a curated
+Status: **R1 done (2026-09-07, Run D)**, rest not yet picked. Same shape as Phase 9: a curated
 backlog from a fresh full-system read-through after Phase 9 Run F landed, not one feature
 plan. Each item is self-contained with enough context to be picked up as its own run.
 Security remains out of scope (LAN/single-user posture, decision 2026-08-23).
@@ -29,7 +29,39 @@ those files, not as a run of its own.
 
 ## 10.1 The remaining provider seam
 
-- **R1 — Three `"codex"` string branches in the "provider-neutral" backend.**
+- **R1 — DONE (2026-09-07, Run D).** Went with option (a) from the sketch below:
+  `Capabilities` (both `protocol.ts` copies) gained `unsupportedSessionFields: string[]`,
+  `contextDirs: boolean`, `reportsCostUsd: boolean`; a new `scripts/gen-provider-
+  capabilities.mjs` runs as each package's `npm run build` postbuild step and writes a
+  committed `<package>/capabilities.json` (package root, not the gitignored `dist/`) from
+  the built `*_CAPABILITIES` const — CI verifies freshness with a plain `git diff
+  --exit-code` after the build step, not an extension to `check-protocol-sync.mjs` as
+  originally sketched (that script deliberately runs *before* `npm ci`/build for speed, so
+  it has no `dist/` to regenerate from at that point — a `git diff` after the real build
+  step is simpler and gives the same guarantee). Backend: new `ProviderCapabilities`
+  record + `ProviderCatalog` (`session/ProviderCatalog.java`) resolve each provider's
+  `capabilities.json` **lazily per id**, not eagerly at startup as sketched — a backend
+  whose sidecar packages aren't all built yet still boots and serves the providers that
+  are (`ProviderController.list()` logs + omits one that fails to load, rather than 500ing
+  the whole endpoint). `SidecarManager.buildArgs`, `SessionConfigFactory.prepare`, and
+  `SessionService.applyEstimatedCost` (renamed from `applyCodexCostEstimate`) all branch on
+  `ProviderCapabilities` now, with zero provider-name checks. `SettingsService.codexPricing`
+  became `pricingFor(provider)`/`setPricingFor(provider, json)` (key `<provider>.pricing`;
+  `codex` is byte-identical to the old key, no migration) — the `DEFAULT_CODEX_PRICING` seed
+  stays codex-specific real-world data (any other `reportsCostUsd: false` provider starts
+  from `{}`, safe since `CodexCostEstimator.estimate` already treats missing rates as zero
+  cost), and `SettingsController`'s DTO/Settings-dialog UI deliberately keeps its flat
+  `codexPricing` field — generalizing the *UI* was out of scope (a backend plumbing fix, not
+  a UI rework). Net effect: the DoD's grep is clean for the three original branch sites, but
+  not literally zero `"codex"` in `src/main/java` — `SettingsService`/`SettingsController`
+  keep a few, all in the pricing-seed/DTO-naming corner just described, none of it gating
+  session creation or spawn behavior. New tests: `ProviderCatalogTest`,
+  `SessionConfigFactoryTest`'s fabricated-`"widget"`-provider cases, `SidecarManagerTest`
+  (new file — `buildArgs` widened from `private` to package-private for direct testing, same
+  convention as `SessionConfigFactory`'s helpers). `docs/PROTOCOL.md`'s capabilities example
+  and `docs/ARCHITECTURE.md` §3e updated; decision recorded in `docs/plan/README.md`.
+  Original sketch, kept for context:
+
   `SidecarManager.buildArgs` (`process/SidecarManager.java:141`, gates seven CLI flags),
   `SessionConfigFactory.prepare` (`session/SessionConfigFactory.java:85`, the
   unsupported-field rejection cascade), and `SessionService.applyCodexCostEstimate`
@@ -333,10 +365,11 @@ those files, not as a run of its own.
 2. **Run B (bounded state + list query)** — R4 + R7. Both are "add one method to
    `EventJournal`, call it from one place"; R7 gets a `*DbTest`.
 3. **Run C (nits)** — R8a + R8b, then R8c only if a new setting is on the table.
-4. **Run D (provider seam)** — R1, on its own, after the (a)/(b) decision is written into
-   `docs/plan/README.md`'s decision log. Largest change, touches both sidecars' build, and
-   the only item that changes a documented contract (`Capabilities` gains fields —
-   `PROTOCOL.md` update required, `check-protocol-sync.mjs` still must pass).
+4. **Run D (provider seam) — DONE 2026-09-07.** R1, on its own, decision (a) recorded in
+   `docs/plan/README.md`'s decision log first. Touched both sidecars' build (a new
+   `capabilities.json` per package) and a documented contract (`Capabilities` gains three
+   fields — `PROTOCOL.md` updated); the freshness guard ended up as a `git diff` CI step
+   rather than a `check-protocol-sync.mjs` extension (see the R1 bullet above for why).
 5. **Run E (monorepo)** — M1, on its own, after its six decisions are confirmed and
    written into the decision log. Independent of R1 (the new `--writable-root` flag needs
    no capability — both adapters honor it), but the "verify live" provisioning bullet
@@ -350,12 +383,17 @@ Items not picked stay valid backlog.
 
 ## Definition of Done
 
-- **R1**: `grep -rn '"codex"' src/main/java --include=*.java | grep -v test` returns
-  nothing outside `application.yaml`'s provider entry and `ModelCatalog` (until Codex gets
-  a model list, that class legitimately keys per provider). A `SessionConfigFactory` test
-  using a fabricated provider id (not `claude`/`codex`) that declares `maxTurns`
-  unsupported rejects a session setting it. `PROTOCOL.md`'s capabilities table lists the
-  new fields; both `*_CAPABILITIES` consts declare them; `check-protocol-sync.mjs` passes.
+- **R1 — done.** `grep -rn '"codex"' src/main/java --include=*.java | grep -v test` is clean
+  for the three original branch sites (`SidecarManager.buildArgs`,
+  `SessionConfigFactory.prepare`, `SessionService`'s renamed `applyEstimatedCost`) — the
+  remaining hits are `ModelCatalog` (excluded, as before) plus `SettingsService`/
+  `SettingsController`'s pricing-seed/DTO-naming corner (deliberately out of scope — see
+  the R1 bullet above). `SessionConfigFactoryTest` has a fabricated provider id (not
+  `claude`/`codex`) that declares `maxTurns` unsupported and rejects a session setting it
+  (`prepareRejectsAFieldTheFabricatedProviderDeclaresUnsupported`), plus the accepting
+  counterpart. `PROTOCOL.md`'s capabilities table lists the new fields; both
+  `*_CAPABILITIES` consts declare them; `check-protocol-sync.mjs` passes (unaffected by
+  R1 — the new freshness guard is a separate CI step, not part of that script).
 - **R2**: With `CLAUDE_UI_VOYAGE_API_KEY` set to garbage, memory search in the dialog,
   `memory_search` from inside a session, and library search all still return sparse/
   trigram hits (and one `Voyage API key rejected (401)` warning per call in the log)

@@ -44,11 +44,40 @@ class SessionConfigFactoryTest {
 			public boolean serviceDiscoveryEnabled() {
 				return serviceDiscoveryEnabled;
 			}
+
+			@Override
+			public String defaultProvider() {
+				// prepare() evaluates these eagerly as fallback-argument expressions even when
+				// the config already supplies its own value — never actually used in that case,
+				// but Java evaluates method arguments before the callee can short-circuit, so
+				// they must not touch the (null in these tests) SettingsRepository regardless.
+				return "claude";
+			}
+
+			@Override
+			public String ecosystemRoot() {
+				return "";
+			}
+
+			@Override
+			public boolean memoryReflectionDefault() {
+				return false;
+			}
 		};
 	}
 
 	private SessionConfigFactory factoryWith(AppProperties props, SettingsService settings) {
-		return new SessionConfigFactory(props, settings, null, mapper, null, 8080);
+		return new SessionConfigFactory(props, settings, null, mapper, null, 8080, null);
+	}
+
+	/** A fixed, non-file-backed ProviderCatalog — see {@link ProviderCatalog#fixedForTest}. */
+	private static ProviderCatalog fakeCatalog(Map<String, ProviderCapabilities> byProvider) {
+		return ProviderCatalog.fixedForTest(byProvider);
+	}
+
+	private static ProviderCapabilities fullCapabilities() {
+		return new ProviderCapabilities(List.of("default", "acceptEdits", "plan", "bypassPermissions"),
+				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true);
 	}
 
 	private static AppProperties propsWithLinearKey(String linearApiKey, String authToken) {
@@ -170,5 +199,41 @@ class SessionConfigFactoryTest {
 	void fillPlaceholdersIsANoOpWithoutAPromptOrValues() {
 		assertThat(SessionConfigFactory.fillPlaceholders(null, Map.of("a", "b"))).isNull();
 		assertThat(SessionConfigFactory.fillPlaceholders("unchanged {{x}}", null)).isEqualTo("unchanged {{x}}");
+	}
+
+	// --- prepare() rejects unsupported fields by capability, not by provider name ---
+	// See docs/plan/phase-10-review-followups.md R1's DoD: a fabricated provider id (not
+	// claude/codex) declaring a field unsupported must still be rejected — proving the
+	// rejection path only ever consults ProviderCatalog, never a hardcoded provider string.
+
+	@Test
+	void prepareRejectsAFieldTheFabricatedProviderDeclaresUnsupported() {
+		AppProperties props = propsWithLinearKey("", "authtoken");
+		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
+				null, mapper, null, 8080, fakeCatalog(Map.of("widget", new ProviderCapabilities(
+						List.of("default"), true, true, true, true, true, true, true, true, true, true, true,
+						List.of("maxTurns"), true, true))));
+		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
+
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(
+						() -> factory.prepare(UUID.randomUUID(), java.nio.file.Path.of("/worktree"), options)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("widget").hasMessageContaining("maxTurns");
+	}
+
+	@Test
+	void prepareAcceptsTheSameFieldForAProviderThatSupportsIt() {
+		AppProperties props = propsWithLinearKey("", "authtoken");
+		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
+				null, mapper, null, 8080, fakeCatalog(Map.of("widget", fullCapabilities())));
+		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), java.nio.file.Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().maxTurns()).isEqualTo(5);
 	}
 }

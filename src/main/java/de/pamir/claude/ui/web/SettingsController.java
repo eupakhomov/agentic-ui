@@ -89,7 +89,7 @@ public class SettingsController {
 			settings.setSystemProvider(update.systemProvider());
 		}
 		if (update.codexPricing() != null) {
-			settings.setCodexPricing(update.codexPricing());
+			settings.setPricingFor("codex", update.codexPricing());
 		}
 		if (update.memoryRoot() != null) {
 			settings.setMemoryRoot(update.memoryRoot());
@@ -131,7 +131,7 @@ public class SettingsController {
 				settings.ecosystemRoot(), settings.prChecksEnabled(), settings.prCheckPollIntervalSeconds(),
 				settings.librarySkillsRoot(), settings.libraryAgentsRoot(), settings.libraryVectorize(),
 				settings.librarySyncEnabled(), settings.librarySyncIntervalMinutes(), voyageConfigured,
-				settings.defaultProvider(), settings.systemProviderOverride(), settings.codexPricing(),
+				settings.defaultProvider(), settings.systemProviderOverride(), settings.pricingFor("codex"),
 				settings.memoryRoot(), settings.memoryEnabled(), settings.memoryReflectionDefault(),
 				settings.memoryReflectionModel(), settings.memorySyncIntervalMinutes(), settings.memoryRetentionDays(),
 				settings.memoryReflectionApprovalRequired(),
