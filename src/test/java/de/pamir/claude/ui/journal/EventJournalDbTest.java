@@ -126,6 +126,27 @@ class EventJournalDbTest {
 	}
 
 	@Test
+	void statsForAllAggregatesLastSeqAndCostAcrossSessionsInOneQuery() {
+		UUID a = newSession();
+		UUID b = newSession();
+		UUID untouched = newSession();
+		journal.append(a, "turn_complete", turnComplete(1.5));
+		journal.append(a, "turn_complete", turnComplete(2.25));
+		journal.append(b, "stream_delta", delta("buffered, not yet flushed"));
+		journal.append(b, "turn_complete", turnComplete(4.0)); // flushes both b rows
+
+		var stats = journal.statsForAll();
+
+		assertThat(stats.get(a).lastSeq()).isEqualTo(2L);
+		assertThat(stats.get(a).costToDate()).isEqualByComparingTo(new BigDecimal("3.75"));
+		assertThat(stats.get(b).lastSeq()).isEqualTo(2L);
+		assertThat(stats.get(b).costToDate()).isEqualByComparingTo(new BigDecimal("4.0"));
+		assertThat(stats).doesNotContainKey(untouched);
+		assertThat(stats.get(a).lastSeq()).isEqualTo(journal.lastSeq(a));
+		assertThat(stats.get(a).costToDate()).isEqualByComparingTo(journal.costToDate(a));
+	}
+
+	@Test
 	void releaseDropsInMemoryStateWithoutDeletingRowsSoHistoryStillReads() {
 		UUID sessionId = newSession();
 		journal.append(sessionId, "user_message", mapper.createObjectNode().put("text", "hi"));

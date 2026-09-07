@@ -1,6 +1,6 @@
 # Phase 10 — Post-review follow-ups
 
-Status: **R1 done (2026-09-07, Run D)**, rest not yet picked. Same shape as Phase 9: a curated
+Status: **R1–R7 done (2026-09-07)**, R8/M1 not yet picked. Same shape as Phase 9: a curated
 backlog from a fresh full-system read-through after Phase 9 Run F landed, not one feature
 plan. Each item is self-contained with enough context to be picked up as its own run.
 Security remains out of scope (LAN/single-user posture, decision 2026-08-23).
@@ -192,7 +192,21 @@ those files, not as a run of its own.
 
 ## 10.3 Efficiency
 
-- **R7 — `SessionController.list()` is N+1.** `web/SessionController.java:80-84` runs
+- **R7 — DONE (2026-09-07).** `EventJournal.statsForAll()` (new `SessionStats(lastSeq,
+  costToDate)` record) runs the single `GROUP BY session_id` aggregate sketched below —
+  `max(seq)` plus `sum(...) FILTER (WHERE type = 'turn_complete')` in one pass, after a
+  `flushAll()` — and `SessionController.list()` now calls it once and looks each session
+  up in the returned map (missing = never journaled, defaults to `lastSeq=0,
+  costToDate=0`), instead of the old `journal.costToDate(id)`/`journal.lastSeq(id)` pair
+  per session. New test: `EventJournalDbTest.
+  statsForAllAggregatesLastSeqAndCostAcrossSessionsInOneQuery` (two sessions with
+  interleaved buffered/flushed rows, a third untouched session absent from the map,
+  cross-checked against the existing per-session `lastSeq`/`costToDate` calls). `./mvnw
+  test` (full, DB up, all tests incl. `integration`) is green. The optional
+  `?includeClosed=false` stretch from the original sketch was not done — not needed to
+  fix the N+1, left as further backlog if the dashboard ever wants it.
+
+- **R7 (original sketch, kept for context).** `web/SessionController.java:80-84` runs
   `journal.costToDate(id)` and `journal.lastSeq(id)` per session — two round trips each,
   and `costToDate` also `flush()`es. Every dashboard load and every "Refresh" button
   press. Fine at 10 sessions, visible at a few hundred (sessions are never deleted, only
@@ -377,8 +391,8 @@ those files, not as a run of its own.
 1. **Run A (small correctness fixes) — DONE 2026-09-07.** R2 + R3 + R6 + R5, plus R4
    (originally slated for Run B, folded in since it touched the same files). See the R2–R6
    summary at the top of §10.2.
-2. **Run B (bounded state + list query)** — R4 done above; R7 (the list-query
-   optimization) is still open, its own run.
+2. **Run B (bounded state + list query) — DONE 2026-09-07.** R4 done above; R7 (the
+   list-query optimization) done as its own run (see the R7 bullet in §10.3).
 3. **Run C (nits)** — R8a + R8b, then R8c only if a new setting is on the table.
 4. **Run D (provider seam) — DONE 2026-09-07.** R1, on its own, decision (a) recorded in
    `docs/plan/README.md`'s decision log first. Touched both sidecars' build (a new
@@ -422,7 +436,7 @@ Items not picked stay valid backlog.
   `SidecarManager.spawn` of a process that's dead on arrival leaves `handles` empty.
 - **R6**: `pendingSystemText` is a `volatile String`; `SystemSessionServiceRunTurnTest`
   passes unchanged.
-- **R7**: `GET /api/sessions` issues one journal query regardless of session count
+- **R7 — done.** `GET /api/sessions` issues one journal query regardless of session count
   (verify with `logging.level.org.springframework.jdbc.core=DEBUG` — one `SELECT ...
   GROUP BY session_id`, not 2N); the new `*DbTest` passes.
 - **R8a/b**: the FQN grep above is empty; `npm run build` output contains no

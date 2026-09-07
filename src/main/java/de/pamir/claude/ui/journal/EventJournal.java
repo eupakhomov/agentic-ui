@@ -185,6 +185,27 @@ public class EventJournal {
 	public record TurnUsage(UUID sessionId, String sessionName, Instant ts, String model, BigDecimal costUsd) {
 	}
 
+	public record SessionStats(long lastSeq, BigDecimal costToDate) {
+	}
+
+	/**
+	 * {@link #lastSeq}/{@link #costToDate} for every session that has at least one journal row,
+	 * in one query — replaces the N+1 pair `SessionController.list()` used to run per session
+	 * (docs/plan/phase-10-review-followups.md R7). A session with no rows at all is simply
+	 * absent from the map; callers default it to {@code lastSeq=0, costToDate=0}.
+	 */
+	public Map<UUID, SessionStats> statsForAll() {
+		flushAll();
+		return jdbc.sql("""
+						SELECT session_id, max(seq) AS last_seq,
+							   coalesce(sum((payload->>'costUsd')::numeric) FILTER (WHERE type = 'turn_complete'), 0) AS cost
+						FROM session_event GROUP BY session_id""")
+				.query((rs, i) -> Map.entry(rs.getObject("session_id", UUID.class),
+						new SessionStats(rs.getLong("last_seq"), rs.getBigDecimal("cost"))))
+				.stream()
+				.collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+	}
+
 	/** Per-turn cost/model rows across all sessions since {@code since}, for the usage dashboard. */
 	public List<TurnUsage> usageSince(Instant since) {
 		flushAll();

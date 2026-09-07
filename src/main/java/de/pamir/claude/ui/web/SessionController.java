@@ -75,12 +75,18 @@ public class SessionController {
 		return service.lastSessionConfig();
 	}
 
+	private static final EventJournal.SessionStats NO_EVENTS = new EventJournal.SessionStats(0L, BigDecimal.ZERO);
+
 	@GetMapping
 	public List<SessionSummary> list() {
+		Map<UUID, EventJournal.SessionStats> stats = journal.statsForAll();
 		return sessions.findAll().stream()
-				.map(s -> new SessionSummary(s.id(), s.name(), s.provider(), s.repoPath(), s.branch(), s.model(),
-						s.permissionMode(), s.state().name(), s.kind(), journal.costToDate(s.id()), s.updatedAt(),
-						journal.lastSeq(s.id())))
+				.map(s -> {
+					EventJournal.SessionStats st = stats.getOrDefault(s.id(), NO_EVENTS);
+					return new SessionSummary(s.id(), s.name(), s.provider(), s.repoPath(), s.branch(), s.model(),
+							s.permissionMode(), s.state().name(), s.kind(), st.costToDate(), s.updatedAt(),
+							st.lastSeq());
+				})
 				.toList();
 	}
 
