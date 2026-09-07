@@ -6,8 +6,10 @@ import de.pamir.claude.ui.journal.EventJournal;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * In-memory {@link EventJournal} double — overrides every method SessionService's tested paths
@@ -20,6 +22,9 @@ final class FakeEventJournal extends EventJournal {
 
 	private final Map<UUID, Long> seqs = new ConcurrentHashMap<>();
 	private final Map<UUID, BigDecimal> costs = new ConcurrentHashMap<>();
+	private final Map<UUID, List<JournalEvent>> journaled = new ConcurrentHashMap<>();
+	/** Set whenever {@link #readAfter} is called — lets a test assert it was (or wasn't) hit. */
+	boolean readAfterCalled;
 
 	FakeEventJournal(AppProperties props) {
 		super(null, null, props);
@@ -32,7 +37,9 @@ final class FakeEventJournal extends EventJournal {
 	@Override
 	public JournalEvent append(UUID sessionId, String type, tools.jackson.databind.JsonNode payload) {
 		long seq = seqs.merge(sessionId, 1L, Long::sum);
-		return new JournalEvent(seq, java.time.Instant.now(), type, payload);
+		JournalEvent event = new JournalEvent(seq, java.time.Instant.now(), type, payload);
+		journaled.computeIfAbsent(sessionId, k -> new CopyOnWriteArrayList<>()).add(event);
+		return event;
 	}
 
 	@Override
@@ -52,6 +59,17 @@ final class FakeEventJournal extends EventJournal {
 
 	@Override
 	public List<JournalEvent> readAfter(UUID sessionId, long afterSeq) {
+		readAfterCalled = true;
 		return List.of();
+	}
+
+	@Override
+	public long countEventType(UUID sessionId, String type) {
+		return journaled.getOrDefault(sessionId, List.of()).stream().filter(e -> e.type().equals(type)).count();
+	}
+
+	@Override
+	public Optional<JournalEvent> firstEventOfType(UUID sessionId, String type) {
+		return journaled.getOrDefault(sessionId, List.of()).stream().filter(e -> e.type().equals(type)).findFirst();
 	}
 }

@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -85,6 +86,33 @@ public class EventJournal {
 				.query(Boolean.class).single());
 	}
 
+	/**
+	 * Cheap count of one event type for a session (e.g. counting turn_complete rows without
+	 * materializing the whole transcript — see docs/plan/phase-10-review-followups.md R3,
+	 * sibling of {@link #hasEventType}).
+	 */
+	public long countEventType(UUID sessionId, String type) {
+		flush(sessionId);
+		return jdbc.sql("SELECT count(*) FROM session_event WHERE session_id = ? AND type = ?")
+				.params(sessionId, type)
+				.query(Long.class).single();
+	}
+
+	/** First event of a given type for a session, if any — see docs/plan/phase-10-review-followups.md R3. */
+	public Optional<JournalEvent> firstEventOfType(UUID sessionId, String type) {
+		flush(sessionId);
+		return jdbc.sql("""
+						SELECT seq, ts, type, payload FROM session_event
+						WHERE session_id = ? AND type = ? ORDER BY seq LIMIT 1""")
+				.params(sessionId, type)
+				.query((rs, i) -> new JournalEvent(
+						rs.getLong("seq"),
+						rs.getTimestamp("ts").toInstant(),
+						rs.getString("type"),
+						readNode(rs.getString("payload"))))
+				.optional();
+	}
+
 	public List<JournalEvent> readAfter(UUID sessionId, long afterSeq) {
 		flush(sessionId);
 		return jdbc.sql("SELECT seq, ts, type, payload FROM session_event WHERE session_id = ? AND seq > ? ORDER BY seq")
@@ -118,6 +146,18 @@ public class EventJournal {
 		int deleted = jdbc.sql("DELETE FROM session_event WHERE session_id = ?").params(sessionId).update();
 		sessions.remove(sessionId);
 		return deleted;
+	}
+
+	/**
+	 * Drops the in-memory per-session bookkeeping (flushing first) without touching the journal
+	 * rows themselves — call once a session is CLOSED and will never be journaled to again, so
+	 * {@link #sessions} doesn't grow unbounded (docs/plan/phase-10-review-followups.md R4). Safe
+	 * to call at any time: {@link #readAfter}/{@link #lastSeq} on a released session just
+	 * lazily {@link #load} again from {@code max(seq)}, exactly as they do for a never-seen one.
+	 */
+	public void release(UUID sessionId) {
+		flush(sessionId);
+		sessions.remove(sessionId);
 	}
 
 	/** Defense in depth: no single journal row grows beyond the cap. */

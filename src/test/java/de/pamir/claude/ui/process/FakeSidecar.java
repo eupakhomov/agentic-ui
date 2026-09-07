@@ -29,13 +29,17 @@ public final class FakeSidecar {
 	/** A handle whose stdin writes are discarded. */
 	public static SidecarHandle newHandle(UUID sessionId, Consumer<JsonNode> onEvent,
 										   BiConsumer<SidecarHandle, Integer> onExit) {
-		return new SidecarHandle(sessionId, new FakeProcess(null), new JsonMapper(), null, onEvent, onExit);
+		SidecarHandle handle = new SidecarHandle(sessionId, new FakeProcess(null), new JsonMapper(), null, onEvent, onExit);
+		handle.watchExit();
+		return handle;
 	}
 
 	/** Same, but every line written to stdin (one send() call each) is appended to {@code sentLines}. */
 	public static SidecarHandle newHandle(UUID sessionId, List<String> sentLines, Consumer<JsonNode> onEvent,
 										   BiConsumer<SidecarHandle, Integer> onExit) {
-		return new SidecarHandle(sessionId, new FakeProcess(sentLines), new JsonMapper(), null, onEvent, onExit);
+		SidecarHandle handle = new SidecarHandle(sessionId, new FakeProcess(sentLines), new JsonMapper(), null, onEvent, onExit);
+		handle.watchExit();
+		return handle;
 	}
 
 	private static final class FakeProcess extends Process {

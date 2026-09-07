@@ -247,6 +247,7 @@ public class SessionService {
 				sidecars.terminate(id);
 				deleteRecursively(Path.of(session.worktreePath()));
 				transition(id, SessionState.CLOSED);
+				releaseSessionState(id);
 				return;
 			}
 			Path worktree = Path.of(session.worktreePath());
@@ -267,6 +268,7 @@ public class SessionService {
 			}
 			worktrees.removeWorktree(Path.of(session.repoPath()), worktree);
 			transition(id, SessionState.CLOSED);
+			releaseSessionState(id);
 			if (session.reflectionEnabled()) {
 				events.publishEvent(new de.pamir.claude.ui.memory.ReflectionRequested(id));
 			}
@@ -560,6 +562,24 @@ public class SessionService {
 	/** Package-private: also used by {@link SessionHousekeeping}'s parking tick. */
 	Object lock(UUID id) {
 		return locks.computeIfAbsent(id, k -> new Object());
+	}
+
+	/**
+	 * Drops the per-session bookkeeping ({@code locks} here, plus the journal's own in-memory
+	 * state) once a session is CLOSED and will never be touched again — otherwise both maps grow
+	 * unbounded over the process lifetime (docs/plan/phase-10-review-followups.md R4). Called
+	 * from inside the {@code synchronized (lock(id))} block that just performed the final CLOSED
+	 * transition; removing the map entry here is safe even though the current thread still holds
+	 * that object's monitor until the block exits.
+	 */
+	private void releaseSessionState(UUID id) {
+		locks.remove(id);
+		journal.release(id);
+	}
+
+	/** Package-private: test-only visibility into R4's lock-release bookkeeping. */
+	boolean hasLock(UUID id) {
+		return locks.containsKey(id);
 	}
 
 	// ------------------------------------------------------------------ parking

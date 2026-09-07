@@ -1,6 +1,7 @@
 package de.pamir.claude.ui.session;
 
 import de.pamir.claude.ui.config.AppProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -27,6 +28,10 @@ public class ProviderCatalog {
 	private final boolean fileBacked;
 	private final Map<String, ProviderCapabilities> cache = new ConcurrentHashMap<>();
 
+	// Explicit @Autowired: with the test-only constructor below also present, Spring can't apply
+	// its usual "exactly one constructor" auto-detection, and silently falls back to a no-arg
+	// constructor that doesn't exist — breaking application startup entirely, not just tests.
+	@Autowired
 	public ProviderCatalog(AppProperties props, ObjectMapper mapper) {
 		this.props = props;
 		this.mapper = mapper;

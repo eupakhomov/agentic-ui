@@ -225,12 +225,13 @@ public class LibraryService {
 	}
 
 	/**
-	 * Hybrid (dense+sparse+trigram) search — dense arm skipped when Voyage isn't configured, same
-	 * as memory search (docs/plan/phase-9-production-hardening.md O3); never throws for that case
-	 * anymore, only for a genuine embed failure once configured.
+	 * Hybrid (dense+sparse+trigram) search — dense arm skipped when Voyage isn't configured or
+	 * when embedding the query fails once configured (docs/plan/phase-9-production-hardening.md
+	 * O3, docs/plan/phase-10-review-followups.md R2 — same {@code tryEmbed} degrade-to-sparse
+	 * pattern as memory search), so this never throws for either case.
 	 */
 	public List<LibraryRepository.SearchHit> search(String query, int limit, String kind) {
-		float[] embedding = embeddings.configured() ? embeddings.embed(query, true) : null;
+		float[] embedding = embeddings.tryEmbed(query, true);
 		return assets.hybridSearch(query, embedding, kind, limit);
 	}
 

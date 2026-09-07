@@ -51,7 +51,7 @@ public class SystemSessionService {
 	private final ReentrantLock systemSessionLock = new ReentrantLock(true);
 	private volatile UUID pendingSystemTurnSessionId;
 	private volatile CompletableFuture<String> pendingSystemTurn;
-	private final StringBuilder pendingSystemText = new StringBuilder();
+	private volatile String pendingSystemText = "";
 
 	public SystemSessionService(AppProperties props, SettingsService settings, SessionRepository sessions,
 								 SessionConfigFactory configFactory, JournalPublisher journalPublisher,
@@ -100,7 +100,7 @@ public class SystemSessionService {
 			if (switchModel) {
 				sessionService.setModel(session.id(), modelOverride);
 			}
-			pendingSystemText.setLength(0);
+			pendingSystemText = "";
 			CompletableFuture<String> future = new CompletableFuture<>();
 			pendingSystemTurn = future;
 			pendingSystemTurnSessionId = session.id();
@@ -191,14 +191,13 @@ public class SystemSessionService {
 		}
 		String text = extractText(content);
 		if (!text.isBlank()) {
-			pendingSystemText.setLength(0);
-			pendingSystemText.append(text);
+			pendingSystemText = text;
 		}
 	}
 
 	/** Completes the pending system turn (if any) for {@code sessionId} with the accumulated assistant text. */
 	void completeTurn(UUID sessionId) {
-		completePending(sessionId, pendingSystemText.toString(), null);
+		completePending(sessionId, pendingSystemText, null);
 	}
 
 	/** Fails the pending system turn (if any) for {@code sessionId} — a fatal sidecar error or crash. */

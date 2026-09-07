@@ -78,7 +78,11 @@ public class SidecarManager {
 				deletePidFile(session);
 				onExit.accept(h, code);
 			});
+			// handles.put before watchExit: a process that's already dead on arrival must not be
+			// able to fire the exit callback (removing an entry that was never inserted) before
+			// the entry actually exists — see docs/plan/phase-10-review-followups.md R5.
 			handles.put(session.id(), handle);
+			handle.watchExit();
 			writePidFile(session, handle.pid());
 			log.info("session {}: sidecar pid {} spawned ({})", session.id(), handle.pid(), String.join(" ", command));
 			return handle;

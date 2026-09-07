@@ -34,6 +34,7 @@ public class SidecarHandle {
 	private final UUID sessionId;
 	private final Process process;
 	private final BufferedWriter stdin;
+	private final BiConsumer<SidecarHandle, Integer> onExit;
 	private final Deque<String> stderrTail = new ArrayDeque<>();
 	private volatile boolean shutdownRequested;
 
@@ -41,6 +42,7 @@ public class SidecarHandle {
 				  Consumer<JsonNode> onEvent, BiConsumer<SidecarHandle, Integer> onExit) {
 		this.sessionId = sessionId;
 		this.process = process;
+		this.onExit = onExit;
 		this.stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
 
 		BufferedWriter stderrLog = openStderrLog(stderrLogFile);
@@ -96,7 +98,15 @@ public class SidecarHandle {
 				}
 			}
 		});
+	}
 
+	/**
+	 * Registers the exit callback. Split out of the constructor (docs/plan/
+	 * phase-10-review-followups.md R5) so the caller can finish its own bookkeeping — e.g.
+	 * {@code SidecarManager.spawn}'s {@code handles.put} — before a process that's already dead
+	 * on arrival can race in and fire the callback first.
+	 */
+	void watchExit() {
 		process.onExit().thenAccept(p -> onExit.accept(this, p.exitValue()));
 	}
 

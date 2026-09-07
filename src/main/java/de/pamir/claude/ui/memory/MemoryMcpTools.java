@@ -70,7 +70,7 @@ public class MemoryMcpTools {
 			@McpToolParam(required = false, description = "Optional: only memories carrying at least one of these tags")
 			List<String> tags) {
 		String servicePath = repoPathOf(sessionId);
-		float[] embedding = embeddings.configured() ? embeddings.embed(query, true) : null;
+		float[] embedding = embeddings.tryEmbed(query, true);
 		return docs.hybridSearch(query, embedding, servicePath, tags, DEFAULT_SEARCH_LIMIT).stream()
 				.map(hit -> new SearchResult(hit.doc().name(), hit.doc().scope(), hit.doc().description(),
 						hit.doc().tags()))

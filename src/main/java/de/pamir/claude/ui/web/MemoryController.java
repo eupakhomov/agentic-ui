@@ -79,7 +79,7 @@ public class MemoryController {
 			throw new IllegalArgumentException("q is required");
 		}
 		int k = Math.max(1, Math.min(100, limit));
-		float[] embedding = embeddings.configured() ? embeddings.embed(q, true) : null;
+		float[] embedding = embeddings.tryEmbed(q, true);
 		List<SearchHitView> hits = new ArrayList<>();
 		if (!"episodic".equals(kind)) {
 			for (var hit : docs.hybridSearch(q, embedding, servicePath, tags, k)) {

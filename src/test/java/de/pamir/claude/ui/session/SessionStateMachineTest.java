@@ -305,6 +305,19 @@ class SessionStateMachineTest {
 	}
 
 	@Test
+	void closeReleasesTheSessionLockAndTheJournalNoLongerNeedsToBeQueried() {
+		SessionEntity s = session(SessionState.IDLE);
+
+		sessionService.close(s.id(), null, null);
+
+		assertThat(sessionService.hasLock(s.id())).isFalse();
+		// FakeEventJournal doesn't track a real in-memory session map to assert against directly,
+		// but readAfter (unaffected by release — see EventJournal.release's javadoc) must still
+		// work for a released session's event history, same as it does for a never-seen one.
+		assertThat(journal.readAfter(s.id(), 0)).isNotNull();
+	}
+
+	@Test
 	void closePublishesReflectionAndServiceDiscoveryEventsWhenEnabled() {
 		SessionConfigFactory configFactory = new SessionConfigFactory(
 				new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills", "/memory", 4,

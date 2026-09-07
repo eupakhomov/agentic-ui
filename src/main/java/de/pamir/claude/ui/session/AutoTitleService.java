@@ -1,5 +1,6 @@
 package de.pamir.claude.ui.session;
 
+import de.pamir.claude.ui.concurrent.FireAndForget;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.journal.EventJournal;
 import de.pamir.claude.ui.journal.JournalPublisher;
@@ -45,36 +46,35 @@ public class AutoTitleService {
 		if (session == null || !session.name().equals(session.branch())) {
 			return;
 		}
-		var events = journal.readAfter(id, 0);
-		long turns = events.stream().filter(e -> e.type().equals("turn_complete")).count();
+		// Targeted queries instead of journal.readAfter(id, 0): this runs on every turn_complete
+		// of any session still carrying its branch name (forever, if the title turn ever failed
+		// once), so reading and parsing the whole transcript here would be an unbounded cost per
+		// turn — see docs/plan/phase-10-review-followups.md R3.
+		long turns = journal.countEventType(id, "turn_complete");
 		if (turns != 1) {
 			return;
 		}
-		String userText = events.stream().filter(e -> e.type().equals("user_message")).findFirst()
+		String userText = journal.firstEventOfType(id, "user_message")
 				.map(e -> e.payload().path("text").asText()).orElse("");
 		if (userText.isBlank()) {
 			return;
 		}
-		Thread.ofVirtual().name("auto-title-" + id).start(() -> {
-			try {
-				// Routed through the system session (P2) instead of a raw `claude -p` spawn: works
-				// on a Codex-only install too, and the turn's cost now lands in the usage dashboard
-				// like every other system turn (O2) instead of being invisible.
-				String modelOverride = ModelCatalog.byTier(settings.systemProvider(), "cheap").orElse(null);
-				String title = systemTurnClient.text(
-						"Generate a short title (max 6 words) for a coding session that starts with this request. "
-								+ "Output ONLY the title, no quotes:\n\n" + userText.substring(0, Math.min(500, userText.length())),
-						modelOverride, SystemTurnLane.BACKGROUND, Duration.ofSeconds(60));
-				if (!title.isBlank() && title.length() <= 80) {
-					SessionEntity current = sessions.find(id).orElse(null);
-					if (current != null && current.name().equals(current.branch())) {
-						sessions.updateName(id, title);
-						journalPublisher.record(id, "session_renamed",
-								mapper.createObjectNode().put("name", title).put("auto", true));
-					}
+		FireAndForget.run("auto-title-" + id, log, "auto-title failed for " + id, () -> {
+			// Routed through the system session (P2) instead of a raw `claude -p` spawn: works
+			// on a Codex-only install too, and the turn's cost now lands in the usage dashboard
+			// like every other system turn (O2) instead of being invisible.
+			String modelOverride = ModelCatalog.byTier(settings.systemProvider(), "cheap").orElse(null);
+			String title = systemTurnClient.text(
+					"Generate a short title (max 6 words) for a coding session that starts with this request. "
+							+ "Output ONLY the title, no quotes:\n\n" + userText.substring(0, Math.min(500, userText.length())),
+					modelOverride, SystemTurnLane.BACKGROUND, Duration.ofSeconds(60));
+			if (!title.isBlank() && title.length() <= 80) {
+				SessionEntity current = sessions.find(id).orElse(null);
+				if (current != null && current.name().equals(current.branch())) {
+					sessions.updateName(id, title);
+					journalPublisher.record(id, "session_renamed",
+							mapper.createObjectNode().put("name", title).put("auto", true));
 				}
-			} catch (RuntimeException e) {
-				log.debug("auto-title failed for {}: {}", id, e.getMessage());
 			}
 		});
 	}

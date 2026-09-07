@@ -102,6 +102,21 @@ those files, not as a run of its own.
 
 ## 10.2 Correctness / robustness
 
+- **R2–R6 — DONE (2026-09-07).** All five implemented as sketched below, plus one
+  incidental fix found along the way while getting `mvn verify` green to confirm nothing
+  regressed: `ProviderCatalog` (added in R1) has a public production constructor and a
+  package-private test-only one, and with neither `@Autowired`, Spring couldn't apply its
+  "exactly one constructor" auto-detection and silently fell back to a no-arg constructor
+  that doesn't exist — `ApplicationTests.contextLoads` (and therefore the app itself) was
+  broken since R1 landed, uncaught because CI never runs `@Tag("integration")` tests.
+  Fixed with an explicit `@Autowired` on the production constructor
+  (`session/ProviderCatalog.java`). New/changed tests: `AutoTitleServiceTest` (new),
+  `MemoryMcpToolsTest` (new), `SidecarHandleTest` (new, R5's dead-on-arrival ordering
+  proof), `EventJournalDbTest` (R3's `countEventType`/`firstEventOfType` + R4's
+  `release`), `SessionStateMachineTest`'s new `closeReleasesTheSessionLock...` case (R4);
+  `FakeEventJournal`/`FakeSidecar` updated to match (see each item below for specifics).
+  `./mvnw test` (full, DB up, all 163 tests incl. `integration`) is green.
+
 - **R2 — Search paths bypass `tryEmbed` and fail hard when Voyage is down.**
   `MemoryMcpTools.memorySearch` (`memory/MemoryMcpTools.java:73`),
   `MemoryController.search` (`web/MemoryController.java:82`), and
@@ -359,11 +374,11 @@ those files, not as a run of its own.
 
 ## Suggested pick order
 
-1. **Run A (small correctness fixes)** — R2 + R3 + R6 + R5. Each is ≤20 lines with an
-   obvious test; together they're one commit. Do R5 last within the run since it touches
-   `FakeSidecar`.
-2. **Run B (bounded state + list query)** — R4 + R7. Both are "add one method to
-   `EventJournal`, call it from one place"; R7 gets a `*DbTest`.
+1. **Run A (small correctness fixes) — DONE 2026-09-07.** R2 + R3 + R6 + R5, plus R4
+   (originally slated for Run B, folded in since it touched the same files). See the R2–R6
+   summary at the top of §10.2.
+2. **Run B (bounded state + list query)** — R4 done above; R7 (the list-query
+   optimization) is still open, its own run.
 3. **Run C (nits)** — R8a + R8b, then R8c only if a new setting is on the table.
 4. **Run D (provider seam) — DONE 2026-09-07.** R1, on its own, decision (a) recorded in
    `docs/plan/README.md`'s decision log first. Touched both sidecars' build (a new

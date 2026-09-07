@@ -99,4 +99,43 @@ class EventJournalDbTest {
 		assertThat(journal.hasEventType(sessionId, "stream_delta")).isTrue();
 		assertThat(journal.hasEventType(sessionId, "turn_complete")).isFalse();
 	}
+
+	@Test
+	void countEventTypeCountsAcrossFlushAndBuffer() {
+		UUID sessionId = newSession();
+		journal.append(sessionId, "turn_complete", turnComplete(1.0)); // flushes
+		journal.append(sessionId, "turn_complete", turnComplete(1.0)); // flushes
+		journal.append(sessionId, "stream_delta", delta("buffered, not yet flushed"));
+
+		assertThat(journal.countEventType(sessionId, "turn_complete")).isEqualTo(2);
+		assertThat(journal.countEventType(sessionId, "user_message")).isZero();
+	}
+
+	@Test
+	void firstEventOfTypeReturnsTheEarliestMatchingRow() {
+		UUID sessionId = newSession();
+		journal.append(sessionId, "user_message", mapper.createObjectNode().put("text", "first"));
+		journal.append(sessionId, "turn_complete", turnComplete(1.0));
+		journal.append(sessionId, "user_message", mapper.createObjectNode().put("text", "second"));
+
+		var first = journal.firstEventOfType(sessionId, "user_message");
+
+		assertThat(first).isPresent();
+		assertThat(first.get().payload().path("text").asText()).isEqualTo("first");
+		assertThat(journal.firstEventOfType(sessionId, "session_renamed")).isEmpty();
+	}
+
+	@Test
+	void releaseDropsInMemoryStateWithoutDeletingRowsSoHistoryStillReads() {
+		UUID sessionId = newSession();
+		journal.append(sessionId, "user_message", mapper.createObjectNode().put("text", "hi"));
+		journal.append(sessionId, "stream_delta", delta("buffered, not yet flushed"));
+
+		journal.release(sessionId);
+
+		var history = journal.readAfter(sessionId, 0);
+		assertThat(history).extracting(EventJournal.JournalEvent::type)
+				.containsExactly("user_message", "stream_delta");
+		assertThat(journal.lastSeq(sessionId)).isEqualTo(2L);
+	}
 }
