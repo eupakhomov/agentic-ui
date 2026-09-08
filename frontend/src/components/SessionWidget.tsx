@@ -151,7 +151,7 @@ export default function SessionWidget({
     const next = models[(current + 1) % models.length]!;
     send({ type: 'set_model', model: next.id });
   }, [view, send]);
-  const canCycleModel = (view?.capabilities?.modelSwitch ?? true) && (view?.capabilities?.models.length ?? 0) > 0;
+  const canCycleModel = (view?.capabilities?.modelSwitch ?? true) && (view?.capabilities?.models?.length ?? 0) > 0;
 
   const resume = useCallback(async () => {
     setActionError('');

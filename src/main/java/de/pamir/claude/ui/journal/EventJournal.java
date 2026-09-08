@@ -198,14 +198,15 @@ public class EventJournal {
 	 */
 	public Map<UUID, SessionStats> statsForAll() {
 		flushAll();
-		return jdbc.sql("""
+		try (var stream = jdbc.sql("""
 						SELECT session_id, max(seq) AS last_seq,
 							   coalesce(sum((payload->>'costUsd')::numeric) FILTER (WHERE type = 'turn_complete'), 0) AS cost
 						FROM session_event GROUP BY session_id""")
 				.query((rs, i) -> Map.entry(rs.getObject("session_id", UUID.class),
 						new SessionStats(rs.getLong("last_seq"), rs.getBigDecimal("cost"))))
-				.stream()
-				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+				.stream()) {
+			return stream.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+		}
 	}
 
 	/** Per-turn cost/model rows across all sessions since {@code since}, for the usage dashboard. */
