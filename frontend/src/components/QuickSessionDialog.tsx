@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import type { ProviderView, ServicesResponse } from '../protocol';
+import { pickDefaultBranch, type ProviderView, type ServicesResponse } from '../protocol';
 import { useTicketImport, type TicketImportOutcome } from '../hooks/useTicketImport';
 import TicketPickerDialog from './TicketPickerDialog';
 
@@ -72,7 +72,7 @@ export default function QuickSessionDialog({
       const overrides: Record<string, unknown> = { ...lastConfig };
       if (resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
       if (recommendedModel) overrides['model'] = recommendedModel;
-      const baseBranch = branches.includes('main') ? 'main' : (branches[0] ?? 'main');
+      const baseBranch = pickDefaultBranch(branches);
       const created = await api.createSession({
         name: branchName,
         branch: branchName,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { assetStub, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type ProviderView, type ServicesResponse, type SessionSummary, type Settings, type Template } from '../protocol';
+import { assetStub, pickDefaultBranch, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type ProviderView, type ServicesResponse, type SessionSummary, type Settings, type Template } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import ModelSelect from './ModelSelect';
 import { MODE_CYCLE, MODE_LABEL } from './SessionWidget';
@@ -185,7 +185,7 @@ export default function CreateSessionDialog({
     api.branches(repoPath).then((list) => {
       setBranches(list);
       if (list.length > 0 && !list.includes(baseBranch)) {
-        setBaseBranch(list.includes('main') ? 'main' : list[0]!);
+        setBaseBranch(pickDefaultBranch(list));
       }
     }).catch(() => setBranches([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

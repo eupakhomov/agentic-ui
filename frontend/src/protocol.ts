@@ -378,6 +378,19 @@ export interface StaleSession {
 
 export const LIVE_STATES: SessionState[] = ['STARTING', 'IDLE', 'RUNNING', 'WAITING_INPUT'];
 
+/**
+ * Picks a sensible base branch out of a repo's local branches: "main", else "master", else
+ * the first branch reported by git (alphabetical — could be any stray local/feature branch,
+ * so this last resort is a guess, not a real default). Falls back to "main" for an empty list
+ * so create/branch calls still get a non-blank value and fail with a clear git error instead
+ * of a blank one.
+ */
+export function pickDefaultBranch(branches: string[]): string {
+  if (branches.includes('main')) return 'main';
+  if (branches.includes('master')) return 'master';
+  return branches[0] ?? 'main';
+}
+
 /** Extract {{placeholders}} from a kickoff prompt template. */
 export function placeholdersOf(prompt: string): string[] {
   return [...new Set([...prompt.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))];

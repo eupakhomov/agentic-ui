@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeholdersOf, assetStub } from './protocol';
+import { placeholdersOf, assetStub, pickDefaultBranch } from './protocol';
 import type { TemplateAsset } from './protocol';
 
 // docs/plan/phase-9-production-hardening.md T6: protocol.ts's pure helpers.
@@ -19,6 +19,27 @@ describe('placeholdersOf', () => {
 
   it('ignores malformed braces', () => {
     expect(placeholdersOf('{{unterminated and {notbraces}')).toEqual([]);
+  });
+});
+
+// Quick Session picking a stray local branch like "ACC-1011-open-items-population" as the
+// base — it sorted before "master" with no "main" present — then failing to fetch it from
+// origin as if it were the repo's real default branch.
+describe('pickDefaultBranch', () => {
+  it('prefers main when present', () => {
+    expect(pickDefaultBranch(['ACC-1011-open-items-population', 'main', 'master'])).toBe('main');
+  });
+
+  it('falls back to master when there is no main', () => {
+    expect(pickDefaultBranch(['ACC-1011-open-items-population', 'master'])).toBe('master');
+  });
+
+  it('falls back to the first branch when neither main nor master exist', () => {
+    expect(pickDefaultBranch(['develop', 'feature/x'])).toBe('develop');
+  });
+
+  it('falls back to main for an empty repo', () => {
+    expect(pickDefaultBranch([])).toBe('main');
   });
 });
 

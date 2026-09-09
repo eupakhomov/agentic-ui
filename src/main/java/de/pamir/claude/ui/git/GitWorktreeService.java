@@ -96,11 +96,26 @@ public class GitWorktreeService {
 		return result.stdout().isBlank() ? List.of() : result.stdout().lines().toList();
 	}
 
-	/** "main" if present, else the first local branch, else "main" (worktree creation then fails with a clear git error). */
 	public String defaultBranch(Path repo) {
-		List<String> branches = localBranches(repo);
+		return pickDefaultBranch(localBranches(repo));
+	}
+
+	/**
+	 * "main" if present, else "master", else the first local branch (alphabetical — could be
+	 * any stray local/feature branch, so this last resort is a guess, not a real default),
+	 * else "main" (worktree creation then fails with a clear git error).
+	 *
+	 * <p>Package-private (not private): unit-tested directly against a plain branch list,
+	 * without a real git checkout — mirrors {@code frontend/src/protocol.ts}'s
+	 * {@code pickDefaultBranch}, which the two session-creation dialogs also call instead of
+	 * duplicating this choice client-side.
+	 */
+	static String pickDefaultBranch(List<String> branches) {
 		if (branches.contains("main")) {
 			return "main";
+		}
+		if (branches.contains("master")) {
+			return "master";
 		}
 		return branches.isEmpty() ? "main" : branches.get(0);
 	}
