@@ -280,6 +280,43 @@ class SessionStateMachineTest {
 		assertThat(sidecars.hasLiveHandle(s.id())).isTrue();
 	}
 
+	@Test
+	void resumeRejectsARegularSessionAtTheConcurrencyLimit() {
+		for (int i = 0; i < 4; i++) {
+			session(SessionState.IDLE); // props' maxSessions is 4 — this fills it
+		}
+		SessionEntity s = session(SessionState.CRASHED);
+
+		assertThatThrownBy(() -> sessionService.resume(s.id()))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("max concurrent sessions reached");
+	}
+
+	/**
+	 * The system session is a single, always-needed, backend-managed resource (ticket import,
+	 * commit-message drafting, service discovery, ...), not a slot competing with user sessions
+	 * — reviving it must not fail just because the user already has the configured number of
+	 * regular sessions open (the normal case, not an edge case).
+	 */
+	@Test
+	void resumeExemptsTheSystemSessionFromTheConcurrencyLimit() {
+		for (int i = 0; i < 4; i++) {
+			session(SessionState.IDLE);
+		}
+		SessionEntity s = SessionEntity.builder()
+				.id(UUID.randomUUID()).name("system").provider("claude").repoPath("(system)")
+				.branch("(system)").baseBranch("(system)")
+				.worktreePath(worktreeRoot.resolve(UUID.randomUUID().toString()).toString())
+				.contextDirs(List.of()).permissionMode("default").allowedTools(List.of()).disallowedTools(List.of())
+				.state(SessionState.CRASHED).kind("system")
+				.build();
+		sessions.seed(s);
+
+		sessionService.resume(s.id());
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.STARTING);
+	}
+
 	// ------------------------------------------------------------------ close
 
 	@Test

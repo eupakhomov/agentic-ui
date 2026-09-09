@@ -142,6 +142,38 @@ class SystemSessionServiceRunTurnTest {
 		assertThat(sidecars.sentTo(systemId)).anyMatch(line -> line.contains("\"set_model\"") && line.contains("original-model"));
 	}
 
+	/**
+	 * runSystemTurn's body now runs on a background executor and releases the systemSessionLock
+	 * itself (a Semaphore, not a ReentrantLock — see its javadoc) once done, rather than the
+	 * calling thread releasing it directly. This proves that switch didn't break the "exactly one
+	 * system turn in flight at a time" guarantee: a second call must still block until the first
+	 * actually finishes and releases, not just until the first caller's own wait returns.
+	 */
+	@Test
+	void onlyOneSystemTurnRunsAtATimeAcrossBackgroundReleases() throws InterruptedException {
+		AtomicReference<String> firstResult = new AtomicReference<>();
+		Thread first = Thread.ofVirtual().start(() -> firstResult.set(
+				systemSessionService.runSystemTurn("first", SystemTurnLane.INTERACTIVE, java.time.Duration.ofSeconds(2))));
+		awaitPendingTurn();
+
+		AtomicReference<String> secondResult = new AtomicReference<>();
+		Thread second = Thread.ofVirtual().start(() -> secondResult.set(
+				systemSessionService.runSystemTurn("second", SystemTurnLane.INTERACTIVE, java.time.Duration.ofSeconds(2))));
+		awaitPendingTurn();
+		assertThat(secondResult.get()).as("second call must still be waiting for the first to release").isNull();
+
+		systemSessionService.onAssistantMessage(systemId, textContent("first answer"));
+		systemSessionService.completeTurn(systemId);
+		first.join(2000);
+		assertThat(firstResult.get()).isEqualTo("first answer");
+
+		awaitPendingTurn();
+		systemSessionService.onAssistantMessage(systemId, textContent("second answer"));
+		systemSessionService.completeTurn(systemId);
+		second.join(2000);
+		assertThat(secondResult.get()).isEqualTo("second answer");
+	}
+
 	/** No hook to await the pendingSystemTurn assignment directly (it's a private field, by design) —
 	 * everything before it is non-blocking in-memory work, so a short sleep is a safe, deterministic
 	 * enough stand-in for "the caller thread has reached future.get()". */

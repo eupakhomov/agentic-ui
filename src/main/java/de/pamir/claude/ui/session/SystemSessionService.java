@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import jakarta.annotation.PreDestroy;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,9 +18,12 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Owns the singleton backend-initiated "system session" (ticket import, library AI-fill,
@@ -46,12 +51,23 @@ public class SystemSessionService {
 	private final SessionService sessionService;
 
 	private static final Duration INTERACTIVE_LOCK_WAIT = Duration.ofSeconds(10);
+	/** Extra budget, on top of the caller's own {@code timeout}, for reviving a parked/crashed
+	 * system session (spawn + provider handshake) before {@link #runSystemTurnLocked} even
+	 * reaches its own timed wait — see runSystemTurn's javadoc. */
+	private static final Duration REVIVAL_BUDGET = Duration.ofSeconds(30);
 
-	// exactly one system turn in flight at a time; see class javadoc and S2's INTERACTIVE/BACKGROUND lanes
-	private final ReentrantLock systemSessionLock = new ReentrantLock(true);
+	// Exactly one system turn in flight at a time; see class javadoc and S2's INTERACTIVE/BACKGROUND
+	// lanes. A Semaphore, not a ReentrantLock: the turn body now runs on turnExecutor and releases
+	// this itself once done (see runSystemTurn's javadoc) — a ReentrantLock requires the same
+	// thread to lock and unlock, which a background-thread release would violate
+	// (IllegalMonitorStateException); a binary fair semaphore has no such ownership constraint.
+	private final Semaphore systemSessionLock = new Semaphore(1, true);
 	private volatile UUID pendingSystemTurnSessionId;
 	private volatile CompletableFuture<String> pendingSystemTurn;
 	private volatile String pendingSystemText = "";
+	// runs runSystemTurnLocked's body so this call's own wait can be bounded end-to-end (see
+	// runSystemTurn's javadoc) rather than only bounding its last step
+	private final ExecutorService turnExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public SystemSessionService(AppProperties props, SettingsService settings, SessionRepository sessions,
 								 SessionConfigFactory configFactory, JournalPublisher journalPublisher,
@@ -79,13 +95,25 @@ public class SystemSessionService {
 	 * Same as {@link #runSystemTurn(String, SystemTurnLane, Duration)}, but switches the system
 	 * session to {@code modelOverride} for this one turn and back to its normal model afterward
 	 * (used by reflection to run on a different model than the system session's default haiku —
-	 * see docs/plan/phase-5.3-memory-reflection.md decision 7). {@code null} keeps the current model.
+	 * see docs/plan/phase-5.3-memory-reflection.md decision 7). {@code null} keeps the current
+	 * model.
+	 *
+	 * <p>Once the lock is acquired, the actual turn (revival, dispatch, the wait, and the
+	 * model-revert) runs on {@link #turnExecutor} so THIS call's wait is bounded end to end —
+	 * {@code timeout} plus a fixed {@link #REVIVAL_BUDGET} for spawn/handshake — rather than only
+	 * bounding the final wait-for-completion step. Previously, a stuck revival or a stuck
+	 * {@code sendUserMessage} (its journal write, in particular) blocked the caller forever with
+	 * no timeout ever firing. The background task, not this method, releases
+	 * {@link #systemSessionLock} once it actually finishes, however long that takes:
+	 * {@link #pendingSystemTurn}/{@link #pendingSystemText} are shared mutable state, so unlocking
+	 * here while that task might still be running would let a second caller start a new turn the
+	 * abandoned one could later stomp on.
 	 */
 	public String runSystemTurn(String prompt, String modelOverride, SystemTurnLane lane, Duration timeout) {
 		Duration lockWait = lane == SystemTurnLane.INTERACTIVE ? INTERACTIVE_LOCK_WAIT : timeout;
 		boolean acquired;
 		try {
-			acquired = systemSessionLock.tryLock(lockWait.toMillis(), TimeUnit.MILLISECONDS);
+			acquired = systemSessionLock.tryAcquire(lockWait.toMillis(), TimeUnit.MILLISECONDS);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new IllegalStateException("interrupted while waiting for the system session");
@@ -93,38 +121,65 @@ public class SystemSessionService {
 		if (!acquired) {
 			throw new IllegalStateException("system session is busy with another task; try again shortly");
 		}
-		try {
-			SessionEntity session = getOrCreateSystemSession();
-			String originalModel = session.model();
-			boolean switchModel = modelOverride != null && !modelOverride.equals(originalModel);
-			if (switchModel) {
-				sessionService.setModel(session.id(), modelOverride);
-			}
-			pendingSystemText = "";
-			CompletableFuture<String> future = new CompletableFuture<>();
-			pendingSystemTurn = future;
-			pendingSystemTurnSessionId = session.id();
+		Future<String> body = turnExecutor.submit(() -> {
 			try {
-				sessionService.sendUserMessage(session.id(), prompt);
-				return future.get(timeout.toSeconds(), TimeUnit.SECONDS);
-			} catch (TimeoutException e) {
-				throw new IllegalStateException("system task timed out after " + timeout.toSeconds() + "s");
-			} catch (ExecutionException e) {
-				throw new IllegalStateException("system task failed: "
-						+ (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				throw new IllegalStateException("interrupted while waiting for system task");
+				return runSystemTurnLocked(prompt, modelOverride, timeout);
 			} finally {
-				pendingSystemTurn = null;
-				pendingSystemTurnSessionId = null;
-				if (switchModel) {
-					sessionService.setModel(session.id(), originalModel);
-				}
+				systemSessionLock.release();
 			}
-		} finally {
-			systemSessionLock.unlock();
+		});
+		try {
+			return body.get(timeout.plus(REVIVAL_BUDGET).toSeconds(), TimeUnit.SECONDS);
+		} catch (TimeoutException e) {
+			throw new IllegalStateException("system task timed out after " + timeout.toSeconds() + "s");
+		} catch (ExecutionException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof RuntimeException re) {
+				throw re;
+			}
+			throw new IllegalStateException("system task failed: "
+					+ (cause != null ? cause.getMessage() : e.getMessage()));
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("interrupted while waiting for system task");
 		}
+	}
+
+	/** Runs the turn body; caller must hold {@link #systemSessionLock} and release it. */
+	private String runSystemTurnLocked(String prompt, String modelOverride, Duration timeout) {
+		SessionEntity session = getOrCreateSystemSession();
+		String originalModel = session.model();
+		boolean switchModel = modelOverride != null && !modelOverride.equals(originalModel);
+		if (switchModel) {
+			sessionService.setModel(session.id(), modelOverride);
+		}
+		pendingSystemText = "";
+		CompletableFuture<String> future = new CompletableFuture<>();
+		pendingSystemTurn = future;
+		pendingSystemTurnSessionId = session.id();
+		try {
+			sessionService.sendUserMessage(session.id(), prompt);
+			return future.get(timeout.toSeconds(), TimeUnit.SECONDS);
+		} catch (TimeoutException e) {
+			throw new IllegalStateException("system task timed out after " + timeout.toSeconds() + "s");
+		} catch (ExecutionException e) {
+			throw new IllegalStateException("system task failed: "
+					+ (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("interrupted while waiting for system task");
+		} finally {
+			pendingSystemTurn = null;
+			pendingSystemTurnSessionId = null;
+			if (switchModel) {
+				sessionService.setModel(session.id(), originalModel);
+			}
+		}
+	}
+
+	@PreDestroy
+	void shutdown() {
+		turnExecutor.shutdownNow();
 	}
 
 	/** Find-or-create the one system session; caller must hold systemSessionLock. */

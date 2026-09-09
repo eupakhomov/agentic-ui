@@ -155,7 +155,7 @@ public class SessionService {
 			}
 			// no providerSessionId means the sidecar crashed before its first turn (no conversation
 			// to resume yet) — buildArgs omits --resume in that case and spawns fresh, which is correct
-			enforceSessionLimit();
+			enforceSessionLimit(session.kind());
 			transition(id, SessionState.STARTING);
 			spawn(session, true);
 			return sessions.get(id);
@@ -494,8 +494,18 @@ public class SessionService {
 		record(id, "queue_updated", payload);
 	}
 
-	/** Package-private: also called (standalone, no insert to pair it with) by {@link #resume}. */
-	void enforceSessionLimit() {
+	/**
+	 * Package-private: also called (standalone, no insert to pair it with) by {@link #resume}.
+	 * The singleton system session is exempt — it's a single, always-needed, backend-managed
+	 * resource (ticket import, commit-message drafting, service discovery, ...), not a slot
+	 * competing with user sessions. Without this, reviving it after a crash/restart throws "max
+	 * concurrent sessions reached" outright whenever the user already has the configured number
+	 * of regular sessions open — i.e. during completely normal use.
+	 */
+	void enforceSessionLimit(String kind) {
+		if ("system".equals(kind)) {
+			return;
+		}
 		long live = sessions.countByStates(List.copyOf(SessionState.LIVE));
 		if (live >= props.maxSessions()) {
 			throw new IllegalStateException("max concurrent sessions reached (" + props.maxSessions() + ")");
@@ -511,7 +521,7 @@ public class SessionService {
 	 */
 	void enforceSessionLimitAndInsert(SessionEntity entity) {
 		synchronized (sessionLimitLock) {
-			enforceSessionLimit();
+			enforceSessionLimit(entity.kind());
 			sessions.insert(entity);
 		}
 	}

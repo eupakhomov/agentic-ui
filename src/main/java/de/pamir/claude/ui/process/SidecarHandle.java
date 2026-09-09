@@ -49,21 +49,39 @@ public class SidecarHandle {
 		BufferedWriter stderrLog = openStderrLog(stderrLogFile);
 
 		Thread.ofVirtual().name("sidecar-out-" + sessionId).start(() -> {
-			try (BufferedReader reader = new BufferedReader(
-					new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-				String line;
-				while ((line = reader.readLine()) != null) {
-					if (line.isBlank()) {
-						continue;
+			try {
+				try (BufferedReader reader = new BufferedReader(
+						new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+					String line;
+					while ((line = reader.readLine()) != null) {
+						if (line.isBlank()) {
+							continue;
+						}
+						try {
+							onEvent.accept(mapper.readTree(line));
+						} catch (Exception e) {
+							log.warn("session {}: bad sidecar stdout line: {}", sessionId, e.getMessage());
+						}
 					}
-					try {
-						onEvent.accept(mapper.readTree(line));
-					} catch (Exception e) {
-						log.warn("session {}: bad sidecar stdout line: {}", sessionId, e.getMessage());
-					}
+				} catch (IOException e) {
+					log.debug("session {}: stdout closed: {}", sessionId, e.getMessage());
 				}
-			} catch (IOException e) {
-				log.debug("session {}: stdout closed: {}", sessionId, e.getMessage());
+			} catch (Throwable t) {
+				// A non-Exception Throwable (e.g. NoClassDefFoundError from a corrupted JVM
+				// classloader — see docs/plan's incident writeup) is not a "bad line": it kills
+				// this reader outright. Left alone, the session would look alive forever with a
+				// dead reader — no more events ever processed, no turn_complete, no crash
+				// signal, permanently stuck RUNNING. Force the process down instead: the
+				// already-registered watchExit() callback (below) picks up the resulting exit
+				// and runs the normal, well-tested onSidecarExit crash path — no new plumbing
+				// needed. Logging is attempted best-effort since it may itself be what's broken.
+				try {
+					log.error("session {}: stdout reader died unexpectedly, killing sidecar", sessionId, t);
+				} catch (Throwable ignored) {
+					// logging is broken too — fall through and kill the process regardless
+				}
+				process.descendants().forEach(ProcessHandle::destroyForcibly);
+				process.destroyForcibly();
 			}
 		});
 

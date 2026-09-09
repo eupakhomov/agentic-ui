@@ -282,10 +282,15 @@ export default function SessionWidget({
           {MODE_LABEL[view.permissionMode]}
         </span>
         <span
-          className={`chip${budget !== null ? ' clickable' : ''}`}
-          title={budget !== null
-            ? `$${view.costToDate.toFixed(3)} of $${budget} budget — click to change`
-            : 'session cost to date'}
+          className={`chip${budget !== null ? ' clickable' : ''}${running ? ' pulse' : ''}`}
+          title={
+            (running
+              ? 'cost as of the last completed turn — updates once the current turn finishes. '
+              : '')
+            + (budget !== null
+              ? `$${view.costToDate.toFixed(3)} of $${budget} budget — click to change`
+              : 'session cost to date')
+          }
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => {
             if (budget === null) return;
