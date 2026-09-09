@@ -320,10 +320,11 @@ export default function CreateSessionDialog({
               {applyingContinuation ? 'Fetching handoff…' : 'Browse recent sessions'}
             </button>
             {continuedFromName && (
-              <span className="chip" title="clear">
+              <span className="chip">
                 <ContinuedFrom />{continuedFromName}
                 <button
                   style={{ marginLeft: 6, border: 'none', background: 'none', padding: 0, color: 'inherit' }}
+                  title="clear continuation"
                   onClick={() => { setContinuedFromId(null); setContinuedFromName(null); setPromptFromContinuation(false); }}
                 ><Close /></button>
               </span>
