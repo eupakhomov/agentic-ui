@@ -231,6 +231,34 @@ class SessionStateMachineTest {
 		assertThat(sessions.queued(s.id())).extracting("text").containsExactly("queued message");
 	}
 
+	/**
+	 * Reproduces a real race: close() blocks on sidecars.terminate() for up to ~7s while the
+	 * sidecar finishes its in-flight turn before honoring the shutdown, so a "turn_complete"
+	 * (which calls becomeIdleAndDrainQueue unconditionally) can arrive for a session that
+	 * close() already transitioned to CLOSED — and had its worktree deleted — moments earlier.
+	 * Without the isTerminal guard this stomped the state back to IDLE with no live sidecar
+	 * handle, permanently breaking every future message to that session (the singleton system
+	 * session hitting this is what a user sees as "session is IDLE and does not accept
+	 * messages" on every ticket import/browse afterward).
+	 */
+	@Test
+	void becomeIdleAndDrainQueueDoesNotResurrectASessionClosedWhileItsTurnWasInFlight() {
+		SessionEntity s = session(SessionState.CLOSED);
+
+		sessionService.becomeIdleAndDrainQueue(s.id());
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.CLOSED);
+	}
+
+	@Test
+	void becomeIdleAndDrainQueueDoesNotResurrectACrashedSession() {
+		SessionEntity s = session(SessionState.CRASHED);
+
+		sessionService.becomeIdleAndDrainQueue(s.id());
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.CRASHED);
+	}
+
 	// ------------------------------------------------------------------ resume
 
 	@Test

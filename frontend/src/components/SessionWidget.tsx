@@ -344,12 +344,14 @@ export default function SessionWidget({
           onClick={() => void downloadTranscript()}
           title="download transcript (Markdown)"
         ><DownloadIcon /></button>
-        <button
-          className="icon-btn"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => setClosing(true)}
-          title="close session"
-        ><Close /></button>
+        {entity?.kind !== 'system' && (
+          <button
+            className="icon-btn"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setClosing(true)}
+            title="close session"
+          ><Close /></button>
+        )}
       </div>
       <div className="widget-body">
         {view.wsStatus !== 'open' && state !== 'CLOSED' && (

@@ -396,6 +396,15 @@ public class SessionService {
 
 	// package-private (not private): unit-tested directly — see docs/plan/phase-9-production-hardening.md T2
 	void becomeIdleAndDrainQueue(UUID id) {
+		if (isTerminal(sessions.get(id).state())) {
+			// A concurrent close()/crash may have already finalized this session while its
+			// current turn was still in flight — close() blocks on sidecars.terminate() for
+			// up to ~7s while the sidecar finishes that turn before honoring the shutdown, so
+			// a "turn_complete" for an already-CLOSED (worktree deleted) or CRASHED session is
+			// a real sequence, not a bug at the call site. Don't resurrect it back to IDLE out
+			// from under the close/crash — the caller still gets its result via completeTurn().
+			return;
+		}
 		transition(id, SessionState.IDLE);
 		SessionEntity session = sessions.get(id);
 		if (budgetExhausted(session)) {
@@ -418,6 +427,11 @@ public class SessionService {
 			sessions.deleteQueued(id, next.pos());
 			recordQueue(id);
 		});
+	}
+
+	private static boolean isTerminal(SessionState state) {
+		return state == SessionState.CLOSING || state == SessionState.CLOSED
+				|| state == SessionState.CRASHED || state == SessionState.FAILED;
 	}
 
 	/**
