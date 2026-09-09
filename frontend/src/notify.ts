@@ -54,7 +54,13 @@ window.addEventListener('focus', () => {
 });
 
 function show(title: string, body: string): void {
-  const n = new Notification(title, { body, tag: title, requireInteraction: false });
+  // no `tag` — a repeated event on the same session (e.g. successive permission requests)
+  // would otherwise share an identical title and get coalesced by the OS into a single
+  // notification record instead of alerting fresh each time. Once the first one auto-dismisses
+  // (banner style), every later "update" to that same record can pass through silently — see
+  // the 2026-09-09 log dig that found exactly this happening every ~12 minutes with no visible
+  // banner after the first.
+  const n = new Notification(title, { body, requireInteraction: false });
   n.onclick = () => {
     window.focus();
     n.close();
