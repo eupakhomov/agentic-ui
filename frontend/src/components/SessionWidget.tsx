@@ -67,6 +67,7 @@ export default function SessionWidget({
   const [reflecting, setReflecting] = useState(false);
   const wsRef = useRef<WsSession | null>(null);
   const nameRef = useRef<string>('');
+  const focusedRef = useRef<string | null>(null);
   const liveRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
@@ -100,7 +101,9 @@ export default function SessionWidget({
         setEntity((prev) => (prev ? { ...prev, prCheckStatus: status ?? prev.prCheckStatus, prUrl: url ?? prev.prUrl } : prev));
       }
       const n = notificationForEvent(who, e);
-      if (n) notify(n.title, n.body);
+      // the browser tab having focus doesn't mean THIS session is the one being watched —
+      // it could be a different widget, a minimized one, or one scrolled off-screen
+      if (n) notify(n.title, n.body, { evenIfTabFocused: focusedRef.current !== sessionId });
     };
     const ws = new WsSession(sessionId, onEvent, (s) => {
       setWsStatus(sessionId, s);
@@ -185,6 +188,7 @@ export default function SessionWidget({
   const running = state === 'RUNNING' || state === 'WAITING_INPUT';
   const budget = view?.costBudgetUsd ?? entity?.costBudgetUsd ?? null;
   nameRef.current = view?.name ?? entity?.name ?? '';
+  focusedRef.current = focusedId;
   const widgetClass = useMemo(() => {
     let cls = 'widget';
     if (state === 'WAITING_INPUT') cls += ' waiting';

@@ -26,9 +26,14 @@ export async function toggleNotifications(): Promise<boolean> {
  * Notify only when the dashboard isn't being watched. The tab-title badge fires
  * regardless of the desktop-notification setting — it survives OS do-not-disturb
  * (e.g. Windows Focus Assist during full-screen video).
+ *
+ * `evenIfTabFocused` overrides the tab-focus check — for a per-session event on a
+ * multi-session dashboard, having the browser tab focused doesn't mean this particular
+ * session is the one being watched (it could be a different session, a minimized one,
+ * or one scrolled off-screen); the caller decides that and asks to notify anyway.
  */
-export function notify(title: string, body: string): void {
-  if (document.hasFocus()) return;
+export function notify(title: string, body: string, opts?: { evenIfTabFocused?: boolean }): void {
+  if (document.hasFocus() && !opts?.evenIfTabFocused) return;
   bumpTitleBadge();
   if (notificationsEnabled()) {
     show(title, body);
