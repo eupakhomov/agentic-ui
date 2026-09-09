@@ -157,10 +157,19 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
 
   const fullLayout = useMemo(() => {
     const known = new Map(layout.map((l) => [l.i, l]));
-    return visibleIds.map((id, index) => {
+    const NEW_H = 14;
+    const PER_ROW = COLS / 6;
+    const newIds = visibleIds.filter((id) => !known.has(id));
+    // new widgets land at the top (most visible spot) rather than below the fold at the
+    // bottom — push every already-known widget down to make room instead of appending after
+    const rowsAdded = Math.ceil(newIds.length / PER_ROW);
+    let newIndex = 0;
+    return visibleIds.map((id) => {
       const existing = known.get(id);
-      if (existing) return existing;
-      return { i: id, x: (index * 6) % COLS, y: Infinity, w: 6, h: 14, minW: 3, minH: 6 };
+      if (existing) return rowsAdded > 0 ? { ...existing, y: existing.y + rowsAdded * NEW_H } : existing;
+      const placed = { i: id, x: (newIndex % PER_ROW) * 6, y: Math.floor(newIndex / PER_ROW) * NEW_H, w: 6, h: NEW_H, minW: 3, minH: 6 };
+      newIndex++;
+      return placed;
     });
   }, [visibleIds, layout]);
 
@@ -173,7 +182,11 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     setSessionIds((ids) => [...ids, id]);
     setPendingDraft(draftInput ? { id, text: draftInput } : null);
     setShowCreate(false);
+    setShowQuickCreate(false);
     setFocused(id);
+    // new widgets land at the top of the grid (see fullLayout) — scroll there too, in case
+    // the page was scrolled down when this fired, so the new session is actually visible
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     // the create flow (e.g. ticket import) may have spun up the system session before this
     // page ever loaded it — refresh so the topbar 🤖 toggle reflects it immediately
     void api.listSessions().then((list) => {
