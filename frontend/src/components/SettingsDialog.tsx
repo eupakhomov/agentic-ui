@@ -10,6 +10,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [specDraft, setSpecDraft] = useState('');
   const [ecosystemRootDraft, setEcosystemRootDraft] = useState('');
+  const [monorepoGlobsDraft, setMonorepoGlobsDraft] = useState('');
   const [pollIntervalDraft, setPollIntervalDraft] = useState('');
   const [skillsRootDraft, setSkillsRootDraft] = useState('');
   const [agentsRootDraft, setAgentsRootDraft] = useState('');
@@ -26,6 +27,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setSettings(s);
       setSpecDraft(s.ticketImportSpec);
       setEcosystemRootDraft(s.ecosystemRoot);
+      setMonorepoGlobsDraft(s.monorepoServiceGlobs);
       setPollIntervalDraft(String(s.prCheckPollIntervalSeconds));
       setSkillsRootDraft(s.librarySkillsRoot);
       setAgentsRootDraft(s.libraryAgentsRoot);
@@ -74,6 +76,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     void api.updateSettings({ ecosystemRoot: ecosystemRootDraft })
       .then(setSettings)
       .catch(() => setEcosystemRootDraft(settings.ecosystemRoot));
+  };
+
+  const saveMonorepoGlobs = () => {
+    if (!settings || monorepoGlobsDraft === settings.monorepoServiceGlobs) return;
+    void api.updateSettings({ monorepoServiceGlobs: monorepoGlobsDraft })
+      .then(setSettings)
+      .catch(() => setMonorepoGlobsDraft(settings.monorepoServiceGlobs));
   };
 
   const saveSkillsRoot = () => {
@@ -260,6 +269,17 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 onBlur={saveEcosystemRoot}
                 placeholder="parent folder of your services; empty = no default wider context"
                 title="default read-only context folder + service discovery root, overridable per session"
+              />
+
+              <label>Monorepo package globs</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1' }}
+                value={monorepoGlobsDraft}
+                onChange={(e) => setMonorepoGlobsDraft(e.target.value)}
+                onBlur={saveMonorepoGlobs}
+                placeholder="packages/*,services/*,apps/*,libs/*"
+                title="comma-separated glob fallback for detecting a monorepo's packages when it has no workspace manifest"
               />
 
               <label>Default provider</label>

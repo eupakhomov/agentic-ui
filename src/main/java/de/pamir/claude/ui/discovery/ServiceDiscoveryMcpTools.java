@@ -10,6 +10,7 @@ import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -20,7 +21,7 @@ import java.util.UUID;
  * condition is {@code memory.enabled || serviceDiscoveryEnabled()}, so both tools self-gate here
  * independently on their own setting rather than relying on non-attachment to disable them.
  * Both restrict results to the calling session's own visible ecosystem (decision 7), the same
- * {@code worktrees.findRepos(session.ecosystemPath())} scoping {@code list_services} already uses.
+ * {@code worktrees.findServices(session.ecosystemPath())} scoping {@code list_services} already uses.
  */
 @Component
 public class ServiceDiscoveryMcpTools {
@@ -64,7 +65,7 @@ public class ServiceDiscoveryMcpTools {
 		if (!visiblePaths(sessionId).contains(servicePath)) {
 			throw new IllegalArgumentException("not a service visible to this session: " + servicePath);
 		}
-		var profile = profiles.findByRepoPath(servicePath)
+		var profile = profiles.findByServicePath(servicePath)
 				.orElseThrow(() -> new NoSuchElementException("service not discovered yet: " + servicePath));
 		return new DescriptionResult(profile.name(), profile.description(), profile.tags(),
 				profile.discoveredAt().toString());
@@ -84,7 +85,7 @@ public class ServiceDiscoveryMcpTools {
 		List<String> visible = visiblePaths(sessionId);
 		float[] embedding = embeddings.configured() ? embeddings.embed(query, true) : null;
 		return profiles.hybridSearch(query, embedding, visible, 10).stream()
-				.map(hit -> new FindResult(hit.profile().repoPath(), hit.profile().name(),
+				.map(hit -> new FindResult(hit.profile().servicePath(), hit.profile().name(),
 						hit.profile().description(), hit.score()))
 				.toList();
 	}
@@ -100,7 +101,7 @@ public class ServiceDiscoveryMcpTools {
 			String sessionId) {
 		requireEnabled();
 		return profiles.findVisible(visiblePaths(sessionId)).stream()
-				.map(p -> new ServiceSummary(p.repoPath(), p.name(), p.description(), p.tags()))
+				.map(p -> new ServiceSummary(p.servicePath(), p.name(), p.description(), p.tags()))
 				.toList();
 	}
 
@@ -115,8 +116,13 @@ public class ServiceDiscoveryMcpTools {
 		if (session.ecosystemPath() == null || session.ecosystemPath().isBlank()) {
 			return List.of();
 		}
-		return worktrees.findRepos(Path.of(session.ecosystemPath())).stream()
-				.map(GitWorktreeService.RepoInfo::path).toList();
+		return worktrees.findServices(Path.of(session.ecosystemPath()), monorepoGlobs()).stream()
+				.map(GitWorktreeService.ServiceInfo::servicePath).toList();
+	}
+
+	private List<String> monorepoGlobs() {
+		return Arrays.stream(settings.current().monorepoServiceGlobs().split(","))
+				.map(String::strip).filter(g -> !g.isEmpty()).toList();
 	}
 
 	private SessionEntity sessionOf(String sessionId) {

@@ -84,6 +84,7 @@ export default function SessionWidget({
         name: v.name ?? d.session.name,
         costBudgetUsd: v.costBudgetUsd ?? d.session.costBudgetUsd,
         repoPath: v.repoPath ?? d.session.repoPath,
+        servicePath: v.servicePath ?? d.session.servicePath,
         branch: v.branch ?? d.session.branch,
       }));
     }).catch(() => setEntity(null));
@@ -226,9 +227,9 @@ export default function SessionWidget({
         {entity?.kind === 'system' && (
           <span className="chip" title="backend-initiated system session"><SystemSession />system</span>
         )}
-        {entity?.kind !== 'system' && entity?.repoPath && (
-          <span className="chip" title={entity.repoPath}>
-            {entity.repoPath.split('/').pop()}
+        {entity?.kind !== 'system' && entity?.servicePath && (
+          <span className="chip" title={entity.servicePath}>
+            {entity.servicePath.split('/').pop()}
           </span>
         )}
         {entity?.kind !== 'system' && <span className="chip" title="branch">{entity?.branch}</span>}

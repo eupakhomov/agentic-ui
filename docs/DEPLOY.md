@@ -55,6 +55,11 @@ persisted, UI-editable settings (`library.skills-root`, `memory.root` in the Set
 dialog → "Skill library"/"Memory"), so the env var only matters for a fresh DB's first
 boot.
 
+A session on a monorepo package still gets a worktree of the *whole* monorepo under
+`CLAUDE_UI_WORKTREE_ROOT` (a full checkout, not just the one package) — `git worktree add`
+shares the object store with the original checkout, so the extra disk cost per session is
+only the working tree, not a second copy of history.
+
 Alternatively keep a gitignored `application-local.yaml` next to the jar and run
 with `--spring.config.additional-location=file:./application-local.yaml`.
 
@@ -131,7 +136,10 @@ without it — just restarts cleanly once the DB is there).
    (finished / needs input / crashed).
 3. Open the **Settings** dialog (gear icon, or `,`) and set what applies: "Sessions"
    → ecosystem root (parent folder of your services — enables the service picker +
-   read-only cross-service context); "Linear integration" → ticket import (§8 below);
+   read-only cross-service context; if a folder underneath is itself a monorepo, its
+   packages are auto-detected from their own workspace manifests and listed
+   individually — the "Sessions" globs field is only a fallback for packages without
+   one); "Linear integration" → ticket import (§8 below);
    "PR checks" → background CI polling for open PRs (on by default); "Skill library"
    → managed skills/agents roots + optional vectorized search; "Memory" → the
    long-term-memory vault + reflection defaults (§8a covers the shared Voyage key

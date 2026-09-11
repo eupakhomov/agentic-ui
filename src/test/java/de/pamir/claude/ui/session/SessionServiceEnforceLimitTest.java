@@ -54,7 +54,7 @@ class SessionServiceEnforceLimitTest {
 		FakeEventJournal journal = new FakeEventJournal(props);
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
 		ObjectMapper mapper = new JsonMapper();
-		SessionConfigFactory configFactory = new SessionConfigFactory(props, fakeSettings(), null, mapper, null, 8080, null);
+		SessionConfigFactory configFactory = new SessionConfigFactory(props, fakeSettings(), null, mapper, null, 8080, null, null);
 		SystemSessionService systemSessionService =
 				new SystemSessionService(props, fakeSettings(), sessions, configFactory, journalPublisher, mapper, null);
 		SessionService sessionService = new SessionService(props, fakeSettings(), sessions, null, null, null, null,

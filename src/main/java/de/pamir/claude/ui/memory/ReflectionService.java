@@ -131,7 +131,7 @@ public class ReflectionService {
 
 	private void runReflection(SessionEntity session, long lastSeq) {
 		String digest = TranscriptDigest.render(journal.readAfter(session.id(), 0));
-		List<MemoryRepository.IndexEntry> index = docs.findIndex(session.repoPath());
+		List<MemoryRepository.IndexEntry> index = docs.findIndex(session.servicePath());
 		String prompt = buildPrompt(session, digest, index);
 		JsonNode result;
 		try {
@@ -151,7 +151,7 @@ public class ReflectionService {
 			ops = mapper.createArrayNode();
 		}
 		if (settings.current().memoryReflectionApprovalRequired()) {
-			var proposal = proposals.insert(session.id(), session.name(), session.repoPath(), lastSeq,
+			var proposal = proposals.insert(session.id(), session.name(), session.servicePath(), lastSeq,
 					episodeSummary, ops);
 			ObjectNode payload = mapper.createObjectNode();
 			payload.put("proposalId", proposal.id().toString());
@@ -165,7 +165,7 @@ public class ReflectionService {
 
 	/** Writes the episode + semantic ops for real — the terminal step of both the auto-apply and the approve-proposal paths. */
 	private void applyReflection(SessionEntity session, long reflectedSeq, String episodeSummary, JsonNode ops) {
-		var episode = episodes.insert(session.id(), session.name(), session.repoPath(), episodeSummary);
+		var episode = episodes.insert(session.id(), session.name(), session.servicePath(), episodeSummary);
 		maybeEmbedEpisode(episode.id(), episodeSummary);
 
 		List<String> created = new ArrayList<>();
@@ -199,7 +199,7 @@ public class ReflectionService {
 			warnings.add("skipped malformed semantic op: " + op);
 			return;
 		}
-		String servicePath = "service".equals(scope) ? session.repoPath() : null;
+		String servicePath = "service".equals(scope) ? session.servicePath() : null;
 		try {
 			switch (kind) {
 				case "create" -> {
@@ -270,7 +270,7 @@ public class ReflectionService {
 
 				Transcript digest:
 				%s
-				""".formatted(session.repoPath(), indexText.isEmpty() ? "(none yet)" : indexText, digest);
+				""".formatted(session.servicePath(), indexText.isEmpty() ? "(none yet)" : indexText, digest);
 	}
 
 	private void warn(UUID sessionId, String message) {

@@ -13,6 +13,8 @@ import { log, readLines, writeEvent } from './stdio.js';
 
 export interface SidecarConfig {
   cwd: string;
+  /** Write boundary for readOnlyDenial (docs/plan/phase-11-monorepo.md) — the worktree root; equals cwd for a polyrepo session, wider than it for a monorepo one. */
+  writableRoot: string;
   resume?: string;
   model?: string;
   fallbackModel?: string;
@@ -268,7 +270,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     ...(config.mcpConfigPath ? { mcpServers: (await loadMcpServers(config.mcpConfigPath)) as never } : {}),
     stderr: (data: string) => log('cli:', data.trimEnd()),
     canUseTool: async (toolName, input, { suggestions }) => {
-      const denial = readOnlyDenial(toolName, input, config.cwd);
+      const denial = readOnlyDenial(toolName, input, config.cwd, config.writableRoot);
       if (denial) {
         writeEvent({ type: 'error', message: denial, fatal: false });
         return { behavior: 'deny', message: denial };

@@ -1,9 +1,11 @@
 package de.pamir.claude.ui.session;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
 
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -15,6 +17,14 @@ public record SessionEntity(
 		String provider,
 		JsonNode providerConfig,
 		String repoPath,
+		/**
+		 * Raw stored value; NULL = "same as repoPath" (polyrepo, and every pre-Phase-11 row — see
+		 * docs/plan/phase-11-monorepo.md). The record's default public accessor for this component
+		 * is overridden below to resolve the NULL ({@link #servicePath()}) so no caller has to
+		 * branch; {@link #rawServicePath()} is the raw, possibly-null value, for {@link
+		 * SessionRepository}'s insert only.
+		 */
+		String servicePath,
 		String ecosystemPath,
 		List<String> contextDirs,
 		String branch,
@@ -61,6 +71,38 @@ public record SessionEntity(
 		Instant updatedAt
 ) {
 
+	/**
+	 * Resolved service identity — {@code servicePath} when set, else {@code repoPath} (polyrepo,
+	 * and every pre-Phase-11 row). This is what memory/discovery/orchestration scope on; overrides
+	 * the record's default accessor for the {@code servicePath} component so no caller branches on
+	 * NULL. Explicitly annotated because a plain no-arg method isn't picked up by Jackson's default
+	 * bean-property detection the way a record component's own accessor is.
+	 */
+	@JsonProperty("servicePath")
+	public String servicePath() {
+		return servicePath == null ? repoPath : servicePath;
+	}
+
+	/** Raw {@code service_path} column value (possibly null) — {@link SessionRepository}'s insert only. */
+	String rawServicePath() {
+		return servicePath;
+	}
+
+	/**
+	 * This session's sidecar cwd: {@code worktreePath} when {@link #servicePath()} equals {@code
+	 * repoPath} (byte-identical to every pre-Phase-11 session), else the worktree-relative
+	 * subfolder for the service.
+	 */
+	@JsonProperty("cwdPath")
+	public String cwdPath() {
+		String service = servicePath();
+		if (service.equals(repoPath)) {
+			return worktreePath;
+		}
+		Path relative = Path.of(repoPath).relativize(Path.of(service));
+		return Path.of(worktreePath).resolve(relative).toString();
+	}
+
 	public static Builder builder() {
 		return new Builder();
 	}
@@ -68,7 +110,7 @@ public record SessionEntity(
 	/** A builder pre-seeded with this entity's own fields, for a "copy with one field changed" update. */
 	public Builder toBuilder() {
 		return builder().id(id).name(name).provider(provider).providerConfig(providerConfig)
-				.repoPath(repoPath).ecosystemPath(ecosystemPath).contextDirs(contextDirs)
+				.repoPath(repoPath).servicePath(servicePath).ecosystemPath(ecosystemPath).contextDirs(contextDirs)
 				.branch(branch).baseBranch(baseBranch).worktreePath(worktreePath)
 				.providerSessionId(providerSessionId).capabilities(capabilities).model(model)
 				.permissionMode(permissionMode).allowedTools(allowedTools).disallowedTools(disallowedTools)
@@ -96,6 +138,7 @@ public record SessionEntity(
 		private String provider;
 		private JsonNode providerConfig;
 		private String repoPath;
+		private String servicePath;
 		private String ecosystemPath;
 		private List<String> contextDirs = List.of();
 		private String branch;
@@ -142,6 +185,7 @@ public record SessionEntity(
 		public Builder provider(String v) { this.provider = v; return this; }
 		public Builder providerConfig(JsonNode v) { this.providerConfig = v; return this; }
 		public Builder repoPath(String v) { this.repoPath = v; return this; }
+		public Builder servicePath(String v) { this.servicePath = v; return this; }
 		public Builder ecosystemPath(String v) { this.ecosystemPath = v; return this; }
 		public Builder contextDirs(List<String> v) { this.contextDirs = v; return this; }
 		public Builder branch(String v) { this.branch = v; return this; }
@@ -179,7 +223,7 @@ public record SessionEntity(
 		public Builder updatedAt(Instant v) { this.updatedAt = v; return this; }
 
 		public SessionEntity build() {
-			return new SessionEntity(id, name, provider, providerConfig, repoPath, ecosystemPath, contextDirs,
+			return new SessionEntity(id, name, provider, providerConfig, repoPath, servicePath, ecosystemPath, contextDirs,
 					branch, baseBranch, worktreePath, providerSessionId, capabilities, model, permissionMode,
 					allowedTools, disallowedTools, mcpConfig, envVars, skillSources, agentSources, instructions,
 					thinking, effort, maxTurns, fallbackModel, costBudgetUsd, kickoffPrompt, state, kind, ticketRef,

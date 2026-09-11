@@ -14,12 +14,13 @@ import java.util.Locale;
 
 /**
  * Resolves the on-disk layout of the memory vault: {@code <root>/ecosystem/*.md} and
- * {@code <root>/services/<slug>/*.md}. The DB stores a service's canonical repo path
- * (session.repoPath, exact string); the directory name is a human-friendly slug of the
- * repo's basename, disambiguated with a content-hash suffix on collision (decision 5).
- * A hidden {@code .repo-path} marker file in each service dir records which canonical
- * path claimed that slug, so a second, differently-pathed repo with the same basename
- * doesn't silently share a directory.
+ * {@code <root>/services/<slug>/*.md}. The DB stores a service's canonical identity
+ * (session.servicePath, exact string — a folder inside a git repo; equal to repoPath for a
+ * polyrepo session, see docs/plan/phase-11-monorepo.md); the directory name is a human-friendly
+ * slug of that folder's basename, disambiguated with a content-hash suffix on collision
+ * (decision 5). A hidden {@code .repo-path} marker file in each service dir records which
+ * canonical path claimed that slug, so a second, differently-pathed service with the same
+ * basename doesn't silently share a directory.
  */
 @Component
 public class MemoryPaths {

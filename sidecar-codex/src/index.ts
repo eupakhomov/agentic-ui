@@ -16,7 +16,7 @@ const EFFORT_LEVELS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
  */
 function usage(): never {
   console.error(
-    `usage: sidecar-codex --cwd <dir> [--resume <thread-id>] [--model <m>]
+    `usage: sidecar-codex --cwd <dir> [--writable-root <dir>] [--resume <thread-id>] [--model <m>]
        [--permission-mode ${PERMISSION_MODES.join('|')}]
        [--effort ${EFFORT_LEVELS.join('|')}]
        [--append-system-prompt <text>] [--mcp-config <path.json>]`,
@@ -25,7 +25,7 @@ function usage(): never {
 }
 
 function parseArgs(argv: string[]): SidecarConfig {
-  const config: SidecarConfig = { cwd: '' };
+  const config: SidecarConfig = { cwd: '', writableRoot: '' };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const value = argv[i + 1];
@@ -37,6 +37,9 @@ function parseArgs(argv: string[]): SidecarConfig {
     switch (flag) {
       case '--cwd':
         config.cwd = resolve(need());
+        break;
+      case '--writable-root':
+        config.writableRoot = resolve(need());
         break;
       case '--resume':
         config.resume = need();
@@ -67,6 +70,7 @@ function parseArgs(argv: string[]): SidecarConfig {
     }
   }
   if (!config.cwd) usage();
+  if (!config.writableRoot) config.writableRoot = config.cwd;
   return config;
 }
 

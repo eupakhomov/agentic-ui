@@ -340,6 +340,14 @@ effect on the next use with no backend restart.
   + service discovery root (parent of all sibling services); empty = no default wider
   context. Overridable per session in the create dialog (`ecosystemPath`, `null` = no
   wider context for that session). Replaces the old `CLAUDE_UI_ECOSYSTEM_ROOT` env var.
+  If it points *at* a monorepo (one git repo whose `packages/*`/`services/*`/`apps/*`/
+  `libs/*`-style folders are the real services — detected via each folder's own
+  workspace manifest, `ecosystem.monorepo-service-globs` next to it a glob-only
+  fallback), the picker lists those packages individually; a session on one gets a
+  worktree of the whole monorepo with cwd at the package subfolder, the whole worktree
+  writable, and the worktree itself (not the original checkout) as its context —
+  see `docs/plan/phase-11-monorepo.md`. Polyrepo (a folder of separate repos) is
+  unchanged.
 - **OAuth toggle** (Settings dialog → "Linear integration") — alternative to
   `CLAUDE_UI_LINEAR_API_KEY` for SSO-gated Linear accounts (e.g. Google identity): omits
   the Authorization header, relying on the ambient `claude` CLI's own cached OAuth

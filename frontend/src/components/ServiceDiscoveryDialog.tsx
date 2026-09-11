@@ -26,7 +26,7 @@ export default function ServiceDiscoveryDialog({ onClose }: { onClose: () => voi
     setError('');
     api.serviceDiscoveryRediscover(path)
       .then((updated) => {
-        setServices((prev) => (prev ?? []).map((s) => (s.path === path ? updated : s)));
+        setServices((prev) => (prev ?? []).map((s) => (s.servicePath === path ? updated : s)));
         setBusyPath(null);
       })
       .catch((e) => { setError(String((e as Error).message ?? e)); setBusyPath(null); });
@@ -40,8 +40,8 @@ export default function ServiceDiscoveryDialog({ onClose }: { onClose: () => voi
     setScanProgress({ done: 0, total: stale.length });
     for (let i = 0; i < stale.length; i++) {
       try {
-        const updated = await api.serviceDiscoveryRediscover(stale[i]!.path);
-        setServices((prev) => (prev ?? []).map((s) => (s.path === updated.path ? updated : s)));
+        const updated = await api.serviceDiscoveryRediscover(stale[i]!.servicePath);
+        setServices((prev) => (prev ?? []).map((s) => (s.servicePath === updated.servicePath ? updated : s)));
       } catch (e) {
         setError(String((e as Error).message ?? e));
       }
@@ -52,7 +52,7 @@ export default function ServiceDiscoveryDialog({ onClose }: { onClose: () => voi
   };
 
   const startEdit = (s: ServiceProfileView) => {
-    setEditingPath(s.path);
+    setEditingPath(s.servicePath);
     setDraft({ description: s.description ?? '', tags: s.tags.join(', ') });
     setError('');
   };
@@ -61,7 +61,7 @@ export default function ServiceDiscoveryDialog({ onClose }: { onClose: () => voi
     setBusyPath(path);
     api.serviceDiscoveryUpdate(path, { description: draft.description, tags: splitTags(draft.tags) })
       .then((updated) => {
-        setServices((prev) => (prev ?? []).map((s) => (s.path === path ? updated : s)));
+        setServices((prev) => (prev ?? []).map((s) => (s.servicePath === path ? updated : s)));
         setEditingPath(null);
         setBusyPath(null);
       })
@@ -97,7 +97,7 @@ export default function ServiceDiscoveryDialog({ onClose }: { onClose: () => voi
             <div style={{ color: 'var(--muted)' }}>no ecosystem root configured, or no git repos under it</div>
           )}
           {(services ?? []).map((s) => (
-            <div key={s.path} className="stale-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+            <div key={s.servicePath} className="stale-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span className="name">{s.name}</span>
                 {s.discoveredAt
@@ -107,18 +107,18 @@ export default function ServiceDiscoveryDialog({ onClose }: { onClose: () => voi
                   : <span className="chip" style={{ color: 'var(--red)' }}>not discovered</span>}
                 {s.discoveredAt && <span className="idle">{new Date(s.discoveredAt).toLocaleString()}</span>}
                 <span style={{ flex: 1 }} />
-                {editingPath !== s.path && (
+                {editingPath !== s.servicePath && (
                   <>
-                    <button disabled={busyPath === s.path || scanning} onClick={() => startEdit(s)}>Edit</button>
-                    <button disabled={busyPath === s.path || scanning} onClick={() => rediscover(s.path)}>
-                      {busyPath === s.path ? 'Rediscovering…' : 'Rediscover'}
+                    <button disabled={busyPath === s.servicePath || scanning} onClick={() => startEdit(s)}>Edit</button>
+                    <button disabled={busyPath === s.servicePath || scanning} onClick={() => rediscover(s.servicePath)}>
+                      {busyPath === s.servicePath ? 'Rediscovering…' : 'Rediscover'}
                     </button>
                   </>
                 )}
               </div>
-              <div className="note">{s.path}</div>
+              <div className="note">{s.servicePath}</div>
 
-              {editingPath === s.path ? (
+              {editingPath === s.servicePath ? (
                 <div className="form-grid">
                   <label>Description</label>
                   <textarea
@@ -134,13 +134,13 @@ export default function ServiceDiscoveryDialog({ onClose }: { onClose: () => voi
                     onChange={(e) => setDraft((d) => ({ ...d, tags: e.target.value }))}
                   />
                   <span className="full" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button disabled={busyPath === s.path} onClick={() => setEditingPath(null)}>Cancel</button>
+                    <button disabled={busyPath === s.servicePath} onClick={() => setEditingPath(null)}>Cancel</button>
                     <button
                       className="primary"
-                      disabled={busyPath === s.path || !draft.description.trim()}
-                      onClick={() => saveEdit(s.path)}
+                      disabled={busyPath === s.servicePath || !draft.description.trim()}
+                      onClick={() => saveEdit(s.servicePath)}
                     >
-                      {busyPath === s.path ? 'Saving…' : 'Save'}
+                      {busyPath === s.servicePath ? 'Saving…' : 'Save'}
                     </button>
                   </span>
                 </div>

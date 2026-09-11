@@ -1,5 +1,6 @@
 package de.pamir.claude.ui.session;
 
+import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitWorktreeService;
 import de.pamir.claude.ui.journal.EventJournal;
 import de.pamir.claude.ui.journal.JournalPublisher;
@@ -10,8 +11,8 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -36,6 +37,7 @@ public class OrchestrationMcpTools {
 							 boolean reported) {
 	}
 
+	private final SettingsService settings;
 	private final SessionRepository sessions;
 	private final SessionService sessionService;
 	private final GitWorktreeService worktrees;
@@ -43,9 +45,10 @@ public class OrchestrationMcpTools {
 	private final JournalPublisher journalPublisher;
 	private final ObjectMapper mapper;
 
-	public OrchestrationMcpTools(SessionRepository sessions, SessionService sessionService,
+	public OrchestrationMcpTools(SettingsService settings, SessionRepository sessions, SessionService sessionService,
 								  GitWorktreeService worktrees, EventJournal journal, JournalPublisher journalPublisher,
 								  ObjectMapper mapper) {
+		this.settings = settings;
 		this.sessions = sessions;
 		this.sessionService = sessionService;
 		this.worktrees = worktrees;
@@ -56,29 +59,30 @@ public class OrchestrationMcpTools {
 
 	@McpTool(name = "list_services",
 			annotations = @McpTool.McpAnnotations(title = "List services", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false),
-			description = "List the sibling services (git repos) under this session's ecosystem folder — "
-					+ "candidates for spawn_child_session. Errors if no ecosystem folder is configured for "
-					+ "this session.")
-	public List<GitWorktreeService.RepoInfo> listServices(
+			description = "List the sibling services (git repos or monorepo packages) under this session's "
+					+ "ecosystem folder — candidates for spawn_child_session. Errors if no ecosystem folder is "
+					+ "configured for this session.")
+	public List<GitWorktreeService.ServiceInfo> listServices(
 			@McpToolParam(required = true, description = "Your session id, given in your system prompt")
 			String sessionId) {
 		SessionEntity session = sessionOf(sessionId);
 		if (session.ecosystemPath() == null || session.ecosystemPath().isBlank()) {
 			throw new IllegalStateException("no ecosystem folder is configured for this session");
 		}
-		return worktrees.findRepos(Path.of(session.ecosystemPath()));
+		return worktrees.findServices(Path.of(session.ecosystemPath()), monorepoGlobs());
 	}
 
 	@McpTool(name = "spawn_child_session",
 			annotations = @McpTool.McpAnnotations(title = "Spawn child session", readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
-			description = "Spawn a child session on another service's repo (from list_services) to work on "
-					+ "part of a cross-service task, in its own worktree/branch. The child reports back via "
-					+ "report_result, which wakes this session with the result. Refused if this session is "
-					+ "itself a child (depth 1 only), at the session limit, or above the per-parent child cap.")
+			description = "Spawn a child session on another service (from list_services) to work on part of a "
+					+ "cross-service task, in its own worktree/branch — a monorepo package gets its own worktree "
+					+ "of the same repo, on a new branch. The child reports back via report_result, which wakes "
+					+ "this session with the result. Refused if this session is itself a child (depth 1 only), "
+					+ "at the session limit, or above the per-parent child cap.")
 	public Map<String, String> spawnChildSession(
 			@McpToolParam(required = true, description = "Your session id, given in your system prompt")
 			String sessionId,
-			@McpToolParam(required = true, description = "Absolute path to the service's repo, from list_services")
+			@McpToolParam(required = true, description = "Absolute path to the service, from list_services")
 			String servicePath,
 			@McpToolParam(required = true, description = "New branch name to create for the child on that repo")
 			String branch,
@@ -94,10 +98,15 @@ public class OrchestrationMcpTools {
 			throw new IllegalStateException(
 					"this session already has the maximum of " + MAX_CHILDREN + " children");
 		}
-		if (!Files.exists(Path.of(servicePath).resolve(".git"))) {
-			throw new IllegalArgumentException("not a git repository: " + servicePath);
+		Path service = Path.of(servicePath).toAbsolutePath().normalize();
+		Path repoRoot = worktrees.repoRootOf(service)
+				.orElseThrow(() -> new IllegalArgumentException("not a known service under this session's ecosystem: " + servicePath));
+		Path ecosystemRoot = parent.ecosystemPath() == null || parent.ecosystemPath().isBlank()
+				? null : Path.of(parent.ecosystemPath());
+		if (!worktrees.isKnownService(ecosystemRoot, monorepoGlobs(), repoRoot, service)) {
+			throw new IllegalArgumentException("not a known service under this session's ecosystem: " + servicePath);
 		}
-		String baseBranch = worktrees.defaultBranch(Path.of(servicePath));
+		String baseBranch = worktrees.defaultBranch(repoRoot);
 		String childPrompt = prompt + "\n\nYou are a child session of \"" + parent.name() + "\" working on this "
 				+ "service as part of a larger cross-service task. When your task is done, call report_result "
 				+ "(with your own sessionId, given in your system prompt) with a concise summary of what you did.";
@@ -110,9 +119,9 @@ public class OrchestrationMcpTools {
 			overrides.put("ecosystemPath", parent.ecosystemPath());
 		}
 		overrides.put("kickoffPrompt", childPrompt);
-		String childName = Path.of(servicePath).getFileName() + ": " + branch;
+		String childName = service.getFileName() + ": " + branch;
 		SessionEntity child = sessionService.create(new SessionService.CreateOptions(childName, branch, baseBranch,
-				servicePath, null, overrides, null, false).withParent(parent.id()));
+				repoRoot.toString(), null, overrides, null, false).withParent(parent.id()).withServicePath(servicePath));
 		return Map.of("childId", child.id().toString(), "name", child.name());
 	}
 
@@ -125,7 +134,7 @@ public class OrchestrationMcpTools {
 			String sessionId) {
 		SessionEntity parent = sessionOf(sessionId);
 		return sessions.findByParent(parent.id()).stream()
-				.map(c -> new ChildInfo(c.id().toString(), c.name(), c.repoPath(), c.state().name(),
+				.map(c -> new ChildInfo(c.id().toString(), c.name(), c.servicePath(), c.state().name(),
 						journal.costToDate(c.id()), journal.hasEventType(c.id(), "child_reported")))
 				.toList();
 	}
@@ -145,7 +154,7 @@ public class OrchestrationMcpTools {
 			throw new IllegalStateException("this session has no parent — report_result is for child sessions only");
 		}
 		SessionEntity parent = sessions.get(child.parentSessionId());
-		String service = Path.of(child.repoPath()).getFileName().toString();
+		String service = Path.of(child.servicePath()).getFileName().toString();
 		ObjectNode payload = mapper.createObjectNode()
 				.put("childId", child.id().toString())
 				.put("childName", child.name())
@@ -160,6 +169,11 @@ public class OrchestrationMcpTools {
 	/** Journal + fan out, both sessions see this live. */
 	private void record(UUID id, String type, ObjectNode payload) {
 		journalPublisher.record(id, type, payload);
+	}
+
+	private List<String> monorepoGlobs() {
+		return Arrays.stream(settings.current().monorepoServiceGlobs().split(","))
+				.map(String::strip).filter(g -> !g.isEmpty()).toList();
 	}
 
 	private SessionEntity sessionOf(String sessionId) {

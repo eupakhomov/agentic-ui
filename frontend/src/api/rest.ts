@@ -91,7 +91,7 @@ export const api = {
     request<TicketSummary[]>('POST', '/api/tickets/recent', undefined, signal),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
-    | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
+    | 'monorepoServiceGlobs' | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
     | 'libraryVectorize' | 'librarySyncEnabled' | 'librarySyncIntervalMinutes'
     | 'defaultProvider' | 'systemProvider' | 'codexPricing' | 'memoryRoot' | 'memoryEnabled' | 'memoryReflectionDefault'
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
@@ -170,8 +170,8 @@ export const api = {
     return request<MemoryEpisode[]>('GET', `/api/memory/episodes?${params.toString()}`);
   },
   serviceDiscoveryServices: () => request<ServiceProfileView[]>('GET', '/api/service-discovery/services'),
-  serviceDiscoveryRediscover: (repoPath: string) =>
-    request<ServiceProfileView>('POST', '/api/service-discovery/services/rediscover', { repoPath }),
-  serviceDiscoveryUpdate: (repoPath: string, patch: { description: string; tags: string[] }) =>
-    request<ServiceProfileView>('PATCH', '/api/service-discovery/services', { repoPath, ...patch }),
+  serviceDiscoveryRediscover: (servicePath: string) =>
+    request<ServiceProfileView>('POST', '/api/service-discovery/services/rediscover', { servicePath }),
+  serviceDiscoveryUpdate: (servicePath: string, patch: { description: string; tags: string[] }) =>
+    request<ServiceProfileView>('PATCH', '/api/service-discovery/services', { servicePath, ...patch }),
 };

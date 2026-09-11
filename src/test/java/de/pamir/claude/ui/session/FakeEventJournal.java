@@ -72,4 +72,9 @@ final class FakeEventJournal extends EventJournal {
 	public Optional<JournalEvent> firstEventOfType(UUID sessionId, String type) {
 		return journaled.getOrDefault(sessionId, List.of()).stream().filter(e -> e.type().equals(type)).findFirst();
 	}
+
+	@Override
+	public boolean hasEventType(UUID sessionId, String type) {
+		return journaled.getOrDefault(sessionId, List.of()).stream().anyMatch(e -> e.type().equals(type));
+	}
 }

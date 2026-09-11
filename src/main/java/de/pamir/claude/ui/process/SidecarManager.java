@@ -152,7 +152,10 @@ public class SidecarManager {
 		// unconditionally below.
 		ProviderCapabilities caps = catalog.get(s.provider());
 
-		List<String> args = new ArrayList<>(List.of("--cwd", s.worktreePath()));
+		// --cwd is the service's own subfolder (equal to the worktree root for a polyrepo
+		// session); --writable-root is unconditionally the worktree root — both adapters honor
+		// it (docs/plan/phase-11-monorepo.md Step 4), no capability gate needed.
+		List<String> args = new ArrayList<>(List.of("--cwd", s.cwdPath(), "--writable-root", s.worktreePath()));
 		if (resume && s.providerSessionId() != null) {
 			args.addAll(List.of("--resume", s.providerSessionId()));
 		}
@@ -180,7 +183,19 @@ public class SidecarManager {
 			args.addAll(List.of("--append-system-prompt", systemPrompt));
 		}
 		if (caps.contextDirs()) {
-			if (s.ecosystemPath() != null && !s.ecosystemPath().isBlank()) {
+			// Monorepo (docs/plan/phase-11-monorepo.md Step 4): the worktree is this session's own
+			// fresh checkout of the service's repo, so it always replaces (layout (a): ecosystem
+			// root IS that repo) or joins (layout (b): ecosystem root is a wider folder) the
+			// ecosystem context — using the ecosystem path alone in layout (a) would attach the
+			// *original, stale* checkout of the very code this session is editing.
+			boolean monorepo = !s.servicePath().equals(s.repoPath());
+			boolean ecosystemConfigured = s.ecosystemPath() != null && !s.ecosystemPath().isBlank();
+			if (monorepo) {
+				args.addAll(List.of("--context-dir", s.worktreePath()));
+				if (ecosystemConfigured && !Path.of(s.ecosystemPath()).equals(Path.of(s.repoPath()))) {
+					args.addAll(List.of("--context-dir", s.ecosystemPath()));
+				}
+			} else if (ecosystemConfigured) {
 				args.addAll(List.of("--context-dir", s.ecosystemPath()));
 			}
 			for (String dir : s.contextDirs()) {

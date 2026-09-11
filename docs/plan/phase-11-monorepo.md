@@ -1,9 +1,10 @@
 # Phase 11 — Monorepo support (ecosystem folder == service repo)
 
-Status: **planned, not started** (extracted from `phase-10-review-followups.md` §10.5 on
-2026-09-07 — it was the one item there big enough to be its own phase; the phase-10 doc now
-only points here). Verified against the code as of Phase 10 R8c; every edit site named below
-was checked to exist as described.
+Status: **landed (2026-09-12) — Steps 0-7 all done, DoD green (`./mvnw test` incl. integration, both sidecars' `npm test`/`tsc`, frontend `npm test`/`npm run build`, `check-protocol-sync.mjs`, `grep -rn "findRepos" src/main/java` clean), full manual test pass green** (extracted from `phase-10-review-followups.md`
+§10.5 on 2026-09-07 — it was the one item there big enough to be its own phase; the phase-10
+doc now only points here). Verified against the code as of Phase 10 R8c; every edit site named
+below was checked to exist as described (re-verified 2026-09-11, no drift found beyond a
+handful of stale line-number citations — see the implementation plan's "corrections" section).
 
 Today "ecosystem" = a folder whose *direct children are git repos*
 (`GitWorktreeService.findRepos`: `Files.exists(child/.git)`), and "service" = one of those
@@ -102,6 +103,19 @@ Concretely, in a monorepo:
    `ServiceDigest`'s name) uses the basename of `servicePath`, as today — `packages/foo` in
    two different monorepos collide on `foo` in the memory vault and get `MemoryPaths`'
    existing hash-suffix, which is the designed behavior, not a new case.
+8. **Skill/agent materialization target — decision A (cwd)**, resolved by the Step 0 spike on
+   2026-09-11. `claude -p --setting-sources project 'List the skills available to you by name,
+   nothing else.'` run from `<mono>/packages/foo` (with `root-skill` at `<mono>/.claude/skills/`
+   and `pkg-skill` at `<mono>/packages/foo/.claude/skills/`) printed:
+   `pkg-skill, root-skill, dataviz, update-config, ...` — **both** project skills were listed,
+   which is the spec's "decision A" outcome (only `pkg-skill`, or both). So: `AssetProvisioningService.provision`
+   materializes at the **service cwd** (`<worktree>/packages/foo/.claude/`), not the worktree
+   root; `excludeProvisionedAssets` writes the worktree-relative `packages/foo/.claude/skills/`
+   line (not the bare `.claude/skills/` it writes today). Codex needs no change — it already
+   derives `skillsDir` from `config.cwd` (`sidecar-codex/src/session.ts:384-387`), which under
+   decision A is already the correct (service) directory. The spike was not repeated for Codex
+   since its extra-roots resolution is deterministic code (`join(config.cwd, '.claude',
+   'skills')`), not an ambiguous walk-up, and cwd already matches decision A.
 
 ## Steps
 

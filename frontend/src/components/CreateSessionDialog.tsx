@@ -32,7 +32,7 @@ export default function CreateSessionDialog({
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [name, setName] = useState('');
-  const [repoPath, setRepoPath] = useState('');
+  const [servicePath, setServicePath] = useState('');
   const [branch, setBranch] = useState('');
   const branchRef = useRef<HTMLInputElement>(null);
   const [baseBranch, setBaseBranch] = useState('main');
@@ -87,7 +87,7 @@ export default function CreateSessionDialog({
   useEffect(() => {
     api.services().then((info) => {
       setServicesInfo(info);
-      setRepoPath(info.defaultRepoPath);
+      setServicePath(info.defaultRepoPath);
       setEcosystemPath(info.ecosystemRoot);
     }).catch(() => setServicesInfo(null));
     api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
@@ -102,6 +102,15 @@ export default function CreateSessionDialog({
 
   const activeCapabilities = providers.find((p) => p.id === provider)?.capabilities;
   const modelIds = useMemo(() => (activeCapabilities?.models ?? []).map((m) => m.id), [activeCapabilities]);
+
+  // the picker's value is the service's own path; its repoPath (the git root — equal to it for a
+  // plain polyrepo service, the monorepo root for a package) is what branches() and the actual
+  // worktree source need (docs/plan/phase-11-monorepo.md Step 6)
+  const selectedService = useMemo(
+    () => (servicesInfo?.services ?? []).find((s) => s.path === servicePath) ?? null,
+    [servicesInfo, servicePath],
+  );
+  const selectedRepoPath = selectedService?.repoPath || servicePath;
 
   // keep permission mode / model within what the selected provider actually supports —
   // capabilities gate the controls, never a provider-name check (docs/PROTOCOL.md)
@@ -165,7 +174,7 @@ export default function CreateSessionDialog({
         api.sessionDetail(source.id),
         fullTranscript ? api.exportTranscript(source.id) : api.handoffSummary(source.id),
       ]);
-      setRepoPath(detail.session.repoPath);
+      setServicePath(detail.session.servicePath);
       setProvider(detail.session.provider);
       if (detail.session.model) setModel(detail.session.model);
       setPermissionMode(detail.session.permissionMode);
@@ -181,15 +190,15 @@ export default function CreateSessionDialog({
   };
 
   useEffect(() => {
-    if (!repoPath) return;
-    api.branches(repoPath).then((list) => {
+    if (!selectedRepoPath) return;
+    api.branches(selectedRepoPath).then((list) => {
       setBranches(list);
       if (list.length > 0 && !list.includes(baseBranch)) {
         setBaseBranch(pickDefaultBranch(list));
       }
     }).catch(() => setBranches([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoPath]);
+  }, [selectedRepoPath]);
 
   const template = templates.find((t) => t.id === templateId);
   const kickoffPrompt = typeof template?.config['kickoffPrompt'] === 'string'
@@ -246,7 +255,8 @@ export default function CreateSessionDialog({
         name: name.trim() || branch.trim(),
         branch: branch.trim(),
         baseBranch,
-        repoPath,
+        repoPath: selectedRepoPath,
+        servicePath,
         templateId: templateId || null,
         overrides,
         kickoffValues,
@@ -269,9 +279,9 @@ export default function CreateSessionDialog({
         <h2>New Session</h2>
         <div className="form-grid">
           <label>Service</label>
-          <select value={repoPath} onChange={(e) => setRepoPath(e.target.value)}>
+          <select value={servicePath} onChange={(e) => setServicePath(e.target.value)}>
             {(servicesInfo?.services ?? []).map((s) => (
-              <option key={s.path} value={s.path}>{s.name}</option>
+              <option key={s.path} value={s.path}>{s.name}{s.monorepo ? ' · monorepo' : ''}</option>
             ))}
           </select>
 
@@ -419,7 +429,7 @@ export default function CreateSessionDialog({
               value={ecosystemPath}
               onChange={(e) => setEcosystemPath(e.target.value)}
               placeholder="read-only context folder; empty = no wider context"
-              title="parent folder attached read-only so Claude can read sibling services"
+              title="parent folder attached read-only so Claude can read sibling services; in a monorepo the session's own worktree is attached instead"
             />
 
             <label>Reflection</label>

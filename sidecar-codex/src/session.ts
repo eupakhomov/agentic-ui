@@ -18,6 +18,8 @@ export type CodexPermissionMode = 'default' | 'bypassPermissions';
 
 export interface SidecarConfig {
   cwd: string;
+  /** Codex's sandboxPolicy writableRoots (docs/plan/phase-11-monorepo.md) — the worktree root; equals cwd for a polyrepo session, wider than it for a monorepo one. */
+  writableRoot: string;
   resume?: string;
   model?: string;
   permissionMode?: CodexPermissionMode;
@@ -68,11 +70,14 @@ function approvalPolicyFor(mode: CodexPermissionMode): string {
 }
 
 /** Full SandboxPolicy object shape, needed by turn/start (thread/start takes the
- * simpler SandboxMode string — see sandboxModeFor below). */
-function sandboxPolicyFor(mode: CodexPermissionMode): Record<string, unknown> {
+ * simpler SandboxMode string — see sandboxModeFor below). `writableRoots: [writableRoot]`
+ * (docs/plan/phase-11-monorepo.md) is the worktree root — equal to `cwd` for a polyrepo
+ * session, wider than it for a monorepo one, so a cross-package edit is allowed without
+ * a prompt in the same way `sidecar/`'s `readOnlyDenial` allows it. */
+export function sandboxPolicyFor(mode: CodexPermissionMode, writableRoot: string): Record<string, unknown> {
   return mode === 'bypassPermissions'
     ? { type: 'dangerFullAccess' }
-    : { type: 'workspaceWrite', writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false };
+    : { type: 'workspaceWrite', writableRoots: [writableRoot], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false };
 }
 
 function sandboxModeFor(mode: CodexPermissionMode): string {
@@ -159,7 +164,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
         threadId,
         input: [{ type: 'text', text, text_elements: [] }],
         approvalPolicy: approvalPolicyFor(currentPermissionMode),
-        sandboxPolicy: sandboxPolicyFor(currentPermissionMode),
+        sandboxPolicy: sandboxPolicyFor(currentPermissionMode, config.writableRoot),
       };
       if (currentModelOverride) params['model'] = currentModelOverride;
       if (config.effort) params['effort'] = config.effort;

@@ -43,11 +43,16 @@ public class AssetProvisioningService {
 		this.mapper = mapper;
 	}
 
-	/** Materializes skills and agents; returns human-readable warnings (collisions etc.). */
-	public List<Warning> provision(Path worktree, JsonNode skillSources, JsonNode agentSources) {
+	/**
+	 * Materializes skills and agents under {@code assetsRoot}/.claude/{skills,agents}; returns
+	 * human-readable warnings (collisions etc.). {@code assetsRoot} is the worktree root for a
+	 * polyrepo session, or the service subfolder inside it for a monorepo one (decision 8,
+	 * docs/plan/phase-11-monorepo.md) — this method itself is agnostic to which.
+	 */
+	public List<Warning> provision(Path assetsRoot, JsonNode skillSources, JsonNode agentSources) {
 		List<Warning> warnings = new ArrayList<>();
-		materialize(resolveAll(skillSources, true, warnings, 0), worktree.resolve(".claude/skills"), true, warnings);
-		materialize(resolveAll(agentSources, false, warnings, 0), worktree.resolve(".claude/agents"), false, warnings);
+		materialize(resolveAll(skillSources, true, warnings, 0), assetsRoot.resolve(".claude/skills"), true, warnings);
+		materialize(resolveAll(agentSources, false, warnings, 0), assetsRoot.resolve(".claude/agents"), false, warnings);
 		return warnings;
 	}
 

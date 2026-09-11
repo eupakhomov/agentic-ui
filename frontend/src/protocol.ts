@@ -57,6 +57,10 @@ export interface SessionEntity {
   name: string;
   provider: string;
   repoPath: string;
+  /** The service identity — a folder inside repoPath's git repo; equals repoPath for a polyrepo session (phase 11) */
+  servicePath: string;
+  /** This session's sidecar cwd, worktree-relative to servicePath — equals worktreePath for a polyrepo session (phase 11) */
+  cwdPath: string;
   branch: string;
   baseBranch: string;
   worktreePath: string;
@@ -94,6 +98,7 @@ export interface SessionSummary {
   name: string;
   provider: string;
   repoPath: string;
+  servicePath: string;
   branch: string;
   model: string | null;
   permissionMode: PermissionMode;
@@ -140,6 +145,9 @@ export interface Template {
 export interface ServiceInfo {
   name: string;
   path: string;
+  /** The git root — equals path for a plain polyrepo service, the monorepo root for a package */
+  repoPath: string;
+  monorepo: boolean;
 }
 
 export interface ServicesResponse {
@@ -153,6 +161,8 @@ export interface Settings {
   ticketImportSpec: string;
   linearApiKeyConfigured: boolean;
   ecosystemRoot: string;
+  /** comma-separated glob fallback for monorepo package detection, e.g. "packages/*,services/*" */
+  monorepoServiceGlobs: string;
   prChecksEnabled: boolean;
   prCheckPollIntervalSeconds: number;
   librarySkillsRoot: string;
@@ -265,7 +275,7 @@ export interface MemorySearchHit {
 
 export interface ServiceProfileView {
   name: string;
-  path: string;
+  servicePath: string;
   description: string | null;
   tags: string[];
   discoveredAt: string | null;

@@ -54,7 +54,7 @@ public class MemoryMcpTools {
 	public Map<String, Long> memoryTags(
 			@McpToolParam(required = true, description = "Your session id, given in your system prompt")
 			String sessionId) {
-		return docs.tagCounts(repoPathOf(sessionId));
+		return docs.tagCounts(servicePathOf(sessionId));
 	}
 
 	@McpTool(name = "memory_search",
@@ -69,7 +69,7 @@ public class MemoryMcpTools {
 			String query,
 			@McpToolParam(required = false, description = "Optional: only memories carrying at least one of these tags")
 			List<String> tags) {
-		String servicePath = repoPathOf(sessionId);
+		String servicePath = servicePathOf(sessionId);
 		float[] embedding = embeddings.tryEmbed(query, true);
 		return docs.hybridSearch(query, embedding, servicePath, tags, DEFAULT_SEARCH_LIMIT).stream()
 				.map(hit -> new SearchResult(hit.doc().name(), hit.doc().scope(), hit.doc().description(),
@@ -90,7 +90,7 @@ public class MemoryMcpTools {
 			String name,
 			@McpToolParam(required = false, description = "Page number, 1-based; defaults to 1")
 			Integer page) {
-		String servicePath = repoPathOf(sessionId);
+		String servicePath = servicePathOf(sessionId);
 		MemoryRepository.MemoryDoc doc = docs.findVisibleByName(servicePath, name)
 				.orElseThrow(() -> new NoSuchElementException("no memory named '" + name + "' visible to this session"));
 		var result = docService.readScoped(doc.id(), page == null ? 1 : page, servicePath);
@@ -105,13 +105,13 @@ public class MemoryMcpTools {
 				r.dangling())).toList();
 	}
 
-	private String repoPathOf(String sessionId) {
+	private String servicePathOf(String sessionId) {
 		UUID id;
 		try {
 			id = UUID.fromString(sessionId);
 		} catch (IllegalArgumentException e) {
 			throw new IllegalArgumentException("sessionId is not a valid session id: " + sessionId);
 		}
-		return sessions.get(id).repoPath();
+		return sessions.get(id).servicePath();
 	}
 }

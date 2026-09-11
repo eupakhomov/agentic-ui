@@ -3,6 +3,7 @@ package de.pamir.claude.ui.session;
 import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
+import de.pamir.claude.ui.git.GitWorktreeService;
 import de.pamir.claude.ui.memory.MemoryEpisodeRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,10 +43,12 @@ public class SessionConfigFactory {
 	private final MemoryEpisodeRepository episodes;
 	private final int serverPort;
 	private final ProviderCatalog catalog;
+	private final GitWorktreeService worktrees;
 
 	public SessionConfigFactory(AppProperties props, SettingsService settings, TemplateRepository templates,
 								 ObjectMapper mapper, MemoryEpisodeRepository episodes,
-								 @Value("${server.port:8080}") int serverPort, ProviderCatalog catalog) {
+								 @Value("${server.port:8080}") int serverPort, ProviderCatalog catalog,
+								 GitWorktreeService worktrees) {
 		this.props = props;
 		this.settings = settings;
 		this.templates = templates;
@@ -52,6 +56,7 @@ public class SessionConfigFactory {
 		this.episodes = episodes;
 		this.serverPort = serverPort;
 		this.catalog = catalog;
+		this.worktrees = worktrees;
 	}
 
 	/** The resolved entity (still transient — not yet inserted) plus any non-fatal warnings to journal. */
@@ -61,11 +66,14 @@ public class SessionConfigFactory {
 	/** Builds a fresh 'user' session entity (state CREATING) from the given options; does not persist it. */
 	public Prepared prepare(UUID id, Path worktree, SessionService.CreateOptions options) {
 		Settings s = settings.current();
-		String repo = options.repoPath() == null || options.repoPath().isBlank() ? props.repoPath() : options.repoPath();
-		if (!Files.exists(Path.of(repo).resolve(".git"))) {
-			throw new IllegalArgumentException("not a git repository: " + repo);
-		}
 		ObjectNode config = mergedConfig(options.templateId(), options.overrides());
+		// Computed early (independent of the templateId asset-merge block below, which only adds
+		// skillSources/agentSources to `config`) — the servicePath resolution needs it to know which
+		// ecosystem folder's findServices() result "known service" is checked against.
+		String ecosystemPath = config.has("ecosystemPath") ? nullableText(config, "ecosystemPath")
+				: nullableIfBlank(s.ecosystemRoot());
+		ServiceResolution resolution = resolveRepoAndService(options, config, ecosystemPath, s);
+		String repo = resolution.repoPath();
 		List<String> warnings = new ArrayList<>();
 		if (options.templateId() != null) {
 			List<TemplateRepository.TemplateAsset> templateAssets = templates.get(options.templateId()).assets();
@@ -86,8 +94,6 @@ public class SessionConfigFactory {
 		String thinking = nullableText(config, "thinking");
 		Integer maxTurns = config.hasNonNull("maxTurns") ? config.get("maxTurns").asInt() : null;
 		String fallbackModel = nullableText(config, "fallbackModel");
-		String ecosystemPath = config.has("ecosystemPath") ? nullableText(config, "ecosystemPath")
-				: nullableIfBlank(s.ecosystemRoot());
 		List<String> contextDirs = stringList(config, "contextDirs");
 		ProviderCapabilities caps = catalog.get(provider);
 		// Unsupported controls are rejected at creation time, not silently downgraded (DoD from
@@ -156,7 +162,7 @@ public class SessionConfigFactory {
 		SessionEntity entity = SessionEntity.builder()
 				.id(id).name(options.name())
 				.provider(provider).providerConfig(config.get("providerConfig"))
-				.repoPath(repo).ecosystemPath(ecosystemPath).contextDirs(contextDirs)
+				.repoPath(repo).servicePath(resolution.servicePath()).ecosystemPath(ecosystemPath).contextDirs(contextDirs)
 				.branch(options.branch()).baseBranch(options.baseBranch()).worktreePath(worktree.toString())
 				.model(nullableText(config, "model")).permissionMode(permissionMode)
 				.allowedTools(allowedTools).disallowedTools(disallowedTools)
@@ -171,6 +177,61 @@ public class SessionConfigFactory {
 				.reflectionEnabled(config.path("reflectionEnabled").asBoolean(s.memoryReflectionDefault()))
 				.build();
 		return new Prepared(entity, warnings);
+	}
+
+	private record ServiceResolution(String repoPath, String servicePath) {
+	}
+
+	/**
+	 * Resolution order (docs/plan/phase-11-monorepo.md Step 3): a {@code servicePath} — from
+	 * {@code options} directly, or (so {@link SessionService#duplicate} and {@code
+	 * lastSessionConfig} reproduce it via {@link #configOverridesFrom}) the merged config's
+	 * "servicePath" key — resolves {@code repoPath} via {@link GitWorktreeService#repoRootOf} when
+	 * {@code options.repoPath()} is blank, else validates the given {@code repoPath} *is* that
+	 * root; either way it's rejected unless it's a known service (the repo root itself, or one of
+	 * {@link GitWorktreeService#findServices} under the resolved {@code ecosystemPath}). With no
+	 * {@code servicePath} at all, behavior is byte-identical to before this phase: {@code repoPath}
+	 * as given (or the configured default), just validated as a git repo, and the returned {@code
+	 * servicePath} is null (stored as NULL — polyrepo, and every pre-Phase-11 session).
+	 */
+	private ServiceResolution resolveRepoAndService(SessionService.CreateOptions options, ObjectNode config,
+													  String ecosystemPath, Settings s) {
+		String servicePathOption = nullableIfBlank(options.servicePath());
+		if (servicePathOption == null) {
+			servicePathOption = nullableText(config, "servicePath");
+		}
+		if (servicePathOption == null) {
+			String repo = options.repoPath() == null || options.repoPath().isBlank() ? props.repoPath() : options.repoPath();
+			if (!Files.exists(Path.of(repo).resolve(".git"))) {
+				throw new IllegalArgumentException("not a git repository: " + repo);
+			}
+			return new ServiceResolution(repo, null);
+		}
+		String servicePathValue = servicePathOption;
+		Path servicePath = Path.of(servicePathValue).toAbsolutePath().normalize();
+		Path repoRoot = worktrees.repoRootOf(servicePath)
+				.orElseThrow(() -> new IllegalArgumentException("not inside a git repository: " + servicePathValue));
+		String repo;
+		if (options.repoPath() == null || options.repoPath().isBlank()) {
+			repo = repoRoot.toString();
+		} else {
+			Path givenRoot = Path.of(options.repoPath()).toAbsolutePath().normalize();
+			if (!givenRoot.equals(repoRoot)) {
+				throw new IllegalArgumentException(
+						"repoPath " + options.repoPath() + " is not the git root of servicePath " + servicePathValue);
+			}
+			repo = options.repoPath();
+		}
+		Path ecosystemRoot = ecosystemPath == null || ecosystemPath.isBlank() ? null : Path.of(ecosystemPath);
+		if (!worktrees.isKnownService(ecosystemRoot, monorepoGlobs(s), repoRoot, servicePath)) {
+			throw new IllegalArgumentException("not a known service under this ecosystem: " + servicePathOption);
+		}
+		return new ServiceResolution(repo, servicePath.equals(repoRoot) ? null : servicePath.toString());
+	}
+
+	private static List<String> monorepoGlobs(Settings s) {
+		return Arrays.stream(s.monorepoServiceGlobs().split(","))
+				.map(String::strip).filter(g -> !g.isEmpty()).toList();
 	}
 
 	private ObjectNode mergedConfig(UUID templateId, JsonNode overrides) {
@@ -304,7 +365,7 @@ public class SessionConfigFactory {
 		StringBuilder sb = new StringBuilder();
 		sb.append("Long-term memory tools are available (memory_tags, memory_search, memory_read). ")
 				.append("Pass this as `sessionId` in every call: ").append(session.id());
-		var recent = episodes.recentByService(session.repoPath(), 5);
+		var recent = episodes.recentByService(session.servicePath(), 5);
 		if (!recent.isEmpty()) {
 			sb.append("\n\nRecent activity on this service, most recent first:\n");
 			for (var ep : recent) {
@@ -378,6 +439,13 @@ public class SessionConfigFactory {
 		}
 		if (source.ecosystemPath() != null) {
 			overrides.put("ecosystemPath", source.ecosystemPath());
+		}
+		// Raw (not the resolved servicePath()), so a polyrepo source (raw null) copies to a fresh
+		// session that is ALSO byte-identical polyrepo config — no "servicePath" key at all — while a
+		// genuine monorepo source reproduces its own package on duplicate()/quick-session (docs/plan/
+		// phase-11-monorepo.md Step 3).
+		if (source.rawServicePath() != null) {
+			overrides.put("servicePath", source.rawServicePath());
 		}
 		if (!source.contextDirs().isEmpty()) {
 			overrides.set("contextDirs", mapper.valueToTree(source.contextDirs()));

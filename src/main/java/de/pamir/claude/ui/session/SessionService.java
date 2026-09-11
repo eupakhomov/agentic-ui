@@ -89,23 +89,33 @@ public class SessionService {
 	 */
 	public record CreateOptions(String name, String branch, String baseBranch, String repoPath, UUID templateId,
 								JsonNode overrides, Map<String, String> kickoffValues, boolean syncBaseBranch,
-								UUID continuedFromId, UUID parentSessionId) {
+								UUID continuedFromId, UUID parentSessionId, String servicePath) {
 
 		public CreateOptions(String name, String branch, String baseBranch, String repoPath, UUID templateId,
 							  JsonNode overrides, Map<String, String> kickoffValues, boolean syncBaseBranch) {
-			this(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues, syncBaseBranch, null, null);
+			this(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues, syncBaseBranch, null, null, null);
 		}
 
 		/** With an explicit continuation provenance link (7.3's "continue from" picker). */
 		public CreateOptions withContinuedFrom(UUID continuedFromId) {
 			return new CreateOptions(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues,
-					syncBaseBranch, continuedFromId, parentSessionId);
+					syncBaseBranch, continuedFromId, parentSessionId, servicePath);
 		}
 
 		/** With an explicit parent link (7.4's spawn_child_session tool). */
 		public CreateOptions withParent(UUID parentSessionId) {
 			return new CreateOptions(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues,
-					syncBaseBranch, continuedFromId, parentSessionId);
+					syncBaseBranch, continuedFromId, parentSessionId, servicePath);
+		}
+
+		/**
+		 * With a service subfolder (docs/plan/phase-11-monorepo.md Step 3) — a folder inside {@code
+		 * repoPath}'s git repo, or {@code repoPath} itself; {@link SessionConfigFactory#prepare}
+		 * resolves {@code repoPath} from it when blank and validates it's a known service otherwise.
+		 */
+		public CreateOptions withServicePath(String servicePath) {
+			return new CreateOptions(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues,
+					syncBaseBranch, continuedFromId, parentSessionId, servicePath);
 		}
 	}
 
@@ -126,8 +136,12 @@ public class SessionService {
 				worktrees.syncBaseBranch(Path.of(entity.repoPath()), options.baseBranch());
 			}
 			worktrees.createWorktree(Path.of(entity.repoPath()), worktree, options.branch(), options.baseBranch());
-			excludeProvisionedAssets(worktree);
-			for (var warning : assets.provision(worktree, entity.skillSources(), entity.agentSources())) {
+			// decision A (docs/plan/phase-11-monorepo.md Step 0): assets materialize at the service
+			// cwd, which equals the worktree root for a polyrepo session (servicePath == repoPath) —
+			// byte-identical to before this phase for every existing session.
+			Path assetsRoot = Path.of(entity.cwdPath());
+			excludeProvisionedAssets(worktree, assetsRoot);
+			for (var warning : assets.provision(assetsRoot, entity.skillSources(), entity.agentSources())) {
 				record(id, "warning", mapper.createObjectNode().put("message", warning.message()));
 			}
 			writeMcpConfig(entity);
@@ -278,7 +292,7 @@ public class SessionService {
 				events.publishEvent(new ReflectionRequested(id));
 			}
 			if (settings.current().serviceDiscoveryEnabled()) {
-				events.publishEvent(new ServiceDiscoveryRequested(id, session.repoPath()));
+				events.publishEvent(new ServiceDiscoveryRequested(id, session.servicePath(), session.repoPath()));
 			}
 		}
 	}
@@ -552,8 +566,16 @@ public class SessionService {
 				.orElseGet(mapper::createObjectNode);
 	}
 
-	/** Skills/agents symlinks and MCP artifacts must not pollute git status. */
-	private void excludeProvisionedAssets(Path worktree) {
+	/**
+	 * Skills/agents symlinks and MCP artifacts must not pollute git status. {@code assetsRoot} is
+	 * where {@link AssetProvisioningService#provision} actually materializes them — the worktree
+	 * root for a polyrepo session, or its service subfolder for a monorepo one — so the written
+	 * lines are relative to it, not always the bare {@code .claude/skills/} of before this phase
+	 * (which they still are whenever {@code assetsRoot == worktree}, i.e. every polyrepo session).
+	 * The pid file always lives at the worktree root regardless (see {@link
+	 * de.pamir.claude.ui.process.SidecarManager#pidFile}), so that line is never prefixed.
+	 */
+	private void excludeProvisionedAssets(Path worktree, Path assetsRoot) {
 		try {
 			var result = git.run(worktree, "rev-parse", "--git-path", "info/exclude");
 			if (result.ok()) {
@@ -562,7 +584,10 @@ public class SessionService {
 					exclude = worktree.resolve(result.stdout());
 				}
 				Files.createDirectories(exclude.getParent());
-				Files.writeString(exclude, "\n.claude/skills/\n.claude/agents/\n.claude-ui.pid\n",
+				String rel = worktree.relativize(assetsRoot).toString();
+				String prefix = rel.isEmpty() ? "" : rel + "/";
+				Files.writeString(exclude,
+						"\n" + prefix + ".claude/skills/\n" + prefix + ".claude/agents/\n.claude-ui.pid\n",
 						StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 			}
 		} catch (IOException e) {

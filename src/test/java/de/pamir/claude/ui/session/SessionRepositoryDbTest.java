@@ -87,6 +87,57 @@ class SessionRepositoryDbTest {
 	}
 
 	@Test
+	void nullServicePathResolvesToRepoPathAndCwdPathResolvesToWorktreePath() {
+		UUID id = UUID.randomUUID();
+		SessionEntity entity = SessionEntity.builder()
+				.id(id).name("t-" + id).provider("claude")
+				.repoPath("/repo").worktreePath("/wt/" + id) // servicePath left unset (null)
+				.branch("b-" + id).baseBranch("main")
+				.skillSources(mapper.createArrayNode()).agentSources(mapper.createArrayNode())
+				.state(SessionState.IDLE).build();
+		sessions.insert(entity);
+
+		SessionEntity loaded = sessions.get(id);
+
+		assertThat(loaded.servicePath()).isEqualTo("/repo");
+		assertThat(loaded.cwdPath()).isEqualTo("/wt/" + id);
+	}
+
+	@Test
+	void nonNullServicePathResolvesCwdPathToTheMatchingWorktreeSubfolder() {
+		UUID id = UUID.randomUUID();
+		String worktree = "/wt/" + id;
+		SessionEntity entity = SessionEntity.builder()
+				.id(id).name("t-" + id).provider("claude")
+				.repoPath("/repo/mono").servicePath("/repo/mono/packages/foo").worktreePath(worktree)
+				.branch("b-" + id).baseBranch("main")
+				.skillSources(mapper.createArrayNode()).agentSources(mapper.createArrayNode())
+				.state(SessionState.IDLE).build();
+		sessions.insert(entity);
+
+		SessionEntity loaded = sessions.get(id);
+
+		assertThat(loaded.servicePath()).isEqualTo("/repo/mono/packages/foo");
+		assertThat(loaded.cwdPath()).isEqualTo(worktree + "/packages/foo");
+	}
+
+	@Test
+	void servicePathAndCwdPathAreSerializedIntoTheJsonRepresentation() throws Exception {
+		UUID id = UUID.randomUUID();
+		SessionEntity entity = SessionEntity.builder()
+				.id(id).name("t-" + id).provider("claude")
+				.repoPath("/repo/mono").servicePath("/repo/mono/packages/foo").worktreePath("/wt/" + id)
+				.branch("b-" + id).baseBranch("main")
+				.skillSources(mapper.createArrayNode()).agentSources(mapper.createArrayNode())
+				.state(SessionState.IDLE).build();
+
+		String json = mapper.writeValueAsString(entity);
+
+		assertThat(json).contains("\"servicePath\":\"/repo/mono/packages/foo\"");
+		assertThat(json).contains("\"cwdPath\":\"/wt/" + id + "/packages/foo\"");
+	}
+
+	@Test
 	void countByStatesCountsOnlyMatchingLiveStates() {
 		insertSession(SessionState.IDLE);
 		insertSession(SessionState.RUNNING);

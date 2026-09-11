@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -25,14 +26,14 @@ import java.util.List;
 @RequestMapping("/api/service-discovery")
 public class ServiceDiscoveryController {
 
-	public record ServiceView(String name, String path, String description, List<String> tags,
+	public record ServiceView(String name, String servicePath, String description, List<String> tags,
 							   Instant discoveredAt, boolean stale) {
 	}
 
-	public record RediscoverRequest(String repoPath) {
+	public record RediscoverRequest(String servicePath) {
 	}
 
-	public record UpdateDescriptionRequest(String repoPath, String description, List<String> tags) {
+	public record UpdateDescriptionRequest(String servicePath, String description, List<String> tags) {
 	}
 
 	private final SettingsService settings;
@@ -48,35 +49,40 @@ public class ServiceDiscoveryController {
 		this.discovery = discovery;
 	}
 
-	/** Every ecosystem service, left-joined against its discovery profile — never-discovered ones show up too. */
+	/** Every ecosystem service (git repos, or a monorepo's packages), left-joined against its discovery profile — never-discovered ones show up too. */
 	@GetMapping("/services")
 	public List<ServiceView> services() {
 		String ecosystemRoot = settings.current().ecosystemRoot();
-		List<GitWorktreeService.RepoInfo> repos =
-				ecosystemRoot.isBlank() ? List.of() : worktrees.findRepos(Path.of(ecosystemRoot));
+		List<GitWorktreeService.ServiceInfo> known =
+				ecosystemRoot.isBlank() ? List.of() : worktrees.findServices(Path.of(ecosystemRoot), monorepoGlobs());
 		Instant staleBefore = Instant.now().minus(settings.current().serviceDiscoveryStalenessDays(), ChronoUnit.DAYS);
-		return repos.stream().map(r -> {
-			var profile = profiles.findByRepoPath(r.path());
+		return known.stream().map(svc -> {
+			var profile = profiles.findByServicePath(svc.servicePath());
 			if (profile.isEmpty()) {
-				return new ServiceView(r.name(), r.path(), null, List.of(), null, true);
+				return new ServiceView(svc.name(), svc.servicePath(), null, List.of(), null, true);
 			}
 			var p = profile.get();
-			return new ServiceView(p.name(), p.repoPath(), p.description(), p.tags(), p.discoveredAt(),
+			return new ServiceView(p.name(), p.servicePath(), p.description(), p.tags(), p.discoveredAt(),
 					p.discoveredAt().isBefore(staleBefore));
 		}).toList();
 	}
 
-	/** Forces a fresh discovery for one service regardless of staleness (still skips the LLM call if the commit SHA is unchanged). */
+	/** Forces a fresh discovery for one service regardless of staleness (still skips the LLM call if the subtree SHA is unchanged). */
 	@PostMapping("/services/rediscover")
 	public ServiceView rediscover(@RequestBody RediscoverRequest request) {
-		var p = discovery.rediscover(request.repoPath());
-		return new ServiceView(p.name(), p.repoPath(), p.description(), p.tags(), p.discoveredAt(), false);
+		var p = discovery.rediscover(request.servicePath());
+		return new ServiceView(p.name(), p.servicePath(), p.description(), p.tags(), p.discoveredAt(), false);
 	}
 
 	/** Human hand-edit of a service's description/tags — writes directly (no LLM call) and re-embeds. */
 	@PatchMapping("/services")
 	public ServiceView updateDescription(@RequestBody UpdateDescriptionRequest request) {
-		var p = discovery.updateDescription(request.repoPath(), request.description(), request.tags());
-		return new ServiceView(p.name(), p.repoPath(), p.description(), p.tags(), p.discoveredAt(), false);
+		var p = discovery.updateDescription(request.servicePath(), request.description(), request.tags());
+		return new ServiceView(p.name(), p.servicePath(), p.description(), p.tags(), p.discoveredAt(), false);
+	}
+
+	private List<String> monorepoGlobs() {
+		return Arrays.stream(settings.current().monorepoServiceGlobs().split(","))
+				.map(String::strip).filter(g -> !g.isEmpty()).toList();
 	}
 }

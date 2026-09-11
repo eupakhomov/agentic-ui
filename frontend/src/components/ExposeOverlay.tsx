@@ -59,7 +59,7 @@ export default function ExposeOverlay({
               </div>
               <div className="chip-row" style={{ marginTop: 4 }}>
                 {v?.branch && <span className="chip">{v.branch}</span>}
-                {v?.repoPath && <span className="chip" title={v.repoPath}>{v.repoPath.split('/').pop()}</span>}
+                {v?.servicePath && <span className="chip" title={v.servicePath}>{v.servicePath.split('/').pop()}</span>}
                 <span className="chip">${(v?.costToDate ?? 0).toFixed(3)}</span>
               </div>
               <div className="expose-preview">

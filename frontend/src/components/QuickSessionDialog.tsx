@@ -18,7 +18,7 @@ export default function QuickSessionDialog({
   onCancel: () => void;
 }) {
   const [servicesInfo, setServicesInfo] = useState<ServicesResponse | null>(null);
-  const [repoPath, setRepoPath] = useState('');
+  const [servicePath, setServicePath] = useState('');
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
   // recommendedModel is generated against the *default* provider's catalog (TicketImportService
   // uses SettingsService.defaultProvider()), which is what a new session created here also gets
@@ -42,7 +42,7 @@ export default function QuickSessionDialog({
   useEffect(() => {
     api.services().then((info) => {
       setServicesInfo(info);
-      setRepoPath(info.defaultRepoPath);
+      setServicePath(info.defaultRepoPath);
     }).catch(() => setServicesInfo(null));
     api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
     Promise.all([api.getSettings(), api.listProviders()]).then(([settings, providers]) => {
@@ -64,11 +64,16 @@ export default function QuickSessionDialog({
   const importTicket = (refOverride?: string) => ticketImport.importTicket(refOverride, applyImportOutcome);
   const pickTicket = (ref: string) => ticketImport.pickTicket(ref, applyImportOutcome);
 
+  // the picker's value is the service's own path; its repoPath (the git root) is what branches()
+  // and the actual worktree source need (docs/plan/phase-11-monorepo.md Step 6)
+  const selectedService = (servicesInfo?.services ?? []).find((s) => s.path === servicePath) ?? null;
+  const selectedRepoPath = selectedService?.repoPath || servicePath;
+
   const create = async () => {
     setError('');
     setBusy(true);
     try {
-      const [lastConfig, branches] = await Promise.all([api.lastSessionConfig(), api.branches(repoPath)]);
+      const [lastConfig, branches] = await Promise.all([api.lastSessionConfig(), api.branches(selectedRepoPath)]);
       const overrides: Record<string, unknown> = { ...lastConfig };
       if (resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
       if (recommendedModel) overrides['model'] = recommendedModel;
@@ -77,7 +82,8 @@ export default function QuickSessionDialog({
         name: branchName,
         branch: branchName,
         baseBranch,
-        repoPath,
+        repoPath: selectedRepoPath,
+        servicePath,
         templateId: null,
         overrides,
         syncBaseBranch: true,
@@ -90,7 +96,7 @@ export default function QuickSessionDialog({
     }
   };
 
-  const ready = !!repoPath && !!branchName.trim() && !!prompt.trim();
+  const ready = !!servicePath && !!branchName.trim() && !!prompt.trim();
 
   return (
     <>
@@ -109,9 +115,9 @@ export default function QuickSessionDialog({
         ) : (
           <div className="form-grid">
             <label>Service</label>
-            <select value={repoPath} onChange={(e) => setRepoPath(e.target.value)}>
+            <select value={servicePath} onChange={(e) => setServicePath(e.target.value)}>
               {(servicesInfo?.services ?? []).map((s) => (
-                <option key={s.path} value={s.path}>{s.name}</option>
+                <option key={s.path} value={s.path}>{s.name}{s.monorepo ? ' · monorepo' : ''}</option>
               ))}
             </select>
 

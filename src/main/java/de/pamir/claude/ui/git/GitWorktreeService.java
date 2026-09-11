@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 @Service
@@ -136,5 +137,115 @@ public class GitWorktreeService {
 			throw new UncheckedIOException(e);
 		}
 		return repos;
+	}
+
+	/**
+	 * {@code servicePath} is what identifies a unit of work (memory/discovery/orchestration key on
+	 * it, and it's the session's cwd); {@code repoPath} is the nearest enclosing git root (worktree
+	 * ops key on it). Equal for polyrepo. See docs/plan/phase-11-monorepo.md.
+	 */
+	public record ServiceInfo(String name, String servicePath, String repoPath) {
+	}
+
+	/**
+	 * Every service under {@code ecosystemRoot}: layout (a) — the root itself is a git repo, so
+	 * {@link ServiceDetector} runs on it directly and every result's {@code repoPath} is the root;
+	 * layout (b)/polyrepo — one {@link ServiceDetector} pass per direct-child repo (via {@link
+	 * #findRepos}), each result's {@code repoPath} the child. A repo with no detected workspace
+	 * folders contributes exactly one service, itself. {@code name} is {@code servicePath} relative
+	 * to {@code ecosystemRoot}, forward-slashed (decision 7) — polyrepo yields today's bare
+	 * basenames.
+	 */
+	public List<ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs) {
+		List<ServiceInfo> services = new ArrayList<>();
+		if (ecosystemRoot == null || !Files.isDirectory(ecosystemRoot)) {
+			return services;
+		}
+		if (Files.exists(ecosystemRoot.resolve(".git"))) {
+			addServicesForRepo(services, ecosystemRoot, ecosystemRoot, fallbackGlobs);
+			return services;
+		}
+		for (RepoInfo repo : findRepos(ecosystemRoot)) {
+			addServicesForRepo(services, Path.of(repo.path()), ecosystemRoot, fallbackGlobs);
+		}
+		return services;
+	}
+
+	/**
+	 * {@code servicePath} is either {@code repoRoot} itself (always allowed — the polyrepo /
+	 * whole-repo case) or one of {@link #findServices}'s results under {@code ecosystemRoot} —
+	 * shared by {@code SessionConfigFactory} (session creation) and {@code ServiceDiscoveryService}
+	 * (manual rediscover/update), both of which need the same "is this a real, known service"
+	 * check (docs/plan/phase-11-monorepo.md Step 5). {@code ecosystemRoot} may be null/blank
+	 * (nothing configured) — then only the repo-root case passes.
+	 */
+	public boolean isKnownService(Path ecosystemRoot, List<String> fallbackGlobs, Path repoRoot, Path servicePath) {
+		Path normalizedService = servicePath.toAbsolutePath().normalize();
+		if (normalizedService.equals(repoRoot.toAbsolutePath().normalize())) {
+			return true;
+		}
+		if (ecosystemRoot == null) {
+			return false;
+		}
+		return findServices(ecosystemRoot, fallbackGlobs).stream()
+				.map(info -> Path.of(info.servicePath()).toAbsolutePath().normalize())
+				.anyMatch(normalizedService::equals);
+	}
+
+	private void addServicesForRepo(List<ServiceInfo> out, Path repoRoot, Path ecosystemRoot,
+									 List<String> fallbackGlobs) {
+		List<Path> detected = ServiceDetector.detect(repoRoot, fallbackGlobs);
+		if (detected.isEmpty()) {
+			out.add(new ServiceInfo(relativeName(ecosystemRoot, repoRoot), repoRoot.toString(), repoRoot.toString()));
+			return;
+		}
+		for (Path service : detected) {
+			// submodule edge: a detected folder with its own .git is its own repo, not a service of
+			// this one (docs/plan/phase-11-monorepo.md Step 1)
+			Path effectiveRepoRoot = Files.exists(service.resolve(".git")) ? service : repoRoot;
+			out.add(new ServiceInfo(relativeName(ecosystemRoot, service), service.toString(),
+					effectiveRepoRoot.toString()));
+		}
+	}
+
+	/**
+	 * {@code target} relative to {@code ecosystemRoot}, forward-slashed (decision 7) — falls back
+	 * to {@code target}'s own folder name when they're equal (relativize would otherwise yield ""):
+	 * layout (a) degenerates to this when its repo turns out to have no workspace markers, so the
+	 * "one service = root" case still gets a sensible name instead of a blank picker entry.
+	 */
+	private static String relativeName(Path ecosystemRoot, Path target) {
+		Path root = ecosystemRoot.toAbsolutePath().normalize();
+		Path absTarget = target.toAbsolutePath().normalize();
+		if (root.equals(absTarget)) {
+			return absTarget.getFileName() == null ? "" : absTarget.getFileName().toString();
+		}
+		return root.relativize(absTarget).toString().replace(java.io.File.separatorChar, '/');
+	}
+
+	/** Walks up from {@code servicePath} until a {@code .git} is found; empty if none before the root. */
+	public Optional<Path> repoRootOf(Path servicePath) {
+		Path current = servicePath == null ? null : servicePath.toAbsolutePath().normalize();
+		while (current != null) {
+			if (Files.exists(current.resolve(".git"))) {
+				return Optional.of(current);
+			}
+			current = current.getParent();
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * SHA of the last commit touching {@code servicePath}'s subtree within {@code repo} — the
+	 * staleness gate for a service's discovery profile (decision 6: per-subtree, not {@code HEAD},
+	 * so an unrelated package's commit doesn't invalidate every other package's profile). {@code
+	 * null} on failure or an empty repo, matching {@code rev-parse HEAD}'s existing null-means-always
+	 * -regenerate contract.
+	 */
+	public String lastCommitTouching(Path repo, Path servicePath) {
+		Path relPath = repo.toAbsolutePath().normalize().relativize(servicePath.toAbsolutePath().normalize());
+		String rel = relPath.toString().isEmpty() ? "." : relPath.toString().replace(java.io.File.separatorChar, '/');
+		var result = git.run(repo, "log", "-1", "--format=%H", "--", rel);
+		return result.ok() && !result.stdout().isBlank() ? result.stdout().strip() : null;
 	}
 }

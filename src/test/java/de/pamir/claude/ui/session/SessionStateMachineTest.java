@@ -4,21 +4,27 @@ import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.discovery.ServiceDiscoveryRequested;
+import de.pamir.claude.ui.git.GitCommandRunner;
+import de.pamir.claude.ui.git.GitWorktreeService;
 import de.pamir.claude.ui.journal.JournalPublisher;
 import de.pamir.claude.ui.journal.SessionEventBus;
 import de.pamir.claude.ui.memory.ReflectionRequested;
+import de.pamir.claude.ui.provision.AssetProvisioningService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -55,7 +61,7 @@ class SessionStateMachineTest {
 		journal = new FakeEventJournal(props);
 		worktrees = new FakeGitWorktreeService();
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
-		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null);
+		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, worktrees);
 		SystemSessionService systemSessionService =
 				new SystemSessionService(props, settings, sessions, configFactory, journalPublisher, mapper, null);
 		publishedEvents = new ArrayList<>();
@@ -64,7 +70,7 @@ class SessionStateMachineTest {
 	}
 
 	private static SettingsService fakeSettings(boolean memoryEnabled, boolean serviceDiscoveryEnabled) {
-		Settings fixed = new Settings(false, "", "", true, 180, "", "", false, true, 60, "claude", "", "",
+		Settings fixed = new Settings(false, "", "", "", true, 180, "", "", false, true, 60, "claude", "", "",
 				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap");
 		return new SettingsService(null, null, null) {
 			@Override
@@ -385,7 +391,7 @@ class SessionStateMachineTest {
 		SessionConfigFactory configFactory = new SessionConfigFactory(
 				new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills", "/memory", 4,
 						"authtoken", "", "", "logs", 30, 65536, 1048576, Map.of()),
-				fakeSettings(false, true), null, mapper, null, 8080, null);
+				fakeSettings(false, true), null, mapper, null, 8080, null, worktrees);
 		SettingsService settings = fakeSettings(false, true);
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
 		SystemSessionService systemSessionService =
@@ -417,6 +423,82 @@ class SessionStateMachineTest {
 		sessionService.close(s.id(), null, null);
 
 		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.CLOSED);
+	}
+
+	// ------------------------------------------------------------------ create (servicePath, Step 3)
+
+	private static ProviderCapabilities fullCapabilities() {
+		return new ProviderCapabilities(List.of("default", "acceptEdits", "plan", "bypassPermissions"),
+				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true);
+	}
+
+	/**
+	 * Full docs/plan/phase-11-monorepo.md Step 3 DoD: a session created with {@code servicePath} =
+	 * {@code <repo>/packages/foo} gets assets provisioned at the worktree-relative service cwd
+	 * (decision A) and the matching {@code info/exclude} lines — a real {@link SessionService#create}
+	 * call, not a directly-seeded entity like every other test above.
+	 */
+	@Test
+	void createOnAServiceSubfolderProvisionsAssetsAtTheServiceCwdAndWritesTheMatchingExclude() throws Exception {
+		String repo = "/repo";
+		String servicePath = repo + "/packages/foo";
+		worktrees.setRepoRootOfResult(Path.of(repo));
+		worktrees.setKnownServices(List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, repo)));
+
+		Settings fixedSettings = new Settings(false, "", "/eco", "packages/*,services/*,apps/*,libs/*", true, 180,
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap");
+		SettingsService settingsWithEcosystem = new SettingsService(null, null, null) {
+			@Override
+			public Settings current() {
+				return fixedSettings;
+			}
+		};
+		AppProperties props = new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills",
+				"/memory", 4, "authtoken", "", "", "logs", 30, 65536, 1048576, Map.of());
+		ProviderCatalog catalog = ProviderCatalog.fixedForTest(Map.of("claude", fullCapabilities()));
+		SessionConfigFactory configFactory =
+				new SessionConfigFactory(props, settingsWithEcosystem, null, mapper, null, 8080, catalog, worktrees);
+		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
+		SystemSessionService systemSessionService =
+				new SystemSessionService(props, settingsWithEcosystem, sessions, configFactory, journalPublisher, mapper, null);
+
+		AtomicReference<Path> capturedAssetsRoot = new AtomicReference<>();
+		AssetProvisioningService fakeAssets = new AssetProvisioningService(null, null, mapper) {
+			@Override
+			public List<Warning> provision(Path assetsRoot, JsonNode skillSources, JsonNode agentSources) {
+				capturedAssetsRoot.set(assetsRoot);
+				return List.of();
+			}
+		};
+		GitCommandRunner fakeGit = new GitCommandRunner() {
+			@Override
+			public GitResult run(Path workingDir, String... args) {
+				return new GitResult(0, ".git/info/exclude", "");
+			}
+		};
+		SessionService withServiceSubfolder = new SessionService(props, settingsWithEcosystem, sessions, worktrees,
+				fakeGit, fakeAssets, sidecars, journal, journalPublisher, mapper, publishedEvents::add, configFactory,
+				systemSessionService, null, catalog);
+
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
+				.withServicePath(servicePath);
+
+		SessionEntity created = withServiceSubfolder.create(options);
+
+		Path expectedWorktree = worktreeRoot.resolve(created.id().toString());
+		Path expectedAssetsRoot = expectedWorktree.resolve("packages/foo");
+		assertThat(created.repoPath()).isEqualTo(repo);
+		assertThat(created.servicePath()).isEqualTo(servicePath);
+		assertThat(created.cwdPath()).isEqualTo(expectedAssetsRoot.toString());
+		assertThat(capturedAssetsRoot.get()).isEqualTo(expectedAssetsRoot);
+
+		String exclude = Files.readString(expectedWorktree.resolve(".git/info/exclude"));
+		assertThat(exclude).contains("packages/foo/.claude/skills/")
+				.contains("packages/foo/.claude/agents/")
+				.contains(".claude-ui.pid");
+		// the pid line is never prefixed — the pid file always lives at the worktree root
+		assertThat(exclude).doesNotContain("packages/foo/.claude-ui.pid");
 	}
 
 	// ------------------------------------------------------------------ onSidecarExit

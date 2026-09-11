@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 @RestController
@@ -27,27 +28,47 @@ public class MetaController {
 		this.worktrees = worktrees;
 	}
 
-	public record ServiceInfo(String name, String path) {
+	public record ServiceInfo(String name, String path, String repoPath, boolean monorepo) {
 	}
 
 	public record ServicesResponse(String ecosystemRoot, String defaultRepoPath, List<ServiceInfo> services) {
 	}
 
-	/** Git repos directly under the ecosystem root — the per-session service choices. */
+	/**
+	 * Every service (a git repo, or a monorepo's packages) under the ecosystem root — the
+	 * per-session picker's choices (docs/plan/phase-11-monorepo.md Step 3). {@code monorepo} is
+	 * {@code false} and {@code repoPath == path} for a plain polyrepo service, unchanged from
+	 * before this phase.
+	 */
 	@GetMapping("/repo/services")
 	public ServicesResponse services() {
+		List<String> globs = monorepoGlobs();
 		List<ServiceInfo> services = new ArrayList<>();
 		String ecosystemRoot = settings.current().ecosystemRoot();
 		if (!ecosystemRoot.isBlank()) {
-			worktrees.findRepos(Path.of(ecosystemRoot))
-					.forEach(r -> services.add(new ServiceInfo(r.name(), r.path())));
+			worktrees.findServices(Path.of(ecosystemRoot), globs).forEach(svc -> services.add(toServiceInfo(svc)));
 		}
 		Path configured = Path.of(props.repoPath());
-		if (services.stream().noneMatch(s -> s.path().equals(configured.toString()))
+		// The configured default repo goes through the same detection as everything else — a
+		// monorepo default repo lists its packages too, not just the repo as one service — but only
+		// as a fallback: if the ecosystem scan above already surfaced it (its repoPath, not its own
+		// path, since a monorepo's packages never equal the repo root), don't duplicate it.
+		if (services.stream().noneMatch(s -> s.repoPath().equals(configured.toString()))
 				&& Files.exists(configured.resolve(".git"))) {
-			services.add(0, new ServiceInfo(configured.getFileName().toString(), configured.toString()));
+			List<ServiceInfo> defaults = worktrees.findServices(configured, globs).stream()
+					.map(this::toServiceInfo).toList();
+			services.addAll(0, defaults);
 		}
 		return new ServicesResponse(ecosystemRoot, props.repoPath(), services);
+	}
+
+	private ServiceInfo toServiceInfo(GitWorktreeService.ServiceInfo svc) {
+		return new ServiceInfo(svc.name(), svc.servicePath(), svc.repoPath(), !svc.servicePath().equals(svc.repoPath()));
+	}
+
+	private List<String> monorepoGlobs() {
+		return Arrays.stream(settings.current().monorepoServiceGlobs().split(","))
+				.map(String::strip).filter(g -> !g.isEmpty()).toList();
 	}
 
 	@GetMapping("/repo/branches")

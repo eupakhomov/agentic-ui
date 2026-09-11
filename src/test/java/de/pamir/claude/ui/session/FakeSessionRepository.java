@@ -127,4 +127,14 @@ final class FakeSessionRepository extends SessionRepository {
 	public long countByStates(List<SessionState> states) {
 		return byId.values().stream().filter(e -> states.contains(e.state())).count();
 	}
+
+	@Override
+	public long countChildren(UUID parentId) {
+		return byId.values().stream().filter(e -> parentId.equals(e.parentSessionId())).count();
+	}
+
+	@Override
+	public List<SessionEntity> findByParent(UUID parentId) {
+		return byId.values().stream().filter(e -> parentId.equals(e.parentSessionId())).toList();
+	}
 }

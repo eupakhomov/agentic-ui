@@ -74,7 +74,7 @@ export default function ContinuationPickerDialog({
                   <span className={`dot ${s.state}`} />
                   <span className="continuation-name">{s.name}</span>
                   <span className="chip">{s.provider}</span>
-                  <span className="chip" title={s.repoPath}>{s.repoPath.split('/').pop()}</span>
+                  <span className="chip" title={s.servicePath}>{s.servicePath.split('/').pop()}</span>
                   <span className="chip">{s.state}</span>
                   <span className="chip">${s.costToDate.toFixed(3)}</span>
                   <span className="continuation-date">{formatDate(s.updatedAt)}</span>

@@ -17,20 +17,25 @@ function targetPath(toolName: string, input: Record<string, unknown>): string | 
 
 /**
  * Context dirs are read-only by policy: file-modifying tools targeting paths outside
- * the session cwd are denied without a round-trip to the UI. Bash is deliberately not
+ * `writableRoot` are denied without a round-trip to the UI. Bash is deliberately not
  * policed here — it goes through the normal approval flow where the user sees the
- * command.
+ * command. `writableRoot` defaults to `cwd` — byte-identical to before Phase 11
+ * (docs/plan/phase-11-monorepo.md) for a polyrepo session, where they're the same
+ * directory; a monorepo session passes the worktree root while `cwd` is the service
+ * subfolder inside it, so a relative path is still resolved against `cwd` but the
+ * write-boundary check is against the wider `writableRoot`.
  */
 export function readOnlyDenial(
   toolName: string,
   input: Record<string, unknown>,
   cwd: string,
+  writableRoot: string = cwd,
 ): string | undefined {
   if (!FILE_MODIFYING_TOOLS.has(toolName)) return undefined;
   const raw = targetPath(toolName, input);
   if (raw === undefined) return undefined;
   const abs = isAbsolute(raw) ? resolve(raw) : resolve(cwd, raw);
-  const root = resolve(cwd);
+  const root = resolve(writableRoot);
   if (abs === root || abs.startsWith(root + '/')) return undefined;
   return `${toolName} on ${raw} was auto-denied: this session may only modify files under its own worktree (${root}). Context directories are read-only.`;
 }

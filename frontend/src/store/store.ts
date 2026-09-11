@@ -30,6 +30,8 @@ export interface SessionView {
   // seeded once from the REST entity fetch (SessionWidget) — 7.2's Exposé cards read these
   // straight from the store so they need no connection of their own
   repoPath: string | null;
+  /** The service identity — what the chip shows (phase 11); equals repoPath for a polyrepo session */
+  servicePath: string | null;
   branch: string | null;
 }
 
@@ -46,6 +48,7 @@ const emptyView = (): SessionView => ({
   wsStatus: 'connecting',
   pendingPermission: null,
   repoPath: null,
+  servicePath: null,
   branch: null,
 });
 

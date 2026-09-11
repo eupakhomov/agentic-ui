@@ -36,13 +36,13 @@ import java.util.UUID;
 public class SessionController {
 
 	public record CreateSessionRequest(String name, String branch, String baseBranch, String repoPath,
-									   UUID templateId, JsonNode overrides, Map<String, String> kickoffValues,
-									   Boolean syncBaseBranch, UUID continuedFromId) {
+									   String servicePath, UUID templateId, JsonNode overrides,
+									   Map<String, String> kickoffValues, Boolean syncBaseBranch, UUID continuedFromId) {
 	}
 
-	public record SessionSummary(UUID id, String name, String provider, String repoPath, String branch, String model,
-								 String permissionMode, String state, String kind, BigDecimal costToDate,
-								 Instant updatedAt, long lastSeq) {
+	public record SessionSummary(UUID id, String name, String provider, String repoPath, String servicePath,
+								 String branch, String model, String permissionMode, String state, String kind,
+								 BigDecimal costToDate, Instant updatedAt, long lastSeq) {
 	}
 
 	private final SessionService service;
@@ -69,7 +69,8 @@ public class SessionController {
 		SessionService.CreateOptions options = new SessionService.CreateOptions(request.name(), request.branch(),
 				request.baseBranch(), request.repoPath(), request.templateId(), request.overrides(),
 				request.kickoffValues(), Boolean.TRUE.equals(request.syncBaseBranch()))
-				.withContinuedFrom(request.continuedFromId());
+				.withContinuedFrom(request.continuedFromId())
+				.withServicePath(request.servicePath());
 		return service.create(options);
 	}
 
@@ -87,8 +88,8 @@ public class SessionController {
 		return sessions.findAll().stream()
 				.map(s -> {
 					EventJournal.SessionStats st = stats.getOrDefault(s.id(), NO_EVENTS);
-					return new SessionSummary(s.id(), s.name(), s.provider(), s.repoPath(), s.branch(), s.model(),
-							s.permissionMode(), s.state().name(), s.kind(), st.costToDate(), s.updatedAt(),
+					return new SessionSummary(s.id(), s.name(), s.provider(), s.repoPath(), s.servicePath(), s.branch(),
+							s.model(), s.permissionMode(), s.state().name(), s.kind(), st.costToDate(), s.updatedAt(),
 							st.lastSeq());
 				})
 				.toList();

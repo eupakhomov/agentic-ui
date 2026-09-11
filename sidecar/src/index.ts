@@ -8,8 +8,8 @@ const PERMISSION_MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'b
 
 function usage(): never {
   console.error(
-    `usage: sidecar --cwd <dir> [--resume <provider-session-id>] [--model <m>] [--fallback-model <m>]
-       [--permission-mode ${PERMISSION_MODES.join('|')}]
+    `usage: sidecar --cwd <dir> [--writable-root <dir>] [--resume <provider-session-id>] [--model <m>]
+       [--fallback-model <m>] [--permission-mode ${PERMISSION_MODES.join('|')}]
        [--allowed-tools <csv>] [--disallowed-tools <csv>] [--mcp-config <path.json>]
        [--append-system-prompt <text>] [--context-dir <path>]...
        [--thinking off|adaptive|<budgetTokens>] [--effort low|medium|high|xhigh|max]
@@ -19,7 +19,7 @@ function usage(): never {
 }
 
 function parseArgs(argv: string[]): SidecarConfig {
-  const config: SidecarConfig = { cwd: '', contextDirs: [] };
+  const config: SidecarConfig = { cwd: '', writableRoot: '', contextDirs: [] };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const value = argv[i + 1];
@@ -30,6 +30,7 @@ function parseArgs(argv: string[]): SidecarConfig {
     };
     switch (flag) {
       case '--cwd': config.cwd = resolve(need()); break;
+      case '--writable-root': config.writableRoot = resolve(need()); break;
       case '--resume': config.resume = need(); break;
       case '--model': config.model = need(); break;
       case '--fallback-model': config.fallbackModel = need(); break;
@@ -62,6 +63,7 @@ function parseArgs(argv: string[]): SidecarConfig {
     }
   }
   if (!config.cwd) usage();
+  if (!config.writableRoot) config.writableRoot = config.cwd;
   return config;
 }
 

@@ -12,6 +12,7 @@ public record Settings(
 		boolean linearOAuthEnabled,
 		String ticketImportSpec,
 		String ecosystemRoot,
+		String monorepoServiceGlobs,
 		boolean prChecksEnabled,
 		int prCheckPollIntervalSeconds,
 		String librarySkillsRoot,

@@ -72,6 +72,18 @@ class SettingsServiceTest {
 	}
 
 	@Test
+	void monorepoServiceGlobsDefaultsToTheStandardFourGlobs() {
+		assertThat(newService().current().monorepoServiceGlobs()).isEqualTo("packages/*,services/*,apps/*,libs/*");
+	}
+
+	@Test
+	void monorepoServiceGlobsRoundTripsThroughApply() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().monorepoServiceGlobs("pkgs/*,tools/*").build());
+		assertThat(settings.current().monorepoServiceGlobs()).isEqualTo("pkgs/*,tools/*");
+	}
+
+	@Test
 	void systemProviderDefaultsToFollowingDefaultProvider() {
 		SettingsService settings = newService();
 		settings.apply(SettingsPatch.builder().defaultProvider("codex").build());

@@ -3,6 +3,7 @@ package de.pamir.claude.ui.session;
 import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
+import de.pamir.claude.ui.git.GitWorktreeService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -10,9 +11,11 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,7 +38,7 @@ class SessionConfigFactoryTest {
 		// evaluates method arguments before the callee can short-circuit, so current() must not
 		// touch the (null in these tests) SettingsRepository regardless — overriding current() to
 		// return a fixed snapshot sidesteps that entirely.
-		Settings fixed = new Settings(linearOAuth, "", "", true, 180, "", "", false, true, 60, "claude", "", "",
+		Settings fixed = new Settings(linearOAuth, "", "", "", true, 180, "", "", false, true, 60, "claude", "", "",
 				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap");
 		return new SettingsService(null, null, null) {
 			@Override
@@ -46,7 +49,23 @@ class SessionConfigFactoryTest {
 	}
 
 	private SessionConfigFactory factoryWith(AppProperties props, SettingsService settings) {
-		return new SessionConfigFactory(props, settings, null, mapper, null, 8080, null);
+		return new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, null);
+	}
+
+	/** A {@link GitWorktreeService} whose git-touching methods are stubbed — see docs/plan/phase-11-monorepo.md Step 3. */
+	private static GitWorktreeService fakeWorktrees(Map<String, Path> repoRootByServicePath,
+													  List<GitWorktreeService.ServiceInfo> knownServices) {
+		return new GitWorktreeService(null) {
+			@Override
+			public Optional<Path> repoRootOf(Path servicePath) {
+				return Optional.ofNullable(repoRootByServicePath.get(servicePath.toString()));
+			}
+
+			@Override
+			public List<GitWorktreeService.ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs) {
+				return knownServices;
+			}
+		};
 	}
 
 	/** A fixed, non-file-backed ProviderCatalog — see {@link ProviderCatalog#fixedForTest}. */
@@ -191,7 +210,7 @@ class SessionConfigFactoryTest {
 		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
 				null, mapper, null, 8080, fakeCatalog(Map.of("widget", new ProviderCapabilities(
 						List.of("default"), true, true, true, true, true, true, true, true, true, true, true,
-						List.of("maxTurns"), true, true))));
+						List.of("maxTurns"), true, true))), null);
 		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -206,7 +225,7 @@ class SessionConfigFactoryTest {
 	void prepareAcceptsTheSameFieldForAProviderThatSupportsIt() {
 		AppProperties props = propsWithLinearKey("", "authtoken");
 		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
-				null, mapper, null, 8080, fakeCatalog(Map.of("widget", fullCapabilities())));
+				null, mapper, null, 8080, fakeCatalog(Map.of("widget", fullCapabilities())), null);
 		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -214,5 +233,88 @@ class SessionConfigFactoryTest {
 		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), java.nio.file.Path.of("/worktree"), options);
 
 		assertThat(prepared.entity().maxTurns()).isEqualTo(5);
+	}
+
+	// --- prepare() servicePath resolution (docs/plan/phase-11-monorepo.md Step 3) ---
+
+	private static SettingsService fakeSettingsWithEcosystem(String ecosystemRoot) {
+		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap");
+		return new SettingsService(null, null, null) {
+			@Override
+			public Settings current() {
+				return fixed;
+			}
+		};
+	}
+
+	@Test
+	void prepareResolvesRepoPathFromServicePathAloneViaRepoRootOf() {
+		String servicePath = "/repo/packages/foo";
+		GitWorktreeService worktrees = fakeWorktrees(Map.of(servicePath, Path.of("/repo")),
+				List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, "/repo")));
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettingsWithEcosystem("/eco"), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
+				.withServicePath(servicePath);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().repoPath()).isEqualTo("/repo");
+		assertThat(prepared.entity().servicePath()).isEqualTo(servicePath);
+	}
+
+	@Test
+	void prepareRejectsAServicePathNotInsideAnyGitRepo() {
+		GitWorktreeService worktrees = fakeWorktrees(Map.of(), List.of()); // repoRootOf always empty
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
+				.withServicePath("/not-a-repo/foo");
+
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(
+						() -> factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("not inside a git repository");
+	}
+
+	@Test
+	void prepareRejectsAServicePathThatIsNotAKnownService() {
+		String servicePath = "/repo/packages/unknown";
+		GitWorktreeService worktrees = fakeWorktrees(Map.of(servicePath, Path.of("/repo")), List.of());
+		// ecosystemRoot blank (fakeSettings default) -> isKnownService short-circuits to false for
+		// anything that isn't the repo root itself, without even calling the (empty) findServices fake.
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
+				.withServicePath(servicePath);
+
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(
+						() -> factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("not a known service");
+	}
+
+	@Test
+	void prepareWithRepoPathAloneLeavesServicePathNullAndOverridesOmitTheKey() {
+		String repo = System.getProperty("user.dir");
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", repo, null, mapper.createObjectNode(), Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().repoPath()).isEqualTo(repo);
+		// resolved accessor falls back to repoPath — byte-identical polyrepo behavior
+		assertThat(prepared.entity().servicePath()).isEqualTo(repo);
+		assertThat(factory.configOverridesFrom(prepared.entity()).has("servicePath")).isFalse();
 	}
 }

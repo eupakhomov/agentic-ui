@@ -58,4 +58,82 @@ class SidecarManagerTest {
 		assertThat(args).contains("--allowed-tools", "--disallowed-tools", "--thinking",
 				"--max-turns", "--fallback-model");
 	}
+
+	// --- docs/plan/phase-11-monorepo.md Step 4: --writable-root, cwd, context dirs ---
+
+	private static ProviderCapabilities fullCaps() {
+		return new ProviderCapabilities(List.of("default"), true, true, true, true, true,
+				true, true, true, true, true, true, List.of(), true, true);
+	}
+
+	/** Same as {@link #fullCaps()} but with contextDirs off — sidecar-codex's actual capabilities.json shape. */
+	private static ProviderCapabilities codexLikeCaps() {
+		return new ProviderCapabilities(List.of("default"), true, true, true, true, true,
+				true, true, true, true, true, true, List.of(), false, true);
+	}
+
+	@Test
+	void buildArgsForAPolyrepoSessionEqualsThePrePhaseArgsPlusExactlyWritableRoot() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
+		SessionEntity entity = baseEntity().provider("widget").ecosystemPath("/ecosystem").build();
+
+		List<String> args = manager.buildArgs(entity, null, false, null);
+
+		assertThat(args).containsExactly(
+				"--cwd", "/wt",
+				"--writable-root", "/wt",
+				"--fallback-model", "fallback-model",
+				"--permission-mode", "default",
+				"--allowed-tools", "Bash",
+				"--disallowed-tools", "Write",
+				"--context-dir", "/ecosystem",
+				"--thinking", "adaptive",
+				"--max-turns", "7");
+	}
+
+	@Test
+	void buildArgsForLayoutAUsesTheServiceCwdAndReplacesTheEcosystemContextDirWithTheWorktree() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
+		// layout (a): the ecosystem root IS the monorepo, so ecosystemPath == repoPath
+		SessionEntity entity = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("widget")
+				.repoPath("/mono").servicePath("/mono/packages/foo").ecosystemPath("/mono")
+				.branch("b").baseBranch("main").worktreePath("/wt").state(SessionState.CREATING)
+				.allowedTools(List.of()).disallowedTools(List.of()).build();
+
+		List<String> args = manager.buildArgs(entity, null, false, null);
+
+		assertThat(args).containsSubsequence("--cwd", "/wt/packages/foo", "--writable-root", "/wt");
+		assertThat(args).containsSequence("--context-dir", "/wt");
+		// the stale original checkout must never be attached alongside the fresh worktree
+		assertThat(args).doesNotContainSequence("--context-dir", "/mono");
+	}
+
+	@Test
+	void buildArgsForLayoutBEmitsBothTheWorktreeAndTheEcosystemContextDirs() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
+		// layout (b): the ecosystem root is a folder of repos, one of which is the monorepo
+		SessionEntity entity = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("widget")
+				.repoPath("/eco/mono").servicePath("/eco/mono/packages/foo").ecosystemPath("/eco")
+				.branch("b").baseBranch("main").worktreePath("/wt").state(SessionState.CREATING)
+				.allowedTools(List.of()).disallowedTools(List.of()).build();
+
+		List<String> args = manager.buildArgs(entity, null, false, null);
+
+		assertThat(args).containsSequence("--context-dir", "/wt");
+		assertThat(args).containsSequence("--context-dir", "/eco");
+	}
+
+	@Test
+	void buildArgsForACodexLikeProviderNeverEmitsContextDirButStillEmitsWritableRoot() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("codex", codexLikeCaps()));
+		SessionEntity entity = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("codex")
+				.repoPath("/mono").servicePath("/mono/packages/foo").ecosystemPath("/mono")
+				.branch("b").baseBranch("main").worktreePath("/wt").state(SessionState.CREATING)
+				.allowedTools(List.of()).disallowedTools(List.of()).build();
+
+		List<String> args = manager.buildArgs(entity, null, false, null);
+
+		assertThat(args).containsSequence("--writable-root", "/wt");
+		assertThat(args).doesNotContain("--context-dir");
+	}
 }

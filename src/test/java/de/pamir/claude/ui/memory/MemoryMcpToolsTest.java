@@ -54,6 +54,8 @@ class MemoryMcpToolsTest {
 	private static final class StubMemoryRepository extends MemoryRepository {
 		private final List<SearchHit> hits;
 		float[] embeddingSeenByHybridSearch;
+		String servicePathSeenByHybridSearch;
+		String servicePathSeenByTagCounts;
 		boolean called;
 
 		StubMemoryRepository(List<SearchHit> hits) {
@@ -66,7 +68,14 @@ class MemoryMcpToolsTest {
 											 List<String> tags, int limit) {
 			called = true;
 			embeddingSeenByHybridSearch = queryEmbedding;
+			servicePathSeenByHybridSearch = servicePath;
 			return hits;
+		}
+
+		@Override
+		public java.util.Map<String, Long> tagCounts(String servicePath) {
+			servicePathSeenByTagCounts = servicePath;
+			return java.util.Map.of();
 		}
 	}
 
@@ -90,5 +99,30 @@ class MemoryMcpToolsTest {
 		assertThat(docs.called).isTrue();
 		assertThat(docs.embeddingSeenByHybridSearch).isNull(); // dense arm skipped, not propagated as a failure
 		assertThat(results).extracting(MemoryMcpTools.SearchResult::name).containsExactly("some-memory");
+	}
+
+	/**
+	 * docs/plan/phase-11-monorepo.md Step 5: memory scoping keys on the resolved {@code
+	 * servicePath()}, not {@code repoPath()} — a session on a monorepo package must search/tag
+	 * that package's own memory, not the whole repo's.
+	 */
+	@Test
+	void memorySearchAndMemoryTagsScopeOnServicePathNotRepoPathForAMonorepoSession() {
+		UUID sessionId = UUID.randomUUID();
+		SessionEntity session = SessionEntity.builder()
+				.id(sessionId).name("s").provider("claude").repoPath("/repo/mono")
+				.servicePath("/repo/mono/packages/foo")
+				.branch("b").baseBranch("main").worktreePath("/wt")
+				.contextDirs(List.of()).permissionMode("default")
+				.allowedTools(List.of()).disallowedTools(List.of())
+				.state(SessionState.IDLE).kind("user").build();
+		StubMemoryRepository docs = new StubMemoryRepository(List.of());
+		MemoryMcpTools tools = new MemoryMcpTools(new StubSessionRepository(session), docs, null, new FailingEmbeddingClient());
+
+		tools.memorySearch(sessionId.toString(), "some query", null);
+		tools.memoryTags(sessionId.toString());
+
+		assertThat(docs.servicePathSeenByHybridSearch).isEqualTo("/repo/mono/packages/foo");
+		assertThat(docs.servicePathSeenByTagCounts).isEqualTo("/repo/mono/packages/foo");
 	}
 }

@@ -41,3 +41,33 @@ describe('readOnlyDenial', () => {
     expect(readOnlyDenial('Edit', { old_string: 'a', new_string: 'b' }, CWD)).toBeUndefined();
   });
 });
+
+describe('readOnlyDenial with an explicit writableRoot (docs/plan/phase-11-monorepo.md)', () => {
+  // a monorepo session: cwd is the service subfolder, writableRoot is the wider worktree root
+  const WORKTREE = '/work/session1';
+  const SERVICE_CWD = '/work/session1/packages/foo';
+
+  it('allows a relative-path write under a sibling package, not just the service subfolder', () => {
+    expect(
+      readOnlyDenial('Edit', { file_path: '../bar/x.ts' }, SERVICE_CWD, WORKTREE),
+    ).toBeUndefined();
+  });
+
+  it('allows an absolute-path write under a sibling package', () => {
+    expect(
+      readOnlyDenial('Edit', { file_path: '/work/session1/packages/bar/x.ts' }, SERVICE_CWD, WORKTREE),
+    ).toBeUndefined();
+  });
+
+  it('denies a write to the original checkout the worktree was cut from, naming the wider writableRoot', () => {
+    const denial = readOnlyDenial('Write', { file_path: '/original/checkout/packages/foo/x.ts' }, SERVICE_CWD, WORKTREE);
+    expect(denial).toContain('auto-denied');
+    expect(denial).toContain(WORKTREE);
+  });
+
+  it('still resolves a relative path against cwd, not writableRoot, before checking the wider boundary', () => {
+    // "src/foo.ts" relative to SERVICE_CWD is .../packages/foo/src/foo.ts — inside WORKTREE either way,
+    // but proves resolution didn't silently switch to resolving against writableRoot instead of cwd.
+    expect(readOnlyDenial('Edit', { file_path: 'src/foo.ts' }, SERVICE_CWD, WORKTREE)).toBeUndefined();
+  });
+});

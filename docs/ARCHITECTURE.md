@@ -62,6 +62,13 @@ decision log in `docs/plan/README.md` remains the authority on *why*; this file 
 - **Worktrees isolate work.** One worktree+branch per session under `worktree-root`;
   provisioned assets and the PID file are kept out of `git status` via the
   per-worktree `info/exclude`; close resolves dirt explicitly (commit/stash/discard).
+  In a monorepo (Phase 11), the session's `servicePath` (a `packages/*`-style folder
+  detected by `ServiceDetector`) is a subfolder of that same worktree — the sidecar's
+  cwd — while the *whole* worktree stays writable (`--writable-root`, checked by
+  `readOnlyDenial`/Codex's sandbox `writableRoots` instead of cwd alone) and is what's
+  attached as read-only ecosystem context, since it's the session's own fresh checkout
+  of the very code being edited. Polyrepo is the `servicePath == repoPath` special case,
+  so this is invisible when a service is also its own repo root.
 
 ## 3. Key tables (V2 migration)
 
@@ -220,19 +227,29 @@ Full design + decisions: `docs/plan/phase-7-ux-and-orchestration.md`.
 
 Full design + decisions: `docs/plan/phase-8-service-discovery.md`.
 
-- **Table (V12)**: `service_profile` (`repo_path` UNIQUE, name, description, `tags[]`,
+- **Table (V12, `service_path`/`repo_path` split in V14)**: `service_profile`
+  (`service_path` UNIQUE — the identity, a folder inside a git repo; `repo_path` — the
+  git root, nullable until a discovery run fills it; name, description, `tags[]`,
   `last_commit_sha`, `vector(1024)` embedding + generated tsvector) — a DB-only cache,
   unlike memory's Markdown vault, since a service description is a disposable derived
   summary rather than curated durable fact.
-- **Regeneration is gated on the repo's own git commit SHA**, not a re-read content
-  hash of the digest inputs (`ServiceDiscoveryService.discover`): an unchanged repo
-  costs one `git rev-parse HEAD` call, nothing more. Triggered at session close
-  (`ServiceDiscoveryRequested` Spring event, same async-decoupling shape as 5.3's
+- **Regeneration is gated on the last commit touching the service's own subtree**
+  (`GitWorktreeService.lastCommitTouching`, `git log -1 -- <subtree>`), not `rev-parse
+  HEAD` and not a re-read content hash of the digest inputs (`ServiceDiscoveryService.
+  discover`) — a monorepo package's profile only regenerates when *that package's*
+  files change, so an unrelated commit elsewhere in the same repo just bumps the
+  timestamp (decision 6, phase-11-monorepo.md); for a polyrepo service the subtree is
+  `.`, equivalent to `rev-parse HEAD`. An unchanged subtree costs one `git log` call,
+  nothing more. Triggered at session close (`ServiceDiscoveryRequested` Spring event,
+  carrying both `servicePath` and `repoPath`, same async-decoupling shape as 5.3's
   `ReflectionRequested`) when the profile is missing or older than
   `service-discovery.staleness-days` (default 14 days); no scheduled sweep — a "Scan
   ecosystem now" dashboard action and a per-service "Rediscover" button both force
   regeneration regardless of staleness (still skips the LLM call if the SHA is
-  unchanged).
+  unchanged). Both `rediscover`/`updateDescription` and the close-triggered path
+  validate a `servicePath` resolves to a repo (`GitWorktreeService.repoRootOf`) and is
+  a known service (`isKnownService` — the repo root itself, or one of
+  `findServices`'s results) before touching it.
 - **The digest fed to the system turn is bounded and non-agentic**
   (`ServiceDigest.render`, `de.pamir.claude.ui.discovery`): README/CLAUDE.md/AGENTS.md
   (capped per file), a manifest name+description sniff (`package.json`/`pom.xml`), and
@@ -248,13 +265,14 @@ Full design + decisions: `docs/plan/phase-8-service-discovery.md`.
   by path), `find_service` (hybrid search by natural-language query, same
   dense+sparse+trigram RRF shape as memory search), `list_discovered_services`
   (overview of everything discovered so far). All three scope results to the calling
-  session's own `ecosystemPath` — the same `GitWorktreeService.findRepos()` visibility
-  7.4's `list_services` already uses — and self-gate on `service-discovery.enabled`
-  independently of `memory.enabled`, since the two features toggle separately even
-  though they share a server.
+  session's own `ecosystemPath` — the same `GitWorktreeService.findServices()`
+  visibility (git repos *or* monorepo packages, Phase 11) 7.4's `list_services` already
+  uses — and self-gate on `service-discovery.enabled` independently of `memory.enabled`,
+  since the two features toggle separately even though they share a server.
 - **Human-facing**: `ServiceDiscoveryController` (`/api/service-discovery/services`,
-  left-joined against every repo under the ecosystem root so never-discovered services
-  still show up, `stale` computed from the same staleness setting) and a dashboard
+  left-joined against every service under the ecosystem root — `findServices()`, so a
+  monorepo's packages list individually — so never-discovered services still show up,
+  `stale` computed from the same staleness setting) and a dashboard
   service browser (`ServiceDiscoveryDialog.tsx`) with Rediscover / manual hand-edit
   (writes the description/tags directly, no LLM call, still re-embeds and stamps the
   current commit SHA so auto-discovery treats it as an override until the repo's next
