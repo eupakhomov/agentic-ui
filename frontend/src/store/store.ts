@@ -13,7 +13,8 @@ export type TranscriptItem =
   | { kind: 'tool'; toolUseId: string; name: string; input: unknown; output?: string; isError?: boolean; truncated?: boolean }
   | { kind: 'permission'; requestId: string; toolName: string; input: Record<string, unknown>; plan: string | null; decision: 'allow' | 'deny' | null }
   | { kind: 'turn_footer'; stopReason: string; costUsd: number; durationMs: number; model: string | null }
-  | { kind: 'note'; level: 'info' | 'warn' | 'error'; text: string };
+  | { kind: 'note'; level: 'info' | 'warn' | 'error'; text: string }
+  | { kind: 'context_compacted'; preTokens: number; postTokens: number; trigger: 'manual' | 'auto' };
 
 export interface SessionView {
   state: SessionState;
@@ -33,6 +34,15 @@ export interface SessionView {
   /** The service identity — what the chip shows (phase 11); equals repoPath for a polyrepo session */
   servicePath: string | null;
   branch: string | null;
+  // --- context usage (phase 12 track C) ---
+  contextTokens: number | null;
+  contextWindow: number | null;
+  autoCompactAt: number | null;
+  /** false once the warn threshold has been crossed and the suggestion card has fired for it;
+   * re-armed by a context_compacted. Distinct from ctxSuggestionVisible so a dismiss doesn't
+   * re-show on the next context_usage while still above threshold — see evaluateContextWarn. */
+  ctxWarnArmed: boolean;
+  ctxSuggestionVisible: boolean;
 }
 
 const emptyView = (): SessionView => ({
@@ -50,6 +60,11 @@ const emptyView = (): SessionView => ({
   repoPath: null,
   servicePath: null,
   branch: null,
+  contextTokens: null,
+  contextWindow: null,
+  autoCompactAt: null,
+  ctxWarnArmed: true,
+  ctxSuggestionVisible: false,
 });
 
 function last<T>(arr: T[]): T | undefined {
@@ -213,6 +228,21 @@ function reduce(view: SessionView, e: Envelope): SessionView {
         text: `cost budget exhausted ($${p['costToDate']} of $${p['costBudgetUsd']}) — raise the budget to continue`,
       });
       break;
+    case 'context_usage':
+      v.contextTokens = p['tokens'] as number;
+      v.contextWindow = p['window'] as number;
+      v.autoCompactAt = p['autoCompactAt'] == null ? null : (p['autoCompactAt'] as number);
+      break;
+    case 'context_compacted':
+      t.push({
+        kind: 'context_compacted',
+        preTokens: p['preTokens'] as number,
+        postTokens: p['postTokens'] as number,
+        trigger: p['trigger'] as 'manual' | 'auto',
+      });
+      v.ctxWarnArmed = true;
+      v.ctxSuggestionVisible = false;
+      break;
     default:
       break; // exiting, command echoes, future types
   }
@@ -243,6 +273,15 @@ interface Store {
   // 7.1 keyboard shortcuts: the widget hotkeys act on ("y"/"d", "g", Enter/"i", …)
   focusedId: string | null;
   setFocused: (sessionId: string | null) => void;
+  /**
+   * Called by the widget whenever contextTokens/contextWindow or the Settings warn
+   * threshold change. A no-op unless usage is at/above thresholdPercent AND the session
+   * hasn't already fired for this crossing (ctxWarnArmed) — so re-renders while sitting
+   * above threshold, or a reading that dips back down, never re-trigger; only a
+   * context_compacted (ctxWarnArmed = true) allows the next crossing to fire.
+   */
+  evaluateContextWarn: (sessionId: string, thresholdPercent: number) => void;
+  dismissContextWarn: (sessionId: string) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -261,4 +300,20 @@ export const useStore = create<Store>((set) => ({
     }),
   focusedId: null,
   setFocused: (sessionId) => set({ focusedId: sessionId }),
+  evaluateContextWarn: (sessionId, thresholdPercent) =>
+    set((s) => {
+      const v = s.views[sessionId];
+      if (!v || v.contextTokens == null || v.contextWindow == null || v.contextWindow <= 0 || !v.ctxWarnArmed) {
+        return s;
+      }
+      const percentage = (v.contextTokens / v.contextWindow) * 100;
+      if (percentage < thresholdPercent) return s;
+      return { views: { ...s.views, [sessionId]: { ...v, ctxWarnArmed: false, ctxSuggestionVisible: true } } };
+    }),
+  dismissContextWarn: (sessionId) =>
+    set((s) => {
+      const v = s.views[sessionId];
+      if (!v) return s;
+      return { views: { ...s.views, [sessionId]: { ...v, ctxSuggestionVisible: false } } };
+    }),
 }));

@@ -117,6 +117,32 @@ class SettingsServiceTest {
 	}
 
 	@Test
+	void contextWarnPercentDefaultsToSeventy() {
+		assertThat(newService().current().contextWarnPercent()).isEqualTo(70);
+	}
+
+	@Test
+	void contextWarnPercentRoundTripsThroughApply() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().contextWarnPercent(55).build());
+		assertThat(settings.current().contextWarnPercent()).isEqualTo(55);
+	}
+
+	@Test
+	void contextWarnPercentIsFlooredAtThirty() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().contextWarnPercent(10).build());
+		assertThat(settings.current().contextWarnPercent()).isEqualTo(30);
+	}
+
+	@Test
+	void contextWarnPercentIsCappedAtNinetyFive() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().contextWarnPercent(150).build());
+		assertThat(settings.current().contextWarnPercent()).isEqualTo(95);
+	}
+
+	@Test
 	void currentCachesUntilApply() {
 		SettingsService settings = newService();
 		Settings first = settings.current();

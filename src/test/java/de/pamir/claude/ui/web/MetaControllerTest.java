@@ -26,7 +26,7 @@ class MetaControllerTest {
 
 	private static SettingsService fakeSettings(String ecosystemRoot) {
 		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
-				"", "", false, true, 60, "claude", "", "", true, false, "cheap", 5, 0, true, true, 14, "cheap");
+				"", "", false, true, 60, "claude", "", "", true, false, "cheap", 5, 0, true, true, 14, "cheap", 70);
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {

@@ -24,5 +24,6 @@
     "agentSources"
   ],
   "contextDirs": false,
-  "reportsCostUsd": false
+  "reportsCostUsd": false,
+  "compact": true
 }

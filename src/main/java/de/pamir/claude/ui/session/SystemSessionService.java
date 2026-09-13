@@ -182,6 +182,37 @@ public class SystemSessionService {
 		turnExecutor.shutdownNow();
 	}
 
+	/**
+	 * Best-effort: revives/creates the system session in the background without blocking the
+	 * caller and without stealing the lock from a turn already in flight — used to move the
+	 * "spin up the system session" cost off a user-visible dialog open (see
+	 * docs/plan/phase-12-linear-cache-serena-context.md Step A2). A no-op when a turn is already
+	 * running: {@code tryAcquire} never waits, so this can't delay an interactive turn.
+	 */
+	public void warmUp() {
+		if (!systemSessionLock.tryAcquire()) {
+			return;
+		}
+		turnExecutor.submit(() -> {
+			try {
+				getOrCreateSystemSession();
+			} catch (RuntimeException e) {
+				// best-effort; the next real caller will hit and surface the same failure
+			} finally {
+				systemSessionLock.release();
+			}
+		});
+	}
+
+	/** True when the system session already exists in a state a wake/reuse is fast from — i.e.
+	 * not "doesn't exist yet" or crashed/failed, both of which need a full cold spawn. Used to
+	 * pick honest "warming up…" vs. cold-start copy in the create/quick dialogs (Step A3). */
+	public boolean isWarm() {
+		return sessions.findSystemSession()
+				.map(s -> s.state() != SessionState.CRASHED && s.state() != SessionState.FAILED)
+				.orElse(false);
+	}
+
 	/** Find-or-create the one system session; caller must hold systemSessionLock. */
 	private SessionEntity getOrCreateSystemSession() {
 		return sessions.findSystemSession().map(s -> {

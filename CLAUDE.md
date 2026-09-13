@@ -348,6 +348,18 @@ effect on the next use with no backend restart.
   writable, and the worktree itself (not the original checkout) as its context —
   see `docs/plan/phase-11-monorepo.md`. Polyrepo (a folder of separate repos) is
   unchanged.
+- **Context warning threshold** (Settings dialog → "Sessions", `session.context-warn-
+  percent`, default 70, floor 30, ceiling 95) — one number, same meaning for every
+  session. Every session carries `contextTokens`/`contextWindow` (latest known,
+  refreshed after each completed turn and after a compaction — see `context_usage`/
+  `context_compacted` in docs/PROTOCOL.md), shown on the widget as a `ctx N%` chip
+  beside the cost chip (`--amber` at/above the threshold, `--red` at ≥90%). Crossing
+  the threshold once per session (re-armed by a compaction) raises a dismissable
+  suggestion card with a **Compact** action (`POST /api/sessions/{id}/compact`,
+  refused with 409 unless the session is IDLE or PARKED — a PARKED session is woken
+  first and compacted once it reports ready); the button is hidden, chip-only, for a
+  provider whose capabilities report `compact: false` (both shipped providers report
+  `true`). See docs/plan/phase-12-linear-cache-serena-context.md track C.
 - **OAuth toggle** (Settings dialog → "Linear integration") — alternative to
   `CLAUDE_UI_LINEAR_API_KEY` for SSO-gated Linear accounts (e.g. Google identity): omits
   the Authorization header, relying on the ambient `claude` CLI's own cached OAuth

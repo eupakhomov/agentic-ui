@@ -13,6 +13,7 @@ import Transcript from './Transcript';
 import CloseDialog from './CloseDialog';
 import DuplicateDialog from './DuplicateDialog';
 import GitPanel from './GitPanel';
+import ContextSuggestionCard from './ContextSuggestionCard';
 
 export const MODE_CYCLE: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
 export const MODE_LABEL: Record<PermissionMode, string> = {
@@ -56,6 +57,8 @@ export default function SessionWidget({
   const seed = useStore((s) => s.seed);
   const focusedId = useStore((s) => s.focusedId);
   const setFocused = useStore((s) => s.setFocused);
+  const evaluateContextWarn = useStore((s) => s.evaluateContextWarn);
+  const dismissContextWarn = useStore((s) => s.dismissContextWarn);
   const [entity, setEntity] = useState<SessionEntity | null>(null);
   const [continuedFromName, setContinuedFromName] = useState<string | null>(null);
   const [parentName, setParentName] = useState<string | null>(null);
@@ -65,6 +68,8 @@ export default function SessionWidget({
   const [showGit, setShowGit] = useState(false);
   const [actionError, setActionError] = useState('');
   const [reflecting, setReflecting] = useState(false);
+  const [compacting, setCompacting] = useState(false);
+  const [contextWarnPercent, setContextWarnPercent] = useState(70);
   const wsRef = useRef<WsSession | null>(null);
   const nameRef = useRef<string>('');
   const focusedRef = useRef<string | null>(null);
@@ -86,6 +91,9 @@ export default function SessionWidget({
         repoPath: v.repoPath ?? d.session.repoPath,
         servicePath: v.servicePath ?? d.session.servicePath,
         branch: v.branch ?? d.session.branch,
+        // right after a reload, before any turn has produced a fresh context_usage event
+        contextTokens: v.contextTokens ?? d.session.contextTokens,
+        contextWindow: v.contextWindow ?? d.session.contextWindow,
       }));
     }).catch(() => setEntity(null));
     const onEvent = (e: Envelope) => {
@@ -101,6 +109,11 @@ export default function SessionWidget({
         const url = e.payload['url'] as string | undefined;
         setEntity((prev) => (prev ? { ...prev, prCheckStatus: status ?? prev.prCheckStatus, prUrl: url ?? prev.prUrl } : prev));
       }
+      // the POST only awaits the 202 ack — the pulse should track actual completion
+      // (success, its own failure, or the turn it rides on wrapping up either way)
+      if (e.type === 'context_compacted' || e.type === 'turn_complete' || e.type === 'error') {
+        setCompacting(false);
+      }
       const n = notificationForEvent(who, e);
       // the browser tab having focus doesn't mean THIS session is the one being watched —
       // it could be a different widget, a minimized one, or one scrolled off-screen
@@ -115,6 +128,27 @@ export default function SessionWidget({
   }, [sessionId, apply, setWsStatus, seed]);
 
   const send = useCallback((cmd: Record<string, unknown>) => wsRef.current?.send(cmd), []);
+
+  useEffect(() => {
+    api.getSettings().then((s) => setContextWarnPercent(s.contextWarnPercent)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    evaluateContextWarn(sessionId, contextWarnPercent);
+  }, [sessionId, contextWarnPercent, view?.contextTokens, view?.contextWindow, evaluateContextWarn]);
+
+  const compact = useCallback(async () => {
+    setActionError('');
+    setCompacting(true);
+    try {
+      await api.compactSession(sessionId);
+      // 202 just means the command was accepted; the pulse clears on context_compacted/
+      // turn_complete/error above, tracking actual completion rather than the POST round trip
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : String(e));
+      setCompacting(false);
+    }
+  }, [sessionId]);
 
   // exposes actions the global hotkey listener (Dashboard) can't reach otherwise — there's
   // no shared React tree between it and this widget's composer/git-panel/WS state
@@ -188,6 +222,7 @@ export default function SessionWidget({
   const state = view?.state ?? 'CREATING';
   const running = state === 'RUNNING' || state === 'WAITING_INPUT';
   const budget = view?.costBudgetUsd ?? entity?.costBudgetUsd ?? null;
+  const ctxPercent = view?.contextTokens != null && view?.contextWindow ? Math.round((view.contextTokens / view.contextWindow) * 100) : 0;
   nameRef.current = view?.name ?? entity?.name ?? '';
   focusedRef.current = focusedId;
   const widgetClass = useMemo(() => {
@@ -301,6 +336,18 @@ export default function SessionWidget({
         >
           ${view.costToDate.toFixed(3)}{budget !== null ? ` / $${budget}` : ''}
         </span>
+        {view.contextTokens != null && view.contextWindow != null && view.contextWindow > 0 && (
+          <span
+            className={`chip${ctxPercent >= 90 ? ' ctx-danger' : ctxPercent >= contextWarnPercent ? ' ctx-warn' : ''}`}
+            title={
+              `${view.contextTokens.toLocaleString()} / ${view.contextWindow.toLocaleString()} tokens`
+              + (view.autoCompactAt != null ? ` (auto-compact at ${Math.round((view.autoCompactAt / view.contextWindow) * 100)}%)` : '')
+            }
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            ctx {ctxPercent}%
+          </span>
+        )}
         {state === 'CRASHED' && (
           // a rare recovery action: keeps its label rather than becoming another glyph
           <button onMouseDown={(e) => e.stopPropagation()} onClick={() => void resume()}>Resume</button>
@@ -377,6 +424,15 @@ export default function SessionWidget({
           />
         )}
         <Transcript items={view.transcript} onPermission={(requestId, response) => send({ type: 'permission_response', requestId, ...response })} />
+        {view.ctxSuggestionVisible && (
+          <ContextSuggestionCard
+            percentage={ctxPercent}
+            canCompact={view.capabilities?.compact !== false}
+            compacting={compacting}
+            onCompact={() => void compact()}
+            onDismiss={() => dismissContextWarn(sessionId)}
+          />
+        )}
         <div className="inputbar">
           {actionError && <div className="error-text">{actionError}</div>}
           {view.queued.length > 0 && (

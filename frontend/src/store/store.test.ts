@@ -157,3 +157,80 @@ describe('store actions outside reduce', () => {
     expect(useStore.getState().views[SID]?.name).toBe('seeded');
   });
 });
+
+describe('context_usage', () => {
+  it('records tokens/window/autoCompactAt', () => {
+    useStore.getState().apply(SID, env('context_usage', { tokens: 38000, window: 200000, autoCompactAt: 178000 }));
+    const v = useStore.getState().views[SID]!;
+    expect(v.contextTokens).toBe(38000);
+    expect(v.contextWindow).toBe(200000);
+    expect(v.autoCompactAt).toBe(178000);
+  });
+
+  it('leaves autoCompactAt null when the provider does not report one', () => {
+    useStore.getState().apply(SID, env('context_usage', { tokens: 100, window: 1000 }));
+    expect(useStore.getState().views[SID]!.autoCompactAt).toBeNull();
+  });
+});
+
+describe('context_compacted', () => {
+  it('pushes a transcript divider and re-arms the warn flag', () => {
+    useStore.getState().apply(SID, env('context_usage', { tokens: 190000, window: 200000 }));
+    useStore.getState().evaluateContextWarn(SID, 70);
+    expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(true);
+
+    useStore.getState().apply(SID, env('context_compacted', { preTokens: 190000, postTokens: 20000, trigger: 'manual' }));
+
+    const v = useStore.getState().views[SID]!;
+    expect(v.transcript.at(-1)).toEqual({ kind: 'context_compacted', preTokens: 190000, postTokens: 20000, trigger: 'manual' });
+    expect(v.ctxWarnArmed).toBe(true);
+    expect(v.ctxSuggestionVisible).toBe(false);
+  });
+});
+
+describe('evaluateContextWarn / dismissContextWarn', () => {
+  it('does nothing below the threshold', () => {
+    useStore.getState().apply(SID, env('context_usage', { tokens: 50000, window: 200000 })); // 25%
+    useStore.getState().evaluateContextWarn(SID, 70);
+    expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(false);
+  });
+
+  it('fires once on crossing and does not re-fire on a later evaluation while still above threshold', () => {
+    useStore.getState().apply(SID, env('context_usage', { tokens: 150000, window: 200000 })); // 75%
+    useStore.getState().evaluateContextWarn(SID, 70);
+    expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(true);
+    expect(useStore.getState().views[SID]!.ctxWarnArmed).toBe(false);
+
+    useStore.getState().dismissContextWarn(SID);
+    expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(false);
+
+    // still above threshold, no compaction happened — must not re-show
+    useStore.getState().apply(SID, env('context_usage', { tokens: 160000, window: 200000 })); // 80%
+    useStore.getState().evaluateContextWarn(SID, 70);
+    expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(false);
+  });
+
+  it('a lower reading after a crossing does not re-trigger, even if it rises again, without a compaction', () => {
+    useStore.getState().apply(SID, env('context_usage', { tokens: 150000, window: 200000 })); // 75%
+    useStore.getState().evaluateContextWarn(SID, 70);
+    useStore.getState().dismissContextWarn(SID);
+
+    useStore.getState().apply(SID, env('context_usage', { tokens: 100000, window: 200000 })); // 50%, dips below
+    useStore.getState().evaluateContextWarn(SID, 70);
+    expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(false);
+
+    useStore.getState().apply(SID, env('context_usage', { tokens: 150000, window: 200000 })); // back to 75%
+    useStore.getState().evaluateContextWarn(SID, 70);
+    expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(false); // still armed=false — no compaction happened
+  });
+
+  it('re-arms after a compaction, so the next crossing fires again', () => {
+    useStore.getState().apply(SID, env('context_usage', { tokens: 150000, window: 200000 }));
+    useStore.getState().evaluateContextWarn(SID, 70);
+    useStore.getState().apply(SID, env('context_compacted', { preTokens: 150000, postTokens: 20000, trigger: 'manual' }));
+
+    useStore.getState().apply(SID, env('context_usage', { tokens: 150000, window: 200000 }));
+    useStore.getState().evaluateContextWarn(SID, 70);
+    expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(true);
+  });
+});

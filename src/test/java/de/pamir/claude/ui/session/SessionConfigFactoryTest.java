@@ -39,7 +39,7 @@ class SessionConfigFactoryTest {
 		// touch the (null in these tests) SettingsRepository regardless — overriding current() to
 		// return a fixed snapshot sidesteps that entirely.
 		Settings fixed = new Settings(linearOAuth, "", "", "", true, 180, "", "", false, true, 60, "claude", "", "",
-				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap");
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70);
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -75,7 +75,7 @@ class SessionConfigFactoryTest {
 
 	private static ProviderCapabilities fullCapabilities() {
 		return new ProviderCapabilities(List.of("default", "acceptEdits", "plan", "bypassPermissions"),
-				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true);
+				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true);
 	}
 
 	private static AppProperties propsWithLinearKey(String linearApiKey, String authToken) {
@@ -210,7 +210,7 @@ class SessionConfigFactoryTest {
 		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
 				null, mapper, null, 8080, fakeCatalog(Map.of("widget", new ProviderCapabilities(
 						List.of("default"), true, true, true, true, true, true, true, true, true, true, true,
-						List.of("maxTurns"), true, true))), null);
+						List.of("maxTurns"), true, true, true))), null);
 		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -239,7 +239,7 @@ class SessionConfigFactoryTest {
 
 	private static SettingsService fakeSettingsWithEcosystem(String ecosystemRoot) {
 		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap");
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70);
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {

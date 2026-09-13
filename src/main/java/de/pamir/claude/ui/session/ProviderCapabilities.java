@@ -20,7 +20,7 @@ public record ProviderCapabilities(List<String> permissionModes, boolean thinkin
 									boolean mcp, boolean interrupt, boolean fallbackModel,
 									boolean updatedInput, boolean modelSwitch,
 									List<String> unsupportedSessionFields, boolean contextDirs,
-									boolean reportsCostUsd) {
+									boolean reportsCostUsd, boolean compact) {
 
 	/** True unless this session/create-option field is named in {@link #unsupportedSessionFields}. */
 	public boolean supports(String field) {

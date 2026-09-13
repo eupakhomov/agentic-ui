@@ -60,6 +60,7 @@ export default function CreateSessionDialog({
   // the ticket-import field (which may be a pasted URL) — this is what gets persisted on the session
   const [resolvedTicketRef, setResolvedTicketRef] = useState<string | null>(null);
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
+  const [ticketImportWarm, setTicketImportWarm] = useState(false);
   // ticket-derived prompts land unsent in the new session's compose box (reviewed & sent by
   // hand there) instead of auto-firing as a kickoff turn the moment the sidecar is ready
   const [promptFromTicket, setPromptFromTicket] = useState(false);
@@ -97,7 +98,8 @@ export default function CreateSessionDialog({
       setProvider(s.defaultProvider);
       setReflectionEnabled(s.memoryReflectionDefault);
     }).catch(() => setSettings(null));
-    api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
+    api.ticketImportEnabled().then((r) => { setTicketImportEnabled(r.enabled); setTicketImportWarm(r.warm); })
+      .catch(() => setTicketImportEnabled(false));
   }, []);
 
   const activeCapabilities = providers.find((p) => p.id === provider)?.capabilities;
@@ -317,7 +319,9 @@ export default function CreateSessionDialog({
               </div>
               {importBusy && (
                 <div className="full" style={{ gridColumn: '2 / -1', color: 'var(--muted)', fontSize: 12.5 }}>
-                  fetching from Linear — can take up to 45s on the first call (spinning up the system session)…
+                  {ticketImportWarm
+                    ? 'fetching from Linear…'
+                    : 'fetching from Linear — can take up to 45s on the first call (spinning up the system session)…'}
                 </div>
               )}
               {importError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{importError}</div>}
@@ -512,9 +516,11 @@ export default function CreateSessionDialog({
     </div>
     {showTicketPicker && (
       <TicketPickerDialog
-        tickets={recentTickets}
+        list={recentTickets}
         busy={pickerBusy}
         error={pickerError}
+        warm={ticketImportWarm}
+        onRefresh={() => void ticketImport.browseRecentTickets(true)}
         onPick={pickTicket}
         onClose={() => { ticketImport.cancel(); setShowTicketPicker(false); }}
       />

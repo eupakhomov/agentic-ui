@@ -26,6 +26,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -52,6 +53,10 @@ public class SessionService {
 	private final Map<UUID, Object> locks = new ConcurrentHashMap<>();
 	/** Guards the enforceSessionLimit()+insert critical section — see {@link #enforceSessionLimitAndInsert}. */
 	private final Object sessionLimitLock = new Object();
+	/** Sessions woken by {@link #compact} for being PARKED — the compact command fires once
+	 * {@link #becomeIdleAndDrainQueue} sees the freshly-spawned sidecar report ready, ahead of
+	 * any queued text turn. */
+	private final Set<UUID> pendingCompactAfterWake = ConcurrentHashMap.newKeySet();
 
 	public SessionService(AppProperties props, SettingsService settings, SessionRepository sessions,
 						  GitWorktreeService worktrees, GitCommandRunner git,
@@ -245,6 +250,25 @@ public class SessionService {
 				.put("type", "set_model").put("model", model).toString());
 	}
 
+	/** In-place context compaction (docs/plan/phase-12-linear-cache-serena-context.md decision
+	 * 9): only meaningful for an idle sidecar, so this refuses outright rather than queuing
+	 * behind in-flight work the way {@link #sendUserMessage} does. A PARKED session is woken
+	 * first and the compact command fires once it reports ready ({@link #becomeIdleAndDrainQueue}). */
+	public void compact(UUID id) {
+		synchronized (lock(id)) {
+			SessionEntity session = sessions.get(id);
+			SessionState state = session.state();
+			if (state == SessionState.IDLE && sidecars.hasLiveHandle(id)) {
+				sidecars.handle(id).send(mapper.createObjectNode().put("type", "compact").toString());
+			} else if (state == SessionState.PARKED) {
+				pendingCompactAfterWake.add(id);
+				wake(session);
+			} else {
+				throw new IllegalStateException("session is " + state + " and cannot be compacted right now");
+			}
+		}
+	}
+
 	public boolean deleteQueued(UUID id, long pos) {
 		boolean removed = sessions.deleteQueued(id, pos);
 		if (removed) {
@@ -339,6 +363,7 @@ public class SessionService {
 			case "permission_request" -> transition(id, SessionState.WAITING_INPUT);
 			case "permission_mode_changed" -> sessions.updatePermissionMode(id, event.path("mode").asText());
 			case "model_changed" -> sessions.updateModel(id, event.path("model").asText());
+			case "context_usage" -> sessions.updateContextUsage(id, event.path("tokens").asInt(), event.path("window").asInt());
 			case "assistant_message" -> systemSessionService.onAssistantMessage(id, event.get("content"));
 			case "turn_complete" -> {
 				// drain first: best-effort housekeeping below must never be able to block it
@@ -420,6 +445,10 @@ public class SessionService {
 			return;
 		}
 		transition(id, SessionState.IDLE);
+		if (pendingCompactAfterWake.remove(id)) {
+			sidecars.handle(id).send(mapper.createObjectNode().put("type", "compact").toString());
+			return; // its own turn_complete re-enters here to drain anything queued behind it
+		}
 		SessionEntity session = sessions.get(id);
 		if (budgetExhausted(session)) {
 			if (!sessions.queued(id).isEmpty()) {

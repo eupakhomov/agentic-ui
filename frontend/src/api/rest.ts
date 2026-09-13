@@ -1,4 +1,4 @@
-import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketSummary, TurnUsage } from '../protocol';
+import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketList, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -74,6 +74,7 @@ export const api = {
   patchSession: (id: string, body: { costBudgetUsd?: number; name?: string; reflectionEnabled?: boolean }) =>
     request<SessionEntity>('PATCH', `/api/sessions/${id}`, body),
   reflectSession: (id: string) => request<null>('POST', `/api/sessions/${id}/reflect`),
+  compactSession: (id: string) => request<null>('POST', `/api/sessions/${id}/compact`),
   exportTranscript: (id: string) => requestText(`/api/sessions/${id}/export.md`),
   handoffSummary: (id: string) => requestText(`/api/sessions/${id}/handoff-summary`, 'POST'),
   services: () => request<ServicesResponse>('GET', '/api/repo/services'),
@@ -83,12 +84,12 @@ export const api = {
   createTemplate: (body: unknown) => request<Template>('POST', '/api/templates', body),
   updateTemplate: (id: string, body: unknown) => request<Template>('PUT', `/api/templates/${id}`, body),
   deleteTemplate: (id: string) => request<null>('DELETE', `/api/templates/${id}`),
-  ticketImportEnabled: () => request<{ enabled: boolean }>('GET', '/api/tickets/import/enabled'),
+  ticketImportEnabled: () => request<{ enabled: boolean; warm: boolean }>('GET', '/api/tickets/import/enabled'),
   importTicket: (ticketRef: string, signal?: AbortSignal) =>
     request<{ branchName: string; prompt: string; recommendedModel: string | null; ticketRef: string | null }>(
       'POST', '/api/tickets/import', { ticketRef }, signal),
-  listRecentTickets: (signal?: AbortSignal) =>
-    request<TicketSummary[]>('POST', '/api/tickets/recent', undefined, signal),
+  listRecentTickets: (refresh: boolean, signal?: AbortSignal) =>
+    request<TicketList>('POST', `/api/tickets/recent?refresh=${refresh}`, undefined, signal),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
     | 'monorepoServiceGlobs' | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
@@ -96,7 +97,7 @@ export const api = {
     | 'defaultProvider' | 'systemProvider' | 'codexPricing' | 'memoryRoot' | 'memoryEnabled' | 'memoryReflectionDefault'
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
     | 'memoryReflectionApprovalRequired' | 'serviceDiscoveryEnabled' | 'serviceDiscoveryStalenessDays'
-    | 'serviceDiscoveryModel'>>) =>
+    | 'serviceDiscoveryModel' | 'contextWarnPercent'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
   listProviders: () => request<ProviderView[]>('GET', '/api/providers'),
   libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>

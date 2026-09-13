@@ -35,5 +35,6 @@
   ],
   "unsupportedSessionFields": [],
   "contextDirs": true,
-  "reportsCostUsd": true
+  "reportsCostUsd": true,
+  "compact": true
 }

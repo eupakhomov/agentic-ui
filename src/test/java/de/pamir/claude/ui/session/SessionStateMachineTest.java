@@ -71,7 +71,7 @@ class SessionStateMachineTest {
 
 	private static SettingsService fakeSettings(boolean memoryEnabled, boolean serviceDiscoveryEnabled) {
 		Settings fixed = new Settings(false, "", "", "", true, 180, "", "", false, true, 60, "claude", "", "",
-				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap");
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70);
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -181,6 +181,53 @@ class SessionStateMachineTest {
 		assertThatThrownBy(() -> sessionService.sendUserMessage(s.id(), "hello"))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("does not accept messages");
+	}
+
+	// ------------------------------------------------------------------ compact
+
+	@Test
+	void compactSendsDirectlyWhenIdleWithALiveHandle() {
+		SessionEntity s = session(SessionState.IDLE);
+		sidecars.spawn(s, null, false, null, e -> {
+		}, (h, c) -> {
+		});
+
+		sessionService.compact(s.id());
+
+		assertThat(sidecars.sentTo(s.id())).anyMatch(line -> line.contains("\"compact\""));
+	}
+
+	@Test
+	void compactWakesAParkedSessionAndSendsOnceItReportsReady() {
+		SessionEntity s = session(SessionState.PARKED);
+
+		sessionService.compact(s.id());
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.STARTING);
+		assertThat(sidecars.sentTo(s.id())).noneMatch(line -> line.contains("\"compact\""));
+
+		sessionService.becomeIdleAndDrainQueue(s.id()); // simulates the woken sidecar's "ready"->STARTING drain
+
+		assertThat(sidecars.sentTo(s.id())).anyMatch(line -> line.contains("\"compact\""));
+	}
+
+	@Test
+	void compactRejectsARunningSession() {
+		SessionEntity s = session(SessionState.RUNNING);
+
+		assertThatThrownBy(() -> sessionService.compact(s.id()))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("cannot be compacted");
+	}
+
+	@Test
+	void compactRejectsAnIdleSessionWithADeadHandle() {
+		SessionEntity s = session(SessionState.IDLE);
+		// no spawn() call: hasLiveHandle() is false
+
+		assertThatThrownBy(() -> sessionService.compact(s.id()))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("cannot be compacted");
 	}
 
 	// ------------------------------------------------------------------ becomeIdleAndDrainQueue
@@ -429,7 +476,7 @@ class SessionStateMachineTest {
 
 	private static ProviderCapabilities fullCapabilities() {
 		return new ProviderCapabilities(List.of("default", "acceptEdits", "plan", "bypassPermissions"),
-				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true);
+				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true);
 	}
 
 	/**
@@ -446,7 +493,7 @@ class SessionStateMachineTest {
 		worktrees.setKnownServices(List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, repo)));
 
 		Settings fixedSettings = new Settings(false, "", "/eco", "packages/*,services/*,apps/*,libs/*", true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap");
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70);
 		SettingsService settingsWithEcosystem = new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {

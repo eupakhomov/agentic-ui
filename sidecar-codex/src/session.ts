@@ -38,6 +38,10 @@ function truncate(s: string): string {
   return s.length > TOOL_OUTPUT_LIMIT ? s.slice(0, TOOL_OUTPUT_LIMIT) : s;
 }
 
+/** Either a text turn or a compact request, queued and drained one at a time so a
+ * compact can never race a turn/start on the same thread. */
+type QueuedItem = { kind: 'turn'; text: string } | { kind: 'compact' };
+
 /** Unbounded async FIFO — same shape as sidecar/src/session.ts's queue, driving one
  * turn at a time so Codex sessions queue messages exactly like Claude sessions do. */
 class AsyncQueue<T> {
@@ -104,7 +108,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   }
 
   const rpc = new CodexRpc(config.codexBin ?? 'codex', ['app-server'], mcpExtraEnv);
-  const inputQueue = new AsyncQueue<string>();
+  const inputQueue = new AsyncQueue<QueuedItem>();
   const itemsCache = new Map<string, Record<string, unknown>>();
   const pendingApprovals = new Map<string, PendingApproval>();
 
@@ -116,6 +120,17 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   let currentPermissionMode: CodexPermissionMode = config.permissionMode ?? 'default';
   let latestUsage: unknown = {};
   let awaitingTurnComplete: ((turn: Record<string, unknown>) => void) | undefined;
+  // Context-window snapshot from thread/tokenUsage/updated's `last`/`modelContextWindow`
+  // (the current request's context, distinct from `latestUsage`'s cumulative `total`
+  // used for cost estimation) — see docs/plan/phase-12-linear-cache-serena-context.md
+  // Step C0 outcome.
+  let latestContextTokens: number | undefined;
+  let latestContextWindow: number | undefined;
+  let awaitingCompact: (() => void) | undefined;
+  // Belt-and-suspenders guard for 'compact' (decision 9) — counts items pushed onto
+  // inputQueue but not yet fully drained, so a compact request arriving while a turn is
+  // queued or running is rejected synchronously rather than silently queued behind it.
+  let queuedOrRunning = 0;
 
   writeEvent({
     type: 'ready',
@@ -151,6 +166,47 @@ export async function runSession(config: SidecarConfig): Promise<never> {
       model: currentModel,
     });
     currentTurnId = undefined;
+    emitContextUsage();
+  }
+
+  function emitContextUsage(): void {
+    if (latestContextTokens === undefined || latestContextWindow === undefined) return;
+    writeEvent({ type: 'context_usage', tokens: latestContextTokens, window: latestContextWindow });
+  }
+
+  /** Sends thread/compact/start and waits for the thread/compacted notification. Token
+   * deltas come from our own before/after snapshot of latestContextTokens — the
+   * notification itself carries no pre/post counts (deprecated in favor of an item type
+   * this adapter doesn't otherwise consume). Provisional: confirmed against the
+   * installed codex-cli's protocol schema, not yet against a live compaction run — see
+   * docs/plan/phase-12-linear-cache-serena-context.md Step C0 outcome. */
+  async function doCompact(): Promise<void> {
+    if (!threadId) {
+      writeEvent({ type: 'error', message: 'compact: no active thread', fatal: false });
+      return;
+    }
+    const preTokens = latestContextTokens;
+    let failed = false;
+    await new Promise<void>((resolve) => {
+      awaitingCompact = () => {
+        awaitingCompact = undefined;
+        resolve();
+      };
+      rpc.call('thread/compact/start', { threadId }).catch((e: unknown) => {
+        failed = true;
+        awaitingCompact = undefined;
+        writeEvent({ type: 'error', message: `compact failed: ${String(e)}`, fatal: false });
+        resolve();
+      });
+    });
+    if (failed) return;
+    writeEvent({
+      type: 'context_compacted',
+      preTokens: preTokens ?? 0,
+      postTokens: latestContextTokens ?? preTokens ?? 0,
+      trigger: 'manual',
+    });
+    emitContextUsage();
   }
 
   function runTurn(text: string): Promise<void> {
@@ -253,6 +309,9 @@ export async function runSession(config: SidecarConfig): Promise<never> {
       case 'thread/tokenUsage/updated': {
         const usage = p['tokenUsage'] as Record<string, unknown> | undefined;
         if (usage && usage['total']) latestUsage = usage['total'];
+        const last = usage?.['last'] as Record<string, unknown> | undefined;
+        if (last && typeof last['totalTokens'] === 'number') latestContextTokens = last['totalTokens'];
+        if (typeof usage?.['modelContextWindow'] === 'number') latestContextWindow = usage['modelContextWindow'];
         break;
       }
       case 'turn/completed': {
@@ -260,6 +319,9 @@ export async function runSession(config: SidecarConfig): Promise<never> {
         if (turn && awaitingTurnComplete) awaitingTurnComplete(turn);
         break;
       }
+      case 'thread/compacted':
+        if (awaitingCompact) awaitingCompact();
+        break;
       case 'error':
         writeEvent({ type: 'error', message: typeof p === 'string' ? p : JSON.stringify(p), fatal: false });
         break;
@@ -326,7 +388,16 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     }
     switch (cmd.type) {
       case 'user_message':
-        inputQueue.push(cmd.text);
+        queuedOrRunning++;
+        inputQueue.push({ kind: 'turn', text: cmd.text });
+        break;
+      case 'compact':
+        if (queuedOrRunning > 0) {
+          writeEvent({ type: 'error', message: 'compact: turn in progress', fatal: false });
+          break;
+        }
+        queuedOrRunning++;
+        inputQueue.push({ kind: 'compact' });
         break;
       case 'permission_response':
         handlePermissionResponse(cmd);
@@ -422,9 +493,11 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     });
 
     for (;;) {
-      const text = await inputQueue.next();
-      if (text === undefined) break;
-      await runTurn(text);
+      const item = await inputQueue.next();
+      if (item === undefined) break;
+      if (item.kind === 'turn') await runTurn(item.text);
+      else await doCompact();
+      queuedOrRunning--;
     }
   } catch (e) {
     writeEvent({ type: 'error', message: String(e instanceof Error ? e.stack ?? e.message : e), fatal: true });

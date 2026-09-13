@@ -6,9 +6,12 @@ import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.session.ModelCatalog;
 import de.pamir.claude.ui.session.SystemTurnClient;
 import de.pamir.claude.ui.session.SystemTurnLane;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -41,14 +44,28 @@ public class TicketImportService {
 	public record TicketSummary(String ref, String title, String status) {
 	}
 
+	/** {@code cached}: true when served from {@link TicketCache} without a system turn. */
+	public record TicketList(List<TicketSummary> tickets, Instant fetchedAt, boolean cached) {
+	}
+
 	private final SystemTurnClient systemTurnClient;
 	private final AppProperties props;
 	private final SettingsService settings;
+	private final TicketCache cache;
 
+	// Explicit @Autowired: with the test-only constructor below also present, Spring can't apply
+	// its usual "exactly one constructor" auto-detection — see ProviderCatalog for the same pattern.
+	@Autowired
 	public TicketImportService(SystemTurnClient systemTurnClient, AppProperties props, SettingsService settings) {
+		this(systemTurnClient, props, settings, Clock.systemUTC());
+	}
+
+	/** Test-only: injects a fixed/controllable clock so TTL expiry can be tested deterministically. */
+	TicketImportService(SystemTurnClient systemTurnClient, AppProperties props, SettingsService settings, Clock clock) {
 		this.systemTurnClient = systemTurnClient;
 		this.props = props;
 		this.settings = settings;
+		this.cache = new TicketCache(clock);
 	}
 
 	public boolean enabled() {
@@ -63,6 +80,23 @@ public class TicketImportService {
 		if (ticketRef == null || ticketRef.isBlank()) {
 			throw new IllegalArgumentException("ticketRef is required");
 		}
+		String key = ticketRef.strip().toUpperCase(Locale.ROOT);
+		TicketImportResult cached = cache.cachedImport(key);
+		if (cached != null) {
+			return cached;
+		}
+		TicketImportResult result = fetchTicketImport(ticketRef);
+		cache.cacheImport(key, result);
+		String canonicalKey = result.ticketRef();
+		if (canonicalKey != null && !canonicalKey.equals(key)) {
+			// A URL and its short identifier both resolve to the same ticket — cache both spellings
+			// so the second one (e.g. picking the same ticket again from the list) is also a hit.
+			cache.cacheImport(canonicalKey, result);
+		}
+		return result;
+	}
+
+	private TicketImportResult fetchTicketImport(String ticketRef) {
 		String spec = settings.current().ticketImportSpec();
 		String guidance = spec.isBlank() ? "" : "Follow these additional guidelines when choosing the branch name "
 				+ "and/or writing the prompt: " + spec.strip() + " ";
@@ -108,11 +142,25 @@ public class TicketImportService {
 				+ ", chosen by the ticket's apparent complexity: " + String.join("; ", clauses) + ".";
 	}
 
-	public List<TicketSummary> listMyTickets() {
+	/**
+	 * @param refresh bypasses the 15-minute cache and forces a fresh system turn.
+	 */
+	public TicketList listMyTickets(boolean refresh) {
 		if (!enabled()) {
 			throw new IllegalStateException(
 					"Linear integration is not configured (set CLAUDE_UI_LINEAR_API_KEY, or enable OAuth in Settings)");
 		}
+		boolean oauthMode = settings.current().linearOAuthEnabled();
+		if (!refresh) {
+			TicketList fresh = cache.freshList(oauthMode);
+			if (fresh != null) {
+				return fresh;
+			}
+		}
+		return cache.fetchList(oauthMode, this::fetchTicketList);
+	}
+
+	private List<TicketSummary> fetchTicketList() {
 		String prompt = "You have access to Linear via MCP tools. List up to 20 issues currently assigned to me "
 				+ "(the authenticated Linear user), ordered by most recently updated first, excluding any issue "
 				+ "in a completed or canceled state. Then respond with ONLY a JSON array — no markdown fences, "

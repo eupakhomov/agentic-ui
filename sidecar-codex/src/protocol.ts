@@ -54,13 +54,21 @@ export interface ShutdownCommand {
   type: 'shutdown';
 }
 
+/** In-place, provider-side context compaction. Rejected with a non-fatal error if a
+ * turn is already in flight — the backend gates this too (only sends it for an
+ * IDLE/parked session), this is the sidecar-side belt. */
+export interface CompactCommand {
+  type: 'compact';
+}
+
 export type Command =
   | UserMessageCommand
   | PermissionResponseCommand
   | InterruptCommand
   | SetPermissionModeCommand
   | SetModelCommand
-  | ShutdownCommand;
+  | ShutdownCommand
+  | CompactCommand;
 
 // ---------------------------------------------------------------------------
 // Events (sidecar -> backend/driver)
@@ -105,6 +113,8 @@ export interface Capabilities {
   contextDirs: boolean;
   /** turn_complete.costUsd is authoritative; false = the backend estimates from token usage against a price table */
   reportsCostUsd: boolean;
+  /** supports the compact command (in-place context compaction) */
+  compact: boolean;
 }
 
 export interface ReadyEvent {
@@ -193,6 +203,27 @@ export interface TurnCompleteEvent {
   model: string;
 }
 
+/**
+ * Between-turns context-window snapshot: how full the *next* request will be, not a
+ * summary of the turn just completed (that's turn_complete.usage). Emitted after every
+ * turn_complete and after a context_compacted, never mid-turn.
+ */
+export interface ContextUsageEvent {
+  type: 'context_usage';
+  tokens: number;
+  window: number;
+  /** absolute token count at which the provider will auto-compact, when it reports one */
+  autoCompactAt?: number;
+}
+
+/** A compaction boundary just happened (manual command or provider auto-compact). */
+export interface ContextCompactedEvent {
+  type: 'context_compacted';
+  preTokens: number;
+  postTokens: number;
+  trigger: 'manual' | 'auto';
+}
+
 export interface ErrorEvent {
   type: 'error';
   message: string;
@@ -216,6 +247,8 @@ export type Event =
   | PermissionModeChangedEvent
   | ModelChangedEvent
   | TurnCompleteEvent
+  | ContextUsageEvent
+  | ContextCompactedEvent
   | ErrorEvent
   | ExitingEvent;
 
@@ -247,4 +280,8 @@ export const CODEX_CAPABILITIES: Capabilities = {
   unsupportedSessionFields: ['allowedTools', 'disallowedTools', 'thinking', 'maxTurns', 'fallbackModel', 'agentSources'],
   contextDirs: false,
   reportsCostUsd: false,
+  // Confirmed live from the installed codex-cli's own app-server protocol schema
+  // (docs/plan/phase-12-linear-cache-serena-context.md Step C0): thread/compact/start
+  // + thread/compacted exist on the default protocol surface, no --experimental flag.
+  compact: true,
 };

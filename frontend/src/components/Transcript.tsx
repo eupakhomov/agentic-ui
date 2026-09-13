@@ -87,6 +87,12 @@ export default function Transcript({
             );
           case 'note':
             return <div key={i} className={`t-note ${item.level}`}>{item.text}</div>;
+          case 'context_compacted':
+            return (
+              <div key={i} className="t-compacted">
+                — compacted: {item.preTokens.toLocaleString()} → {item.postTokens.toLocaleString()} —
+              </div>
+            );
         }
       })}
     </div>

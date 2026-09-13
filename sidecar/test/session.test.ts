@@ -165,6 +165,43 @@ describe('translateSdkMessage', () => {
     expect(events).toEqual([]);
   });
 
+  it('translates system/compact_boundary into context_compacted', () => {
+    const { events, logs } = translateSdkMessage(
+      {
+        type: 'system',
+        subtype: 'compact_boundary',
+        compact_metadata: { trigger: 'manual', pre_tokens: 17707, post_tokens: 1973 },
+      },
+      state(),
+    );
+    expect(logs).toEqual([]);
+    expect(events).toEqual([{ type: 'context_compacted', preTokens: 17707, postTokens: 1973, trigger: 'manual' }]);
+  });
+
+  it('defaults post_tokens to pre_tokens when the SDK omits it', () => {
+    const { events } = translateSdkMessage(
+      { type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'auto', pre_tokens: 500 } },
+      state(),
+    );
+    expect(events).toEqual([{ type: 'context_compacted', preTokens: 500, postTokens: 500, trigger: 'auto' }]);
+  });
+
+  it('surfaces a failed compact as a non-fatal error', () => {
+    const { events } = translateSdkMessage(
+      { type: 'system', subtype: 'status', status: null, compact_result: 'failed', compact_error: 'Not enough messages to compact.' },
+      state(),
+    );
+    expect(events).toEqual([
+      { type: 'error', message: 'compact failed: Not enough messages to compact.', fatal: false },
+    ]);
+  });
+
+  it('ignores an in-progress compacting status', () => {
+    const { events, logs } = translateSdkMessage({ type: 'system', subtype: 'status', status: 'compacting' }, state());
+    expect(events).toEqual([]);
+    expect(logs).toEqual([]);
+  });
+
   it('logs unhandled message types', () => {
     const { events, logs } = translateSdkMessage({ type: 'some_future_type' }, state());
     expect(events).toEqual([]);

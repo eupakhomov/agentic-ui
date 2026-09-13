@@ -43,6 +43,9 @@ export {
   Square as Interrupt,
   Play as Resume,
   X as Close,
+  // distinct from Restore/MinimizeToDock (window-frame controls) — this one's the
+  // suggestion card's Compact action
+  Shrink as Compact,
 
   // dialogs & panels
   Sparkles as AiSuggest,

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import type { TicketSummary } from '../protocol';
+import type { TicketList } from '../protocol';
 
 export interface TicketImportOutcome {
   branchName: string;
@@ -22,7 +22,7 @@ export function useTicketImport(validModelIds: string[]) {
   const [importError, setImportError] = useState('');
   const importAbortRef = useRef<AbortController | null>(null);
   const [showTicketPicker, setShowTicketPicker] = useState(false);
-  const [recentTickets, setRecentTickets] = useState<TicketSummary[] | null>(null);
+  const [recentTickets, setRecentTickets] = useState<TicketList | null>(null);
   const [pickerBusy, setPickerBusy] = useState(false);
   const [pickerError, setPickerError] = useState('');
   const pickerAbortRef = useRef<AbortController | null>(null);
@@ -66,17 +66,17 @@ export function useTicketImport(validModelIds: string[]) {
     }
   };
 
-  const browseRecentTickets = async () => {
+  const browseRecentTickets = async (refresh = false) => {
     setPickerError('');
     setPickerBusy(true);
     setShowTicketPicker(true);
     const controller = new AbortController();
     pickerAbortRef.current = controller;
     const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
-    if (import.meta.env.DEV) console.log('[claude-ui] ticket browse: fetching recent tickets');
+    if (import.meta.env.DEV) console.log('[claude-ui] ticket browse: fetching recent tickets, refresh =', refresh);
     const started = performance.now();
     try {
-      const list = await api.listRecentTickets(controller.signal);
+      const list = await api.listRecentTickets(refresh, controller.signal);
       if (import.meta.env.DEV) console.log('[claude-ui] ticket browse: succeeded in', Math.round(performance.now() - started), 'ms', list);
       setRecentTickets(list);
     } catch (e) {

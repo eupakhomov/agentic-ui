@@ -21,6 +21,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [memorySyncIntervalDraft, setMemorySyncIntervalDraft] = useState('');
   const [memoryRetentionDraft, setMemoryRetentionDraft] = useState('');
   const [serviceDiscoveryStalenessDraft, setServiceDiscoveryStalenessDraft] = useState('');
+  const [contextWarnPercentDraft, setContextWarnPercentDraft] = useState('');
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -37,6 +38,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setMemorySyncIntervalDraft(String(s.memorySyncIntervalMinutes));
       setMemoryRetentionDraft(String(s.memoryRetentionDays));
       setServiceDiscoveryStalenessDraft(String(s.serviceDiscoveryStalenessDays));
+      setContextWarnPercentDraft(String(s.contextWarnPercent));
     }).catch(() => setSettings(null));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
@@ -120,6 +122,15 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     const previous = settings.systemProvider;
     setSettings({ ...settings, systemProvider: id });
     void api.updateSettings({ systemProvider: id }).catch(() => setSettings({ ...settings, systemProvider: previous }));
+  };
+
+  const saveContextWarnPercent = () => {
+    if (!settings) return;
+    const percent = Number(contextWarnPercentDraft);
+    if (!Number.isFinite(percent) || percent === settings.contextWarnPercent) return;
+    void api.updateSettings({ contextWarnPercent: percent })
+      .then((s) => { setSettings(s); setContextWarnPercentDraft(String(s.contextWarnPercent)); })
+      .catch(() => setContextWarnPercentDraft(String(settings.contextWarnPercent)));
   };
 
   const saveCodexPricing = () => {
@@ -298,6 +309,17 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 <option value="">(follow default provider)</option>
                 {providers.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
               </select>
+
+              <label>Context warning at</label>
+              <input
+                type="number"
+                min={30}
+                max={95}
+                value={contextWarnPercentDraft}
+                onChange={(e) => setContextWarnPercentDraft(e.target.value)}
+                onBlur={saveContextWarnPercent}
+                title="widget ctx chip turns amber and a compact suggestion appears once a session crosses this percentage of its context window (30-95)"
+              /> %
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>Codex</h3>

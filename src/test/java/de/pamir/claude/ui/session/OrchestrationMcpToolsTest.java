@@ -45,7 +45,7 @@ class OrchestrationMcpToolsTest {
 
 	private static SettingsService fakeSettings(String ecosystemRoot) {
 		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap");
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70);
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -56,7 +56,7 @@ class OrchestrationMcpToolsTest {
 
 	private static ProviderCapabilities fullCapabilities() {
 		return new ProviderCapabilities(List.of("default", "acceptEdits", "plan", "bypassPermissions"),
-				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true);
+				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true);
 	}
 
 	@Test

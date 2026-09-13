@@ -11,6 +11,7 @@
  *   :mode <mode>          -> set_permission_mode
  *   :model <model>        -> set_model
  *   :int                  -> interrupt
+ *   :compact              -> compact
  *   :quit                 -> shutdown
  */
 import { spawn } from 'node:child_process';
@@ -98,6 +99,12 @@ function handleEvent(line: string): void {
       endStream();
       console.log(dim(`turn_complete ${e['stopReason']} model=${e['model']} cost=$${Number(e['costUsd']).toFixed(4)} turns=${e['numTurns']} ${e['durationMs']}ms`));
       break;
+    case 'context_usage':
+      console.log(dim(`context_usage ${e['tokens']}/${e['window']} tokens${e['autoCompactAt'] !== undefined ? ` (auto-compact at ${e['autoCompactAt']})` : ''}`));
+      break;
+    case 'context_compacted':
+      console.log(yellow(`context_compacted ${e['trigger']}: ${e['preTokens']} -> ${e['postTokens']}`));
+      break;
     case 'error':
       endStream();
       console.log(red(`error${e['fatal'] ? ' (fatal)' : ''}: ${e['message']}`));
@@ -136,6 +143,7 @@ rl.on('line', (raw) => {
       case 'mode': send({ type: 'set_permission_mode', mode: rest[0] }); break;
       case 'model': send({ type: 'set_model', model: rest[0] }); break;
       case 'int': send({ type: 'interrupt' }); break;
+      case 'compact': send({ type: 'compact' }); break;
       case 'quit': send({ type: 'shutdown' }); break;
       default: console.log(red(`unknown command :${word}`));
     }

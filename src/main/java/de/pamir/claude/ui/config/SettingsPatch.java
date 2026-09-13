@@ -33,7 +33,8 @@ public record SettingsPatch(
 		Boolean memoryReflectionApprovalRequired,
 		Boolean serviceDiscoveryEnabled,
 		Integer serviceDiscoveryStalenessDays,
-		String serviceDiscoveryModel) {
+		String serviceDiscoveryModel,
+		Integer contextWarnPercent) {
 
 	public static Builder builder() {
 		return new Builder();
@@ -65,6 +66,7 @@ public record SettingsPatch(
 		private Boolean serviceDiscoveryEnabled;
 		private Integer serviceDiscoveryStalenessDays;
 		private String serviceDiscoveryModel;
+		private Integer contextWarnPercent;
 
 		public Builder linearOAuthEnabled(Boolean v) {
 			this.linearOAuthEnabled = v;
@@ -186,13 +188,18 @@ public record SettingsPatch(
 			return this;
 		}
 
+		public Builder contextWarnPercent(Integer v) {
+			this.contextWarnPercent = v;
+			return this;
+		}
+
 		public SettingsPatch build() {
 			return new SettingsPatch(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs, prChecksEnabled,
 					prCheckPollIntervalSeconds, librarySkillsRoot, libraryAgentsRoot, libraryVectorize,
 					librarySyncEnabled, librarySyncIntervalMinutes, defaultProvider, systemProvider, codexPricing,
 					memoryRoot, memoryEnabled, memoryReflectionDefault, memoryReflectionModel,
 					memorySyncIntervalMinutes, memoryRetentionDays, memoryReflectionApprovalRequired,
-					serviceDiscoveryEnabled, serviceDiscoveryStalenessDays, serviceDiscoveryModel);
+					serviceDiscoveryEnabled, serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent);
 		}
 	}
 }

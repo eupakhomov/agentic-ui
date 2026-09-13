@@ -129,6 +129,25 @@ export function translateSdkMessage(
           mcpServers: m.mcp_servers,
           permissionMode: m.permissionMode as PermissionMode,
         });
+      } else if (message['subtype'] === 'compact_boundary') {
+        const m = message as unknown as {
+          compact_metadata: { trigger: 'manual' | 'auto'; pre_tokens: number; post_tokens?: number };
+        };
+        events.push({
+          type: 'context_compacted',
+          preTokens: m.compact_metadata.pre_tokens,
+          postTokens: m.compact_metadata.post_tokens ?? m.compact_metadata.pre_tokens,
+          trigger: m.compact_metadata.trigger,
+        });
+      } else if (
+        message['subtype'] === 'status' &&
+        (message as unknown as { compact_result?: string }).compact_result === 'failed'
+      ) {
+        // A manual /compact can fail per-model even when normal turns on that model work
+        // (docs/plan/phase-12-linear-cache-serena-context.md Step C0 outcome) — surface it
+        // rather than silently leaving the chip stale.
+        const m = message as unknown as { compact_error?: string };
+        events.push({ type: 'error', message: `compact failed: ${m.compact_error ?? 'unknown error'}`, fatal: false });
       }
       break;
     case 'stream_event': {
@@ -282,6 +301,25 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   const q = query({ prompt: userMessages(), options });
   // updated from system_init (which reports the concrete resolved id, even for an alias like "sonnet")
   const modelState = { currentModel: '' };
+  // Belt-and-suspenders guard for 'compact' — the backend only sends it for an
+  // IDLE/parked session, but the sidecar checks too (docs/plan/phase-12-linear-cache-
+  // serena-context.md decision 9). Set on any pushed user message (including /compact
+  // itself), cleared when its turn_complete arrives.
+  let turnInFlight = false;
+
+  async function emitContextUsage(): Promise<void> {
+    try {
+      const usage = await q.getContextUsage();
+      writeEvent({
+        type: 'context_usage',
+        tokens: usage.totalTokens,
+        window: usage.rawMaxTokens,
+        ...(usage.autoCompactThreshold !== undefined ? { autoCompactAt: usage.autoCompactThreshold } : {}),
+      });
+    } catch (e) {
+      log(`getContextUsage failed: ${String(e)}`);
+    }
+  }
 
   const handleCommand = (line: string): void => {
     let cmd: Command;
@@ -293,9 +331,23 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     }
     switch (cmd.type) {
       case 'user_message':
+        turnInFlight = true;
         inputQueue.push({
           type: 'user',
           message: { role: 'user', content: [{ type: 'text', text: cmd.text }] },
+          parent_tool_use_id: null,
+          session_id: '',
+        } as SDKUserMessage);
+        break;
+      case 'compact':
+        if (turnInFlight) {
+          writeEvent({ type: 'error', message: 'compact: turn in progress', fatal: false });
+          break;
+        }
+        turnInFlight = true;
+        inputQueue.push({
+          type: 'user',
+          message: { role: 'user', content: [{ type: 'text', text: '/compact' }] },
           parent_tool_use_id: null,
           session_id: '',
         } as SDKUserMessage);
@@ -355,6 +407,10 @@ export async function runSession(config: SidecarConfig): Promise<never> {
       const { events, logs } = translateSdkMessage(message, modelState);
       for (const event of events) writeEvent(event);
       for (const line of logs) log(line);
+      const compacted = events.some((e) => e.type === 'context_compacted');
+      const completed = events.some((e) => e.type === 'turn_complete');
+      if (completed) turnInFlight = false;
+      if (compacted || completed) await emitContextUsage();
     }
   } catch (e) {
     writeEvent({ type: 'error', message: String(e instanceof Error ? e.stack ?? e.message : e), fatal: true });

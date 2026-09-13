@@ -35,6 +35,8 @@ export interface Capabilities {
   unsupportedSessionFields?: string[];
   contextDirs?: boolean;
   reportsCostUsd?: boolean;
+  /** supports the compact command; absent/false hides the widget's Compact action but the ctx chip still shows */
+  compact?: boolean;
 }
 
 /** GET /api/providers — static per-provider capabilities, used to gate create-dialog/
@@ -89,6 +91,9 @@ export interface SessionEntity {
   prCheckedAt: string | null;
   /** Opt-in end-of-session memory retrospective (phase 5.3) */
   reflectionEnabled: boolean;
+  /** Latest known context-window usage (phase 12 track C); null until the first turn */
+  contextTokens: number | null;
+  contextWindow: number | null;
 }
 
 export type PrCheckStatus = 'PENDING' | 'SUCCESS' | 'FAILURE' | 'MERGED' | 'CLOSED' | 'ERROR';
@@ -188,6 +193,8 @@ export interface Settings {
   serviceDiscoveryStalenessDays: number;
   /** tier: 'cheap' | 'standard' | 'premium' */
   serviceDiscoveryModel: string;
+  /** widget ctx chip amber threshold, 30-95 (default 70) */
+  contextWarnPercent: number;
 }
 
 // --- layered memory (phase 5.3) ---
@@ -366,6 +373,12 @@ export interface TicketSummary {
   ref: string;
   title: string;
   status: string;
+}
+
+export interface TicketList {
+  tickets: TicketSummary[];
+  fetchedAt: string;
+  cached: boolean;
 }
 
 export interface TurnUsage {

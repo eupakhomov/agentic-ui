@@ -31,5 +31,7 @@ public record Settings(
 		boolean memoryReflectionApprovalRequired,
 		boolean serviceDiscoveryEnabled,
 		int serviceDiscoveryStalenessDays,
-		String serviceDiscoveryModel) {
+		String serviceDiscoveryModel,
+		/** Widget chip warn threshold, 30-95 (docs/plan/phase-12-linear-cache-serena-context.md decision 10) */
+		int contextWarnPercent) {
 }

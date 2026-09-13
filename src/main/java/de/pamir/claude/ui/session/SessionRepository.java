@@ -148,6 +148,13 @@ public class SessionRepository {
 				.params(status, headSha, Timestamp.from(checkedAt), id).update();
 	}
 
+	/** Latest known context-window snapshot, refreshed after every turn and every compaction
+	 * (docs/plan/phase-12-linear-cache-serena-context.md decision 9). */
+	public void updateContextUsage(UUID id, int tokens, int window) {
+		jdbc.sql("UPDATE session SET context_tokens = ?, context_window = ?, updated_at = now() WHERE id = ?")
+				.params(tokens, window, id).update();
+	}
+
 	/** Sessions with an open PR whose status is still PENDING and due for another check. */
 	public List<SessionEntity> findAwaitingPrCheck(Instant cutoff) {
 		return jdbc.sql("SELECT * FROM session WHERE pr_url IS NOT NULL AND pr_check_status = 'PENDING' "
@@ -278,6 +285,8 @@ public class SessionRepository {
 				rs.getTimestamp("pr_checked_at") == null ? null : rs.getTimestamp("pr_checked_at").toInstant(),
 				rs.getBoolean("reflection_enabled"),
 				(Long) rs.getObject("reflected_seq"),
+				(Integer) rs.getObject("context_tokens"),
+				(Integer) rs.getObject("context_window"),
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("updated_at").toInstant());
 	}

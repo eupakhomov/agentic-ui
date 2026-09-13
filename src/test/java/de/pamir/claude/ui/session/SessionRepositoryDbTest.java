@@ -150,4 +150,17 @@ class SessionRepositoryDbTest {
 		assertThat(closedCount).isGreaterThanOrEqualTo(1);
 		assertThat(sessions.get(closed.id()).state()).isEqualTo(SessionState.CLOSED);
 	}
+
+	@Test
+	void contextTokensAndWindowAreNullUntilTheFirstUpdateThenRoundTrip() {
+		SessionEntity inserted = insertSession(SessionState.IDLE);
+		assertThat(inserted.contextTokens()).isNull();
+		assertThat(inserted.contextWindow()).isNull();
+
+		sessions.updateContextUsage(inserted.id(), 38000, 200000);
+
+		SessionEntity loaded = sessions.get(inserted.id());
+		assertThat(loaded.contextTokens()).isEqualTo(38000);
+		assertThat(loaded.contextWindow()).isEqualTo(200000);
+	}
 }

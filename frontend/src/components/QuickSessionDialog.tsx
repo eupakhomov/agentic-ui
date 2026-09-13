@@ -20,6 +20,7 @@ export default function QuickSessionDialog({
   const [servicesInfo, setServicesInfo] = useState<ServicesResponse | null>(null);
   const [servicePath, setServicePath] = useState('');
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
+  const [ticketImportWarm, setTicketImportWarm] = useState(false);
   // recommendedModel is generated against the *default* provider's catalog (TicketImportService
   // uses SettingsService.defaultProvider()), which is what a new session created here also gets
   // absent an explicit override in lastSessionConfig — see ModelCatalog (P3).
@@ -44,7 +45,8 @@ export default function QuickSessionDialog({
       setServicesInfo(info);
       setServicePath(info.defaultRepoPath);
     }).catch(() => setServicesInfo(null));
-    api.ticketImportEnabled().then((r) => setTicketImportEnabled(r.enabled)).catch(() => setTicketImportEnabled(false));
+    api.ticketImportEnabled().then((r) => { setTicketImportEnabled(r.enabled); setTicketImportWarm(r.warm); })
+      .catch(() => setTicketImportEnabled(false));
     Promise.all([api.getSettings(), api.listProviders()]).then(([settings, providers]) => {
       const models = providers.find((p: ProviderView) => p.id === settings.defaultProvider)?.capabilities.models ?? [];
       setDefaultProviderModelIds(models.map((m) => m.id));
@@ -143,7 +145,9 @@ export default function QuickSessionDialog({
             </div>
             {importBusy && (
               <div className="full" style={{ gridColumn: '2 / -1', color: 'var(--muted)', fontSize: 12.5 }}>
-                fetching from Linear — can take up to 45s on the first call (spinning up the system session)…
+                {ticketImportWarm
+                  ? 'fetching from Linear…'
+                  : 'fetching from Linear — can take up to 45s on the first call (spinning up the system session)…'}
               </div>
             )}
             {importError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{importError}</div>}
@@ -175,9 +179,11 @@ export default function QuickSessionDialog({
     </div>
     {showTicketPicker && (
       <TicketPickerDialog
-        tickets={recentTickets}
+        list={recentTickets}
         busy={pickerBusy}
         error={pickerError}
+        warm={ticketImportWarm}
+        onRefresh={() => void ticketImport.browseRecentTickets(true)}
         onPick={pickTicket}
         onClose={() => { ticketImport.cancel(); setShowTicketPicker(false); }}
       />

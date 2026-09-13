@@ -185,6 +185,13 @@ public class SessionController {
 		return ResponseEntity.noContent().build();
 	}
 
+	/** 409 (via ApiExceptionHandler) when the session isn't IDLE/PARKED — see SessionService.compact. */
+	@PostMapping("/{id}/compact")
+	public ResponseEntity<Void> compact(@PathVariable UUID id) {
+		service.compact(id);
+		return ResponseEntity.accepted().build();
+	}
+
 	@DeleteMapping("/{id}/queue/{pos}")
 	public ResponseEntity<Void> deleteQueued(@PathVariable UUID id, @PathVariable long pos) {
 		return service.deleteQueued(id, pos) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();

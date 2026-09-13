@@ -36,7 +36,7 @@ class SidecarManagerTest {
 	void omitsFlagsTheProviderDeclaresUnsupportedEvenWhenTheSessionCarriesValuesForThem() {
 		ProviderCapabilities limited = new ProviderCapabilities(List.of("default"), false, true, false, true,
 				true, false, true, true, false, false, true,
-				List.of("allowedTools", "disallowedTools", "thinking", "maxTurns", "fallbackModel"), false, false);
+				List.of("allowedTools", "disallowedTools", "thinking", "maxTurns", "fallbackModel"), false, false, true);
 		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", limited));
 		SessionEntity entity = baseEntity().provider("widget").ecosystemPath("/ecosystem").build();
 
@@ -49,7 +49,7 @@ class SidecarManagerTest {
 	@Test
 	void includesTheSameFlagsForAProviderThatSupportsThem() {
 		ProviderCapabilities full = new ProviderCapabilities(List.of("default"), true, true, true, true, true,
-				true, true, true, true, true, true, List.of(), true, true);
+				true, true, true, true, true, true, List.of(), true, true, true);
 		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", full));
 		SessionEntity entity = baseEntity().provider("widget").build();
 
@@ -63,13 +63,13 @@ class SidecarManagerTest {
 
 	private static ProviderCapabilities fullCaps() {
 		return new ProviderCapabilities(List.of("default"), true, true, true, true, true,
-				true, true, true, true, true, true, List.of(), true, true);
+				true, true, true, true, true, true, List.of(), true, true, true);
 	}
 
 	/** Same as {@link #fullCaps()} but with contextDirs off — sidecar-codex's actual capabilities.json shape. */
 	private static ProviderCapabilities codexLikeCaps() {
 		return new ProviderCapabilities(List.of("default"), true, true, true, true, true,
-				true, true, true, true, true, true, List.of(), false, true);
+				true, true, true, true, true, true, List.of(), false, true, true);
 	}
 
 	@Test
