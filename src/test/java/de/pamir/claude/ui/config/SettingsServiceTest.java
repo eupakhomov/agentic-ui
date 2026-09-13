@@ -143,6 +143,30 @@ class SettingsServiceTest {
 	}
 
 	@Test
+	void mcpSerenaRootDefaultsToEmpty() {
+		assertThat(newService().current().mcpSerenaRoot()).isEmpty();
+	}
+
+	@Test
+	void mcpSerenaRootRoundTripsThroughApply() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().mcpSerenaRoot("/mnt/d/projects/serena").build());
+		assertThat(settings.current().mcpSerenaRoot()).isEqualTo("/mnt/d/projects/serena");
+	}
+
+	@Test
+	void mcpUvPathDefaultsToUv() {
+		assertThat(newService().current().mcpUvPath()).isEqualTo("uv");
+	}
+
+	@Test
+	void mcpUvPathRoundTripsThroughApply() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().mcpUvPath("/opt/uv/bin/uv").build());
+		assertThat(settings.current().mcpUvPath()).isEqualTo("/opt/uv/bin/uv");
+	}
+
+	@Test
 	void currentCachesUntilApply() {
 		SettingsService settings = newService();
 		Settings first = settings.current();

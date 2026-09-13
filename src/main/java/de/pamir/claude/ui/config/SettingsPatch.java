@@ -34,7 +34,9 @@ public record SettingsPatch(
 		Boolean serviceDiscoveryEnabled,
 		Integer serviceDiscoveryStalenessDays,
 		String serviceDiscoveryModel,
-		Integer contextWarnPercent) {
+		Integer contextWarnPercent,
+		String mcpSerenaRoot,
+		String mcpUvPath) {
 
 	public static Builder builder() {
 		return new Builder();
@@ -67,6 +69,8 @@ public record SettingsPatch(
 		private Integer serviceDiscoveryStalenessDays;
 		private String serviceDiscoveryModel;
 		private Integer contextWarnPercent;
+		private String mcpSerenaRoot;
+		private String mcpUvPath;
 
 		public Builder linearOAuthEnabled(Boolean v) {
 			this.linearOAuthEnabled = v;
@@ -193,13 +197,24 @@ public record SettingsPatch(
 			return this;
 		}
 
+		public Builder mcpSerenaRoot(String v) {
+			this.mcpSerenaRoot = v;
+			return this;
+		}
+
+		public Builder mcpUvPath(String v) {
+			this.mcpUvPath = v;
+			return this;
+		}
+
 		public SettingsPatch build() {
 			return new SettingsPatch(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs, prChecksEnabled,
 					prCheckPollIntervalSeconds, librarySkillsRoot, libraryAgentsRoot, libraryVectorize,
 					librarySyncEnabled, librarySyncIntervalMinutes, defaultProvider, systemProvider, codexPricing,
 					memoryRoot, memoryEnabled, memoryReflectionDefault, memoryReflectionModel,
 					memorySyncIntervalMinutes, memoryRetentionDays, memoryReflectionApprovalRequired,
-					serviceDiscoveryEnabled, serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent);
+					serviceDiscoveryEnabled, serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent,
+					mcpSerenaRoot, mcpUvPath);
 		}
 	}
 }

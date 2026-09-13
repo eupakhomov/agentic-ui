@@ -69,6 +69,14 @@ public class SidecarManager {
 		command.addAll(buildArgs(session, mcpConfigFile, resume, extraSystemPrompt));
 
 		ProcessBuilder builder = new ProcessBuilder(command).directory(Path.of(session.worktreePath()).toFile());
+		if (session.serenaEnabled()) {
+			// Serena's language server can take minutes to download on a cold cache (docs/plan/
+			// phase-12-linear-cache-serena-context.md Step B0) — a generous, conservative default
+			// the client's own MCP handshake timeout should honor, so it doesn't give up on Serena
+			// as a dead server mid-download. Set before the session's own envVars so it can still
+			// override this.
+			builder.environment().put("MCP_TIMEOUT", "300000");
+		}
 		if (session.envVars() != null && session.envVars().isObject()) {
 			session.envVars().properties().forEach(e -> builder.environment().put(e.getKey(), e.getValue().asText()));
 		}

@@ -61,7 +61,7 @@ class SessionStateMachineTest {
 		journal = new FakeEventJournal(props);
 		worktrees = new FakeGitWorktreeService();
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
-		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, worktrees);
+		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, worktrees, null);
 		SystemSessionService systemSessionService =
 				new SystemSessionService(props, settings, sessions, configFactory, journalPublisher, mapper, null);
 		publishedEvents = new ArrayList<>();
@@ -71,7 +71,7 @@ class SessionStateMachineTest {
 
 	private static SettingsService fakeSettings(boolean memoryEnabled, boolean serviceDiscoveryEnabled) {
 		Settings fixed = new Settings(false, "", "", "", true, 180, "", "", false, true, 60, "claude", "", "",
-				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70);
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -438,7 +438,7 @@ class SessionStateMachineTest {
 		SessionConfigFactory configFactory = new SessionConfigFactory(
 				new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills", "/memory", 4,
 						"authtoken", "", "", "logs", 30, 65536, 1048576, Map.of()),
-				fakeSettings(false, true), null, mapper, null, 8080, null, worktrees);
+				fakeSettings(false, true), null, mapper, null, 8080, null, worktrees, null);
 		SettingsService settings = fakeSettings(false, true);
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
 		SystemSessionService systemSessionService =
@@ -476,7 +476,8 @@ class SessionStateMachineTest {
 
 	private static ProviderCapabilities fullCapabilities() {
 		return new ProviderCapabilities(List.of("default", "acceptEdits", "plan", "bypassPermissions"),
-				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true);
+				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true,
+				"claude-code");
 	}
 
 	/**
@@ -493,7 +494,7 @@ class SessionStateMachineTest {
 		worktrees.setKnownServices(List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, repo)));
 
 		Settings fixedSettings = new Settings(false, "", "/eco", "packages/*,services/*,apps/*,libs/*", true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70);
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv");
 		SettingsService settingsWithEcosystem = new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -504,7 +505,7 @@ class SessionStateMachineTest {
 				"/memory", 4, "authtoken", "", "", "logs", 30, 65536, 1048576, Map.of());
 		ProviderCatalog catalog = ProviderCatalog.fixedForTest(Map.of("claude", fullCapabilities()));
 		SessionConfigFactory configFactory =
-				new SessionConfigFactory(props, settingsWithEcosystem, null, mapper, null, 8080, catalog, worktrees);
+				new SessionConfigFactory(props, settingsWithEcosystem, null, mapper, null, 8080, catalog, worktrees, null);
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
 		SystemSessionService systemSessionService =
 				new SystemSessionService(props, settingsWithEcosystem, sessions, configFactory, journalPublisher, mapper, null);
@@ -543,6 +544,7 @@ class SessionStateMachineTest {
 		String exclude = Files.readString(expectedWorktree.resolve(".git/info/exclude"));
 		assertThat(exclude).contains("packages/foo/.claude/skills/")
 				.contains("packages/foo/.claude/agents/")
+				.contains("packages/foo/.serena/")
 				.contains(".claude-ui.pid");
 		// the pid line is never prefixed — the pid file always lives at the worktree root
 		assertThat(exclude).doesNotContain("packages/foo/.claude-ui.pid");

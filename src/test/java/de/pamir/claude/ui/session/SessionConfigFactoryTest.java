@@ -4,6 +4,7 @@ import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitWorktreeService;
+import de.pamir.claude.ui.integration.SerenaService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -39,7 +40,7 @@ class SessionConfigFactoryTest {
 		// touch the (null in these tests) SettingsRepository regardless — overriding current() to
 		// return a fixed snapshot sidesteps that entirely.
 		Settings fixed = new Settings(linearOAuth, "", "", "", true, 180, "", "", false, true, 60, "claude", "", "",
-				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70);
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -49,7 +50,7 @@ class SessionConfigFactoryTest {
 	}
 
 	private SessionConfigFactory factoryWith(AppProperties props, SettingsService settings) {
-		return new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, null);
+		return new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, null, null);
 	}
 
 	/** A {@link GitWorktreeService} whose git-touching methods are stubbed — see docs/plan/phase-11-monorepo.md Step 3. */
@@ -75,7 +76,8 @@ class SessionConfigFactoryTest {
 
 	private static ProviderCapabilities fullCapabilities() {
 		return new ProviderCapabilities(List.of("default", "acceptEdits", "plan", "bypassPermissions"),
-				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true);
+				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true,
+				"claude-code");
 	}
 
 	private static AppProperties propsWithLinearKey(String linearApiKey, String authToken) {
@@ -210,7 +212,7 @@ class SessionConfigFactoryTest {
 		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
 				null, mapper, null, 8080, fakeCatalog(Map.of("widget", new ProviderCapabilities(
 						List.of("default"), true, true, true, true, true, true, true, true, true, true, true,
-						List.of("maxTurns"), true, true, true))), null);
+						List.of("maxTurns"), true, true, true, "claude-code"))), null, null);
 		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -225,7 +227,7 @@ class SessionConfigFactoryTest {
 	void prepareAcceptsTheSameFieldForAProviderThatSupportsIt() {
 		AppProperties props = propsWithLinearKey("", "authtoken");
 		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
-				null, mapper, null, 8080, fakeCatalog(Map.of("widget", fullCapabilities())), null);
+				null, mapper, null, 8080, fakeCatalog(Map.of("widget", fullCapabilities())), null, null);
 		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -239,7 +241,7 @@ class SessionConfigFactoryTest {
 
 	private static SettingsService fakeSettingsWithEcosystem(String ecosystemRoot) {
 		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70);
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -255,7 +257,7 @@ class SessionConfigFactoryTest {
 				List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, "/repo")));
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
 				fakeSettingsWithEcosystem("/eco"), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees);
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
 				.withServicePath(servicePath);
@@ -271,7 +273,7 @@ class SessionConfigFactoryTest {
 		GitWorktreeService worktrees = fakeWorktrees(Map.of(), List.of()); // repoRootOf always empty
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
 				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees);
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
 				.withServicePath("/not-a-repo/foo");
@@ -290,7 +292,7 @@ class SessionConfigFactoryTest {
 		// anything that isn't the repo root itself, without even calling the (empty) findServices fake.
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
 				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees);
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
 				.withServicePath(servicePath);
@@ -306,7 +308,7 @@ class SessionConfigFactoryTest {
 		String repo = System.getProperty("user.dir");
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
 				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), null);
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", repo, null, mapper.createObjectNode(), Map.of(), false);
 
@@ -316,5 +318,143 @@ class SessionConfigFactoryTest {
 		// resolved accessor falls back to repoPath — byte-identical polyrepo behavior
 		assertThat(prepared.entity().servicePath()).isEqualTo(repo);
 		assertThat(factory.configOverridesFrom(prepared.entity()).has("servicePath")).isFalse();
+	}
+
+	// --- Serena (docs/plan/phase-12-linear-cache-serena-context.md Track B) ---
+
+	/** Sidecar-codex's actual capabilities.json shape — serenaContext "codex", no prompt override. */
+	private static ProviderCapabilities codexLikeCapabilities() {
+		return new ProviderCapabilities(List.of("default", "bypassPermissions"),
+				false, true, false, true, true, false, true, true, false, false, true,
+				List.of("allowedTools", "disallowedTools", "thinking", "maxTurns", "fallbackModel"),
+				false, false, true, "codex");
+	}
+
+	/** Hand-written fake (this file's convention — no mocking framework): overrides the public
+	 * accessors {@link SessionConfigFactory} actually calls, sidesteps real process execution. */
+	private static SerenaService fakeSerena(boolean configured, String root, String uvCommand, String promptOverride) {
+		return new SerenaService(null) {
+			@Override
+			public boolean configured() {
+				return configured;
+			}
+
+			@Override
+			public String root() {
+				return root;
+			}
+
+			@Override
+			public String uvCommand() {
+				return uvCommand;
+			}
+
+			@Override
+			public String ccSystemPromptOverride() {
+				return promptOverride;
+			}
+		};
+	}
+
+	private static List<String> serenaArgs(SessionEntity entity) {
+		List<String> args = new ArrayList<>();
+		entity.mcpConfig().path("serena").path("args").forEach(n -> args.add(n.asText()));
+		return args;
+	}
+
+	@Test
+	void prepareLayersASerenaMcpEntryWhenEnabledAndConfigured() {
+		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", null);
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena);
+		ObjectNode overrides = mapper.createObjectNode().put("serenaEnabled", true);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().serenaEnabled()).isTrue();
+		assertThat(prepared.entity().mcpConfig().path("serena").path("command").asText()).isEqualTo("uv");
+		assertThat(serenaArgs(prepared.entity())).containsExactly("run", "--directory", "/mnt/d/projects/serena",
+				"serena", "start-mcp-server", "--context", "claude-code", "--project", "/worktree",
+				"--open-web-dashboard", "false");
+	}
+
+	@Test
+	void prepareLeavesMcpConfigUnchangedWhenSerenaIsNotEnabled() {
+		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", null);
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, mapper.createObjectNode(), Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().serenaEnabled()).isFalse();
+		assertThat(prepared.entity().mcpConfig()).isNull();
+	}
+
+	@Test
+	void prepareKeepsAnExplicitSerenaMcpEntryUntouched() {
+		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", null);
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena);
+		ObjectNode overrides = mapper.createObjectNode().put("serenaEnabled", true);
+		overrides.putObject("mcpConfig").putObject("serena").put("command", "custom-uv");
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().mcpConfig().path("serena").path("command").asText()).isEqualTo("custom-uv");
+	}
+
+	@Test
+	void prepareUsesTheProvidersDeclaredSerenaContext() {
+		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", null);
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("codex", codexLikeCapabilities())), null, serena);
+		ObjectNode overrides = mapper.createObjectNode().put("provider", "codex").put("serenaEnabled", true);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(serenaArgs(prepared.entity())).contains("--context", "codex");
+	}
+
+	@Test
+	void prepareRejectsSerenaEnabledWhenNotConfigured() {
+		SerenaService serena = fakeSerena(false, "", "uv", null);
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena);
+		ObjectNode overrides = mapper.createObjectNode().put("serenaEnabled", true);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
+
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(
+						() -> factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("Serena");
+	}
+
+	@Test
+	void extraSystemPromptIncludesSerenaOverrideOnlyForClaudeCodeContext() {
+		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", "SERENA OVERRIDE TEXT");
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities(), "codex", codexLikeCapabilities())), null, serena);
+		SessionEntity claudeSession = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("claude")
+				.repoPath("/repo").branch("b").baseBranch("main").worktreePath("/wt")
+				.state(SessionState.CREATING).kind("user").serenaEnabled(true).build();
+		SessionEntity codexSession = claudeSession.toBuilder().provider("codex").build();
+
+		assertThat(factory.extraSystemPrompt(claudeSession)).contains("SERENA OVERRIDE TEXT");
+		assertThat(factory.extraSystemPrompt(codexSession)).isNull();
 	}
 }

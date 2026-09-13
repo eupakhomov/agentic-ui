@@ -25,5 +25,6 @@
   ],
   "contextDirs": false,
   "reportsCostUsd": false,
-  "compact": true
+  "compact": true,
+  "serenaContext": "codex"
 }

@@ -18,7 +18,7 @@ class ProviderCatalogTest {
 
 	private static ProviderCapabilities caps(List<String> unsupported) {
 		return new ProviderCapabilities(List.of("default"), true, true, true, true, true, true, true, true,
-				true, true, true, unsupported, true, true, true);
+				true, true, true, unsupported, true, true, true, "claude-code");
 	}
 
 	@Test

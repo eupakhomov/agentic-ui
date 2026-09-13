@@ -20,7 +20,10 @@ public record ProviderCapabilities(List<String> permissionModes, boolean thinkin
 									boolean mcp, boolean interrupt, boolean fallbackModel,
 									boolean updatedInput, boolean modelSwitch,
 									List<String> unsupportedSessionFields, boolean contextDirs,
-									boolean reportsCostUsd, boolean compact) {
+									boolean reportsCostUsd, boolean compact,
+									/** Serena's built-in {@code --context} name for this provider (e.g. "claude-code"/"codex");
+									 * null/blank = Serena unsupported (docs/plan/phase-12-linear-cache-serena-context.md Track B) */
+									String serenaContext) {
 
 	/** True unless this session/create-option field is named in {@link #unsupportedSessionFields}. */
 	public boolean supports(String field) {

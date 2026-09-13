@@ -33,5 +33,9 @@ public record Settings(
 		int serviceDiscoveryStalenessDays,
 		String serviceDiscoveryModel,
 		/** Widget chip warn threshold, 30-95 (docs/plan/phase-12-linear-cache-serena-context.md decision 10) */
-		int contextWarnPercent) {
+		int contextWarnPercent,
+		/** Serena checkout root; empty = Serena unavailable (docs/plan/phase-12-linear-cache-serena-context.md Track B) */
+		String mcpSerenaRoot,
+		/** {@code uv} command/path, for hosts where it isn't on the backend's PATH; defaults to "uv" */
+		String mcpUvPath) {
 }

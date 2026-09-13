@@ -67,6 +67,9 @@ public record SessionEntity(
 		boolean reflectionEnabled,
 		/** Journal seq covered by the last reflection; null = never reflected */
 		Long reflectedSeq,
+		/** Opt-in Serena (symbolic code tools) MCP server, layered per-session (docs/plan/
+		 * phase-12-linear-cache-serena-context.md Track B decision 2) */
+		boolean serenaEnabled,
 		/** Latest known context-window usage (docs/plan/phase-12-linear-cache-serena-context.md
 		 * decision 9); null until the sidecar's first context_usage event. Both null or both set. */
 		Integer contextTokens,
@@ -124,7 +127,7 @@ public record SessionEntity(
 				.state(state).kind(kind).ticketRef(ticketRef).continuedFromId(continuedFromId)
 				.parentSessionId(parentSessionId).prUrl(prUrl).prHeadSha(prHeadSha).prCheckStatus(prCheckStatus)
 				.prCheckedAt(prCheckedAt).reflectionEnabled(reflectionEnabled).reflectedSeq(reflectedSeq)
-				.contextTokens(contextTokens).contextWindow(contextWindow)
+				.serenaEnabled(serenaEnabled).contextTokens(contextTokens).contextWindow(contextWindow)
 				.createdAt(createdAt).updatedAt(updatedAt);
 	}
 
@@ -179,6 +182,7 @@ public record SessionEntity(
 		private Instant prCheckedAt;
 		private boolean reflectionEnabled;
 		private Long reflectedSeq;
+		private boolean serenaEnabled;
 		private Integer contextTokens;
 		private Integer contextWindow;
 		private Instant createdAt;
@@ -226,6 +230,7 @@ public record SessionEntity(
 		public Builder prCheckedAt(Instant v) { this.prCheckedAt = v; return this; }
 		public Builder reflectionEnabled(boolean v) { this.reflectionEnabled = v; return this; }
 		public Builder reflectedSeq(Long v) { this.reflectedSeq = v; return this; }
+		public Builder serenaEnabled(boolean v) { this.serenaEnabled = v; return this; }
 		public Builder contextTokens(Integer v) { this.contextTokens = v; return this; }
 		public Builder contextWindow(Integer v) { this.contextWindow = v; return this; }
 		public Builder createdAt(Instant v) { this.createdAt = v; return this; }
@@ -237,7 +242,7 @@ public record SessionEntity(
 					allowedTools, disallowedTools, mcpConfig, envVars, skillSources, agentSources, instructions,
 					thinking, effort, maxTurns, fallbackModel, costBudgetUsd, kickoffPrompt, state, kind, ticketRef,
 					continuedFromId, parentSessionId, prUrl, prHeadSha, prCheckStatus, prCheckedAt, reflectionEnabled,
-					reflectedSeq, contextTokens, contextWindow, createdAt, updatedAt);
+					reflectedSeq, serenaEnabled, contextTokens, contextWindow, createdAt, updatedAt);
 		}
 	}
 }

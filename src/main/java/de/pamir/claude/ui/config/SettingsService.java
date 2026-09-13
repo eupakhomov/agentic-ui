@@ -74,6 +74,8 @@ public class SettingsService {
 	private static final String SERVICE_DISCOVERY_STALENESS_DAYS_KEY = "service-discovery.staleness-days";
 	private static final String SERVICE_DISCOVERY_MODEL_KEY = "service-discovery.model";
 	private static final String CONTEXT_WARN_PERCENT_KEY = "session.context-warn-percent";
+	private static final String MCP_SERENA_ROOT_KEY = "mcp.serena-root";
+	private static final String MCP_UV_PATH_KEY = "mcp.uv-path";
 
 	/** One row per {@link Settings}/{@link SettingsPatch} component — see the class doc. */
 	private record Field<T>(String key, Supplier<T> defaultValue, Function<String, T> parse,
@@ -151,6 +153,8 @@ public class SettingsService {
 	 * (past that there's no runway left to act on the nudge). */
 	private final Field<Integer> contextWarnPercent = new Field<>(CONTEXT_WARN_PERCENT_KEY, () -> 70,
 			Integer::parseInt, Object::toString, v -> Math.min(95, Math.max(30, v)), SettingsPatch::contextWarnPercent);
+	private final Field<String> mcpSerenaRoot = strField(MCP_SERENA_ROOT_KEY, () -> "", SettingsPatch::mcpSerenaRoot);
+	private final Field<String> mcpUvPath = strField(MCP_UV_PATH_KEY, () -> "uv", SettingsPatch::mcpUvPath);
 
 	private final List<Field<?>> fields;
 
@@ -173,7 +177,7 @@ public class SettingsService {
 				librarySyncIntervalMinutes, defaultProvider, systemProviderField, memoryRoot, memoryEnabled,
 				memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes, memoryRetentionDays,
 				memoryReflectionApprovalRequired, serviceDiscoveryEnabled, serviceDiscoveryStalenessDays,
-				serviceDiscoveryModel, contextWarnPercent);
+				serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath);
 	}
 
 	/** One snapshot of every setting in {@link #fields}, cached until the next {@link #apply}. */
@@ -207,7 +211,9 @@ public class SettingsService {
 				serviceDiscoveryEnabled.resolve(raw),
 				serviceDiscoveryStalenessDays.resolve(raw),
 				serviceDiscoveryModel.resolve(raw),
-				contextWarnPercent.resolve(raw));
+				contextWarnPercent.resolve(raw),
+				mcpSerenaRoot.resolve(raw),
+				mcpUvPath.resolve(raw));
 		cache = built;
 		return built;
 	}

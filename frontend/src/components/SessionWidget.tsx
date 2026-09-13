@@ -281,6 +281,9 @@ export default function SessionWidget({
         {entity?.ecosystemPath && (
           <span className="chip" title={`read-only context: ${entity.ecosystemPath}`}><EcosystemContext /></span>
         )}
+        {entity?.serenaEnabled && (
+          <span className="chip" title="Serena MCP enabled">serena</span>
+        )}
         {entity?.ticketRef && (
           <span className="chip" title="linked ticket"><LinkedTicket />{entity.ticketRef}</span>
         )}

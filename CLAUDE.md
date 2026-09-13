@@ -348,6 +348,23 @@ effect on the next use with no backend restart.
   writable, and the worktree itself (not the original checkout) as its context —
   see `docs/plan/phase-11-monorepo.md`. Polyrepo (a folder of separate repos) is
   unchanged.
+- **MCP servers** (Settings dialog → "MCP servers"; feature docs:
+  `docs/plan/phase-12-linear-cache-serena-context.md` Track B) — `mcp.serena-root` (path to a
+  Serena checkout; empty = Serena unavailable) and `mcp.uv-path` (default `uv`, for hosts where
+  it isn't on the backend's PATH). Saving validates the root is a directory whose
+  `pyproject.toml` names `serena-agent` and that `<uv> --version` runs (`SerenaService`); a
+  failure is a 400 with the reason, not silent. A session/template opts in per-session via
+  `serenaEnabled` (default off — each enabled session runs its own Python process plus a
+  language server) — the create dialog's "Serena (symbolic code tools)" checkbox only renders
+  when the root is configured. A Serena-enabled session gets a `serena` stdio MCP entry layered
+  into its `mcpConfig` (unless it already declares one — same rule as Linear/memory), pointing
+  at its own `cwdPath` (monorepo: the package folder) with `--context` from the provider's own
+  `capabilities.json` (`claude-code`/`codex` — no provider name in Java); Claude sessions
+  additionally get Serena's own recommended system-prompt override appended via the existing
+  `extraSystemPrompt` seam (captured once per root via `serena prompts
+  print-cc-system-prompt-override`, memoized, never blocks session creation on failure). The
+  sidecar env gets `MCP_TIMEOUT=300000` when Serena is enabled, since its language server can
+  take minutes to download on a cold cache.
 - **Context warning threshold** (Settings dialog → "Sessions", `session.context-warn-
   percent`, default 70, floor 30, ceiling 95) — one number, same meaning for every
   session. Every session carries `contextTokens`/`contextWindow` (latest known,

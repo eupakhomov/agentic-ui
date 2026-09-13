@@ -81,7 +81,8 @@ this, never from the provider name:
   "unsupportedSessionFields": [],
   "contextDirs": true,
   "reportsCostUsd": true,
-  "compact": true
+  "compact": true,
+  "serenaContext": "claude-code"
 }
 ```
 
@@ -115,6 +116,13 @@ backend.
 widget still shows the `context_usage` chip but hides the Compact button/action for
 that provider (see docs/plan/phase-12-linear-cache-serena-context.md Step C0: both
 shipped providers report `true`, but a future adapter could reasonably not).
+
+`serenaContext` (Track B) is Serena's own built-in `--context` name for this provider
+(`"claude-code"`/`"codex"`); empty/absent means the provider doesn't support Serena.
+Backend-enforcement only, same as `unsupportedSessionFields`/`contextDirs`/
+`reportsCostUsd` above — `SessionConfigFactory` reads it to build the Serena MCP entry's
+`--context` argument and to gate the Claude-Code-specific system-prompt override, never
+a hardcoded provider name.
 
 ## Behavioral notes (Claude adapter)
 

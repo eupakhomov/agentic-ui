@@ -152,6 +152,20 @@ class SessionRepositoryDbTest {
 	}
 
 	@Test
+	void serenaEnabledRoundTripsThroughInsert() {
+		UUID id = UUID.randomUUID();
+		SessionEntity entity = SessionEntity.builder()
+				.id(id).name("t-" + id).provider("claude")
+				.repoPath("/repo").branch("b-" + id).baseBranch("main").worktreePath("/wt/" + id)
+				.skillSources(mapper.createArrayNode()).agentSources(mapper.createArrayNode())
+				.state(SessionState.IDLE).serenaEnabled(true).build();
+
+		sessions.insert(entity);
+
+		assertThat(sessions.get(id).serenaEnabled()).isTrue();
+	}
+
+	@Test
 	void contextTokensAndWindowAreNullUntilTheFirstUpdateThenRoundTrip() {
 		SessionEntity inserted = insertSession(SessionState.IDLE);
 		assertThat(inserted.contextTokens()).isNull();

@@ -221,6 +221,24 @@ export CLAUDE_UI_VOYAGE_API_KEY="pa-..."   # Voyage AI dashboard → API keys
 
 Nothing else changes if this is left unset — every feature above degrades gracefully.
 
+## 8b. Optional: Serena (symbolic code tools)
+
+Adds `find_symbol`/references/etc. as an MCP server, opt-in per session (docs/plan/
+phase-12-linear-cache-serena-context.md Track B). Two prerequisites, both optional —
+without them the feature simply doesn't appear:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # installs uv; macOS or Linux
+git clone https://github.com/oraios/serena.git ~/serena   # or wherever you keep checkouts
+```
+
+Then in Settings → "MCP servers": set **Serena root** to the checkout path (saving
+validates it's a real Serena checkout and that `uv --version` runs) and, only if `uv`
+isn't already on the backend's `PATH`, **uv path** to its full path. Once configured, the
+create dialog's "Serena (symbolic code tools)" checkbox appears (default off — each
+enabled session runs its own Python process plus a language server, so it's not
+something to turn on for every session by default).
+
 ## 9. Updating
 
 ```bash

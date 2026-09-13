@@ -1,10 +1,12 @@
 # Phase 12 — Linear ticket cache, Serena MCP, context-usage indicator
 
-Status: **Tracks A and C landed (2026-09-13); B planned** — three independent tracks, each
-shippable on its own; the order below is by value-per-effort (A is a half-day, B a day, C the
-biggest). Decisions 1–4 were confirmed with the user before this doc was written; the rest are
-proposals to confirm before the corresponding step starts. Verified against the code as of
-Phase 11 (commit `07b4de2`); every edit site named below was checked to exist as described.
+Status: **All three tracks landed (2026-09-13)** — three independent tracks, each shippable on
+its own; the order below is by value-per-effort (A is a half-day, B a day, C the biggest).
+Decisions 1–4 were confirmed with the user before this doc was written; the rest are proposals
+confirmed as each step landed (see the decision log entries for what changed on contact with the
+code — notably B1's `serena-agent` vs `serena` package-name correction and B2's separate V16
+migration, since C's V15 had already landed by the time B started). Verified against the code as
+of Phase 11 (commit `07b4de2`); every edit site named below was checked to exist as described.
 
 ## Background
 
@@ -47,7 +49,12 @@ user clones it) runs as a stdio MCP server from a checkout via
   the host running the server; several sessions = several dashboards, so keep the dashboard
   enabled (it's the log UI) but never auto-open it.
 - It writes `.serena/` into the project dir and creates `.serena/.gitignore` itself
-  (`src/serena/project.py:64-69`), so worktrees stay clean for the dirty-check/commit flow.
+  (`src/serena/project.py:64-69`) — but that inner `.gitignore` only covers `.serena/cache` and
+  `.serena/project.local.yml` *within* the directory; it does NOT keep `.serena/` itself out of
+  `git status` (confirmed live — a fresh Serena-enabled session showed `?? .serena/`). Worktrees
+  stay clean via the *repo's own* `.git/info/exclude`, the same mechanism `SessionService.
+  excludeProvisionedAssets` already uses for `.claude/skills/`/`.claude/agents/`/`.claude-ui.pid`
+  — B2 extends that method to also list `.serena/` there (unconditionally, same precedent).
 - Language servers are downloaded on first use per language (Java → JDT LS, minutes on a cold
   cache) — the client must be told to wait (`MCP_TIMEOUT` for Claude Code).
 - Their Claude Code guide says the agent otherwise "will often fail to make proper use of

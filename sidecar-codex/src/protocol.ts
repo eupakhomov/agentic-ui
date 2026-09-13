@@ -115,6 +115,8 @@ export interface Capabilities {
   reportsCostUsd: boolean;
   /** supports the compact command (in-place context compaction) */
   compact: boolean;
+  /** Serena's built-in `--context` name for this provider (e.g. "claude-code"/"codex"); empty/absent = Serena unsupported */
+  serenaContext: string;
 }
 
 export interface ReadyEvent {
@@ -284,4 +286,5 @@ export const CODEX_CAPABILITIES: Capabilities = {
   // (docs/plan/phase-12-linear-cache-serena-context.md Step C0): thread/compact/start
   // + thread/compacted exist on the default protocol surface, no --experimental flag.
   compact: true,
+  serenaContext: 'codex',
 };

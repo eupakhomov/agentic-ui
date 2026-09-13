@@ -91,6 +91,8 @@ export interface SessionEntity {
   prCheckedAt: string | null;
   /** Opt-in end-of-session memory retrospective (phase 5.3) */
   reflectionEnabled: boolean;
+  /** Opt-in Serena (symbolic code tools) MCP server (phase 12 track B) */
+  serenaEnabled: boolean;
   /** Latest known context-window usage (phase 12 track C); null until the first turn */
   contextTokens: number | null;
   contextWindow: number | null;
@@ -195,6 +197,10 @@ export interface Settings {
   serviceDiscoveryModel: string;
   /** widget ctx chip amber threshold, 30-95 (default 70) */
   contextWarnPercent: number;
+  /** Serena checkout root; empty = Serena unavailable (phase 12 track B) */
+  mcpSerenaRoot: string;
+  /** `uv` command/path, for hosts where it isn't on the backend's PATH; default "uv" */
+  mcpUvPath: string;
 }
 
 // --- layered memory (phase 5.3) ---

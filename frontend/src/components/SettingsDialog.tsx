@@ -22,6 +22,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [memoryRetentionDraft, setMemoryRetentionDraft] = useState('');
   const [serviceDiscoveryStalenessDraft, setServiceDiscoveryStalenessDraft] = useState('');
   const [contextWarnPercentDraft, setContextWarnPercentDraft] = useState('');
+  const [mcpSerenaRootDraft, setMcpSerenaRootDraft] = useState('');
+  const [mcpUvPathDraft, setMcpUvPathDraft] = useState('');
+  const [mcpSerenaError, setMcpSerenaError] = useState('');
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -39,6 +42,8 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setMemoryRetentionDraft(String(s.memoryRetentionDays));
       setServiceDiscoveryStalenessDraft(String(s.serviceDiscoveryStalenessDays));
       setContextWarnPercentDraft(String(s.contextWarnPercent));
+      setMcpSerenaRootDraft(s.mcpSerenaRoot);
+      setMcpUvPathDraft(s.mcpUvPath);
     }).catch(() => setSettings(null));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
@@ -139,6 +144,22 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     void api.updateSettings({ codexPricing: codexPricingDraft })
       .then((s) => { setSettings(s); setCodexPricingDraft(s.codexPricing); })
       .catch((e: unknown) => setCodexPricingError(e instanceof Error ? e.message : String(e)));
+  };
+
+  const saveMcpSerenaRoot = () => {
+    if (!settings || mcpSerenaRootDraft === settings.mcpSerenaRoot) return;
+    setMcpSerenaError('');
+    void api.updateSettings({ mcpSerenaRoot: mcpSerenaRootDraft })
+      .then((s) => { setSettings(s); setMcpSerenaRootDraft(s.mcpSerenaRoot); })
+      .catch((e: unknown) => setMcpSerenaError(e instanceof Error ? e.message : String(e)));
+  };
+
+  const saveMcpUvPath = () => {
+    if (!settings || mcpUvPathDraft === settings.mcpUvPath) return;
+    setMcpSerenaError('');
+    void api.updateSettings({ mcpUvPath: mcpUvPathDraft })
+      .then((s) => { setSettings(s); setMcpUvPathDraft(s.mcpUvPath); })
+      .catch((e: unknown) => setMcpSerenaError(e instanceof Error ? e.message : String(e)));
   };
 
   const toggleVectorize = () => {
@@ -335,6 +356,32 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 title='per-model $-per-million-tokens estimate; Codex reports no per-turn USD itself. "default" is the fallback for a model with no specific row.'
               />
               {codexPricingError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{codexPricingError}</div>}
+            </div>
+
+            <h3 style={{ margin: '18px 0 10px' }}>MCP servers</h3>
+            <div className="form-grid">
+              <label>Serena root</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1' }}
+                value={mcpSerenaRootDraft}
+                onChange={(e) => setMcpSerenaRootDraft(e.target.value)}
+                onBlur={saveMcpSerenaRoot}
+                placeholder="path to a Serena checkout; empty = Serena unavailable"
+                title="Serena (symbolic code tools) MCP server checkout root — enables the per-session Serena checkbox in the create dialog"
+              />
+
+              <label>uv path</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1' }}
+                value={mcpUvPathDraft}
+                onChange={(e) => setMcpUvPathDraft(e.target.value)}
+                onBlur={saveMcpUvPath}
+                placeholder="uv"
+                title="uv command/path, for hosts where it isn't on the backend's PATH"
+              />
+              {mcpSerenaError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{mcpSerenaError}</div>}
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>Skill library</h3>

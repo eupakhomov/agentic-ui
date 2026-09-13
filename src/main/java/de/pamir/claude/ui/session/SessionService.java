@@ -603,6 +603,15 @@ public class SessionService {
 	 * (which they still are whenever {@code assetsRoot == worktree}, i.e. every polyrepo session).
 	 * The pid file always lives at the worktree root regardless (see {@link
 	 * de.pamir.claude.ui.process.SidecarManager#pidFile}), so that line is never prefixed.
+	 *
+	 * <p>Also unconditionally lists {@code .serena/} (at the same {@code assetsRoot}-relative
+	 * prefix — Serena's {@code --project} is that same cwd) even for a session that never enables
+	 * Serena, matching this method's existing precedent of always listing tool-generated paths
+	 * regardless of whether this particular session uses them: harmless when the path never
+	 * exists. Confirmed live (docs/plan/phase-12-linear-cache-serena-context.md Track B manual
+	 * test) that Serena's own {@code .serena/.gitignore} (written inside that directory) does
+	 * NOT keep the directory itself out of {@code git status} — only entries *inside* it — so
+	 * this repo-level exclude line is required, not optional polish.
 	 */
 	private void excludeProvisionedAssets(Path worktree, Path assetsRoot) {
 		try {
@@ -616,7 +625,7 @@ public class SessionService {
 				String rel = worktree.relativize(assetsRoot).toString();
 				String prefix = rel.isEmpty() ? "" : rel + "/";
 				Files.writeString(exclude,
-						"\n" + prefix + ".claude/skills/\n" + prefix + ".claude/agents/\n.claude-ui.pid\n",
+						"\n" + prefix + ".claude/skills/\n" + prefix + ".claude/agents/\n" + prefix + ".serena/\n.claude-ui.pid\n",
 						StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 			}
 		} catch (IOException e) {

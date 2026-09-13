@@ -45,7 +45,7 @@ class OrchestrationMcpToolsTest {
 
 	private static SettingsService fakeSettings(String ecosystemRoot) {
 		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70);
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -56,7 +56,8 @@ class OrchestrationMcpToolsTest {
 
 	private static ProviderCapabilities fullCapabilities() {
 		return new ProviderCapabilities(List.of("default", "acceptEdits", "plan", "bypassPermissions"),
-				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true);
+				true, true, true, true, true, true, true, true, true, true, true, List.of(), true, true, true,
+				"claude-code");
 	}
 
 	@Test
@@ -78,7 +79,7 @@ class OrchestrationMcpToolsTest {
 		SettingsService settings = fakeSettings(mono.toString());
 		ObjectMapper mapper = new JsonMapper();
 		ProviderCatalog catalog = ProviderCatalog.fixedForTest(Map.of("claude", fullCapabilities()));
-		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, catalog, worktrees);
+		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, catalog, worktrees, null);
 
 		FakeSessionRepository sessions = new FakeSessionRepository();
 		FakeSidecarManager sidecars = new FakeSidecarManager();

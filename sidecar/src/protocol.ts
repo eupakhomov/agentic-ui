@@ -109,6 +109,8 @@ export interface Capabilities {
   reportsCostUsd: boolean;
   /** supports the compact command (in-place context compaction) */
   compact: boolean;
+  /** Serena's built-in `--context` name for this provider (e.g. "claude-code"/"codex"); empty/absent = Serena unsupported */
+  serenaContext: string;
 }
 
 export interface ReadyEvent {
@@ -268,4 +270,5 @@ export const CLAUDE_CAPABILITIES: Capabilities = {
   contextDirs: true,
   reportsCostUsd: true,
   compact: true,
+  serenaContext: 'claude-code',
 };

@@ -4,6 +4,7 @@ import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitWorktreeService;
+import de.pamir.claude.ui.integration.SerenaService;
 import de.pamir.claude.ui.memory.MemoryEpisodeRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -44,11 +45,12 @@ public class SessionConfigFactory {
 	private final int serverPort;
 	private final ProviderCatalog catalog;
 	private final GitWorktreeService worktrees;
+	private final SerenaService serena;
 
 	public SessionConfigFactory(AppProperties props, SettingsService settings, TemplateRepository templates,
 								 ObjectMapper mapper, MemoryEpisodeRepository episodes,
 								 @Value("${server.port:8080}") int serverPort, ProviderCatalog catalog,
-								 GitWorktreeService worktrees) {
+								 GitWorktreeService worktrees, SerenaService serena) {
 		this.props = props;
 		this.settings = settings;
 		this.templates = templates;
@@ -57,6 +59,7 @@ public class SessionConfigFactory {
 		this.serverPort = serverPort;
 		this.catalog = catalog;
 		this.worktrees = worktrees;
+		this.serena = serena;
 	}
 
 	/** The resolved entity (still transient — not yet inserted) plus any non-fatal warnings to journal. */
@@ -95,6 +98,10 @@ public class SessionConfigFactory {
 		Integer maxTurns = config.hasNonNull("maxTurns") ? config.get("maxTurns").asInt() : null;
 		String fallbackModel = nullableText(config, "fallbackModel");
 		List<String> contextDirs = stringList(config, "contextDirs");
+		boolean serenaEnabled = config.path("serenaEnabled").asBoolean(false);
+		if (serenaEnabled && !serena.configured()) {
+			throw new IllegalArgumentException("Serena is not configured (Settings → MCP servers)");
+		}
 		ProviderCapabilities caps = catalog.get(provider);
 		// Unsupported controls are rejected at creation time, not silently downgraded (DoD from
 		// docs/plan/phase-5.13-codex-provider.md, generalized in
@@ -157,7 +164,9 @@ public class SessionConfigFactory {
 				allowedTools.add("mcp__memory__list_discovered_services");
 			}
 		}
-		JsonNode mcpConfig = withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig));
+		String cwdPath = computeCwdPath(repo, resolution.servicePath(), worktree);
+		JsonNode mcpConfig = withDefaultSerenaMcp(withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig)),
+				provider, serenaEnabled, cwdPath);
 
 		SessionEntity entity = SessionEntity.builder()
 				.id(id).name(options.name())
@@ -175,6 +184,7 @@ public class SessionConfigFactory {
 				.state(SessionState.CREATING).kind("user").ticketRef(nullableText(config, "ticketRef"))
 				.continuedFromId(options.continuedFromId()).parentSessionId(options.parentSessionId())
 				.reflectionEnabled(config.path("reflectionEnabled").asBoolean(s.memoryReflectionDefault()))
+				.serenaEnabled(serenaEnabled)
 				.build();
 		return new Prepared(entity, warnings);
 	}
@@ -330,6 +340,49 @@ public class SessionConfigFactory {
 	}
 
 	/**
+	 * The Serena (symbolic code tools) MCP server block, or null when Serena isn't enabled for
+	 * this session or isn't configured backend-wide (docs/plan/phase-12-linear-cache-serena-
+	 * context.md Track B, decision 2 — opt-in per session, default off). {@code --context} comes
+	 * from the provider's own declared capability ({@link ProviderCapabilities#serenaContext()}),
+	 * never a hardcoded provider name (same seam as the rest of this file).
+	 */
+	JsonNode withDefaultSerenaMcp(JsonNode configured, String provider, boolean serenaEnabled, String cwdPath) {
+		if (!serenaEnabled) {
+			return configured;
+		}
+		return withDefaultServer(configured, "serena", serenaMcpServer(provider, cwdPath));
+	}
+
+	private ObjectNode serenaMcpServer(String provider, String cwdPath) {
+		if (!serena.configured()) {
+			return null;
+		}
+		String context = catalog.get(provider).serenaContext();
+		ObjectNode servers = mapper.createObjectNode();
+		ObjectNode serenaEntry = servers.putObject("serena");
+		serenaEntry.put("command", serena.uvCommand());
+		ArrayNode args = serenaEntry.putArray("args");
+		args.add("run").add("--directory").add(serena.root()).add("serena").add("start-mcp-server")
+				.add("--context").add(context).add("--project").add(cwdPath)
+				.add("--open-web-dashboard").add("false");
+		return servers;
+	}
+
+	/**
+	 * Mirrors {@link SessionEntity#cwdPath()}'s logic, computed before the entity exists — needed
+	 * here because the Serena MCP entry's {@code --project} argument is baked into {@code
+	 * mcpConfig} at prepare() time, ahead of the {@code SessionEntity.builder()} call below.
+	 */
+	private static String computeCwdPath(String repoPath, String servicePath, Path worktree) {
+		String service = servicePath == null ? repoPath : servicePath;
+		if (service.equals(repoPath)) {
+			return worktree.toString();
+		}
+		Path relative = Path.of(repoPath).relativize(Path.of(service));
+		return worktree.resolve(relative).toString();
+	}
+
+	/**
 	 * Merges a default MCP {@code serverBlock} (itself a one-key {@code {"key": {...}}} object,
 	 * or null if that default isn't configured/enabled) into a session's own {@code configured}
 	 * mcpConfig under {@code key} — unless the session already defines that key itself, which
@@ -400,10 +453,28 @@ public class SessionConfigFactory {
 				+ "Pass this as `sessionId` in every call: " + session.id();
 	}
 
-	/** The extra system-prompt text a spawn should append (memory + orchestration blocks), or null if both are empty. */
+	/**
+	 * Claude sessions get Serena's own recommended system-prompt override appended (decision 3) —
+	 * gated on the provider's declared {@code serenaContext} rather than a literal "claude" check,
+	 * since that capability value IS what Serena's override text targets; Codex gets nothing here
+	 * (its context differs and the override text is Claude-Code-specific).
+	 */
+	private String serenaSystemPromptBlock(SessionEntity session) {
+		if (!session.serenaEnabled()) {
+			return null;
+		}
+		String context = catalog.get(session.provider()).serenaContext();
+		if (!"claude-code".equals(context)) {
+			return null;
+		}
+		return serena.ccSystemPromptOverride();
+	}
+
+	/** The extra system-prompt text a spawn should append (memory + orchestration + Serena blocks), or null if all are empty. */
 	String extraSystemPrompt(SessionEntity session) {
 		String joined = Stream
-				.of(memorySystemPromptBlock(session), orchestrationSystemPromptBlock(session))
+				.of(memorySystemPromptBlock(session), orchestrationSystemPromptBlock(session),
+						serenaSystemPromptBlock(session))
 				.filter(Objects::nonNull)
 				.collect(Collectors.joining("\n\n"));
 		return joined.isBlank() ? null : joined;
@@ -466,6 +537,7 @@ public class SessionConfigFactory {
 			overrides.put("costBudgetUsd", source.costBudgetUsd().toPlainString());
 		}
 		overrides.put("reflectionEnabled", source.reflectionEnabled());
+		overrides.put("serenaEnabled", source.serenaEnabled());
 		return overrides;
 	}
 
