@@ -3,6 +3,7 @@ import { api, ApiError } from '../api/rest';
 import type { StaleSession, TurnUsage } from '../protocol';
 import CloseDialog from './CloseDialog';
 import { Cleanup, Warning } from '../icons';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 type Grouping = 'day' | 'month';
 
@@ -99,9 +100,11 @@ export default function UsageDashboard({ onClose }: { onClose: () => void }) {
   const barW = Math.max(2, Math.min(24, barSlot - 2));
   const hoverBucket = hover ? buckets.find(([k]) => k === hover) : undefined;
 
+  const backdropDismiss = useBackdropDismiss(onClose);
+
   return (
     <>
-      <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-backdrop" {...backdropDismiss}>
         <div className="modal wide" onClick={(e) => e.stopPropagation()}>
           <h2>Usage</h2>
 

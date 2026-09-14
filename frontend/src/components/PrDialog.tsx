@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import { AiSuggest } from '../icons';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 async function gitApi<T>(id: string, path: string, method = 'GET', body?: unknown): Promise<T> {
   return api.raw<T>(method, `/api/sessions/${id}/git/${path}`, body);
@@ -48,8 +49,10 @@ export default function PrDialog({
     }
   };
 
+  const backdropDismiss = useBackdropDismiss(() => { if (busy === '') onClose(); });
+
   return (
-    <div className="modal-backdrop" onClick={() => { if (busy === '') onClose(); }}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Open PR</h2>
         <div className="form-grid">

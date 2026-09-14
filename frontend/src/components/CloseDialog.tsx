@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api/rest';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 export default function CloseDialog({
   sessionId,
@@ -32,8 +33,10 @@ export default function CloseDialog({
     }
   };
 
+  const backdropDismiss = useBackdropDismiss(onCancel);
+
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Close session</h2>
         {dirtyFiles === null ? (

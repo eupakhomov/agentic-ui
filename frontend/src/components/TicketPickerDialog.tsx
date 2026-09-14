@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { TicketList } from '../protocol';
 import { Refresh } from '../icons';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 /** "just now" / "N min ago" — the picker header's cache-age line (Step A3). */
 export function formatAge(fetchedAtIso: string): string {
@@ -36,8 +37,10 @@ export default function TicketPickerDialog({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [busy, onRefresh]);
 
+  const backdropDismiss = useBackdropDismiss(onClose);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" style={{ width: 'min(520px, 92vw)' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
           <h2 style={{ margin: 0 }}>

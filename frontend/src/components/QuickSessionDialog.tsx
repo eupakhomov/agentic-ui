@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import { pickDefaultBranch, type ProviderView, type ServicesResponse } from '../protocol';
 import { useTicketImport, type TicketImportOutcome } from '../hooks/useTicketImport';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 import TicketPickerDialog from './TicketPickerDialog';
 
 /**
@@ -99,10 +100,11 @@ export default function QuickSessionDialog({
   };
 
   const ready = !!servicePath && !!branchName.trim() && !!prompt.trim();
+  const backdropDismiss = useBackdropDismiss(() => { if (!busy && !importBusy) onCancel(); });
 
   return (
     <>
-    <div className="modal-backdrop" onClick={() => { if (!busy && !importBusy) onCancel(); }}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Quick session</h2>
         <p style={{ color: 'var(--muted)' }}>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/rest';
 import type { AssetKind, LibraryAsset } from '../protocol';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 const PAGE_SIZE = 40;
 const SEMANTIC_K = 100;
@@ -106,9 +107,10 @@ export default function AssetPickerDialog({
   };
 
   const awaitingSemanticSearch = semantic && !searched;
+  const backdropDismiss = useBackdropDismiss(onClose);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2>Add {label}</h2>
 

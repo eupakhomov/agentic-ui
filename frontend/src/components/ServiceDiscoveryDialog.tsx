@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/rest';
 import type { ServiceProfileView } from '../protocol';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 function splitTags(text: string): string[] {
   return text.split(',').map((t) => t.trim()).filter(Boolean);
@@ -70,8 +71,10 @@ export default function ServiceDiscoveryDialog({ onClose }: { onClose: () => voi
 
   const staleCount = (services ?? []).filter((s) => s.stale).length;
 
+  const backdropDismiss = useBackdropDismiss(onClose);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2>Service discovery</h2>
 

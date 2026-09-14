@@ -1,3 +1,5 @@
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
+
 const ROWS: [string, string][] = [
   ['?', 'this cheatsheet'],
   ['n', 'new session'],
@@ -19,8 +21,9 @@ const ROWS: [string, string][] = [
 ];
 
 export default function HotkeyCheatsheet({ onClose }: { onClose: () => void }) {
+  const backdropDismiss = useBackdropDismiss(onClose);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Keyboard shortcuts</h2>
         <table className="cheatsheet-table">

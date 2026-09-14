@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api/rest';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 export default function DuplicateDialog({
   sessionId,
@@ -34,8 +35,10 @@ export default function DuplicateDialog({
     }
   };
 
+  const backdropDismiss = useBackdropDismiss(onCancel);
+
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Duplicate session</h2>
         <p style={{ color: 'var(--muted)' }}>

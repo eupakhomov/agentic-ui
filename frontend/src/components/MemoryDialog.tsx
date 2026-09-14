@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/rest';
 import type { MemoryDoc, MemoryDocDetail, MemoryProposal, MemoryProposedOp, MemorySearchHit } from '../protocol';
 import { MemoryDoc as MemoryDocIcon, MemoryDocEditable as MemoryDocEditableIcon } from '../icons';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 function splitTags(text: string): string[] {
   return text.split(',').map((t) => t.trim()).filter(Boolean);
@@ -177,8 +178,10 @@ export default function MemoryDialog({ onClose }: { onClose: () => void }) {
       description: d.description, tags: d.tags, sessionName: null, ts: null, score: 0,
     }));
 
+  const backdropDismiss = useBackdropDismiss(onClose);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2 style={{ display: 'flex', alignItems: 'center' }}>
           Memory

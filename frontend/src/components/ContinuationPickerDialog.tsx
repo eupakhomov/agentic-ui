@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { SessionSummary } from '../protocol';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 function formatDate(iso: string): string {
   try {
@@ -39,8 +40,10 @@ export default function ContinuationPickerDialog({
       .slice(0, 50);
   }, [sessions, query]);
 
+  const backdropDismiss = useBackdropDismiss(onClose);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" style={{ width: 'min(640px, 92vw)' }} onClick={(e) => e.stopPropagation()}>
         <h2>Continue from…</h2>
         <input

@@ -7,6 +7,7 @@ import { MODE_CYCLE, MODE_LABEL } from './SessionWidget';
 import TicketPickerDialog from './TicketPickerDialog';
 import ContinuationPickerDialog from './ContinuationPickerDialog';
 import { useTicketImport, type TicketImportOutcome } from '../hooks/useTicketImport';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 import { Close, ContinuedFrom } from '../icons';
 
 const MODE_DESCRIPTION: Record<PermissionMode, string> = {
@@ -276,9 +277,11 @@ export default function CreateSessionDialog({
     }
   };
 
+  const backdropDismiss = useBackdropDismiss(() => { if (!busy && !importBusy) onCancel(); });
+
   return (
     <>
-    <div className="modal-backdrop" onClick={() => { if (!busy && !importBusy) onCancel(); }}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>New Session</h2>
         <div className="form-grid">

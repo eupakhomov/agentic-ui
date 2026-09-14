@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/rest';
 import type { AssetKind, LibraryAsset, LibraryAssetContent, LibrarySource, ScanCandidate, ScanResult } from '../protocol';
 import { AgentAsset, AiSuggest, Close, LocalSource, RemoteSource, SkillAsset } from '../icons';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 const PAGE_SIZE = 20;
 
@@ -288,8 +289,10 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
   const candidatePage = (scan?.candidates ?? []).slice(importPage * PAGE_SIZE, (importPage + 1) * PAGE_SIZE);
   const kindIcon = (kind: AssetKind) => (kind === 'skill' ? <SkillAsset /> : <AgentAsset />);
 
+  const backdropDismiss = useBackdropDismiss(onClose);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2 style={{ display: 'flex', alignItems: 'center' }}>
           Skill &amp; agent library

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/rest';
 import { getFontSize, getTheme, setFontSize, setTheme, type FontSize, type Theme } from '../prefs';
 import type { ProviderView, Settings } from '../protocol';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [theme, setThemeState] = useState<Theme>(getTheme());
@@ -254,8 +255,10 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       .catch(() => setSettings({ ...settings, serviceDiscoveryModel: previous }));
   };
 
+  const backdropDismiss = useBackdropDismiss(onClose);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Settings</h2>
         <h3 style={{ margin: '0 0 10px' }}>Appearance</h3>

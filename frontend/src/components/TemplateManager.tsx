@@ -5,6 +5,7 @@ import { assetStub, type AssetKind, type LibraryAsset, type ProviderView, type S
 import AssetPickerDialog from './AssetPickerDialog';
 import { AttachedAssetsRow } from './CreateSessionDialog';
 import ModelSelect from './ModelSelect';
+import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 const PROMOTED_KEYS = ['provider', 'model', 'permissionMode', 'baseBranch', 'kickoffPrompt', 'instructions', 'mcpConfig', 'envVars'];
 
@@ -96,9 +97,11 @@ export default function TemplateManager({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const backdropDismiss = useBackdropDismiss(onClose);
+
   return (
     <>
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropDismiss}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2>Session templates</h2>
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
