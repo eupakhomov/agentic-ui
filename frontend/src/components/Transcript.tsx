@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { TranscriptItem } from '../store/store';
 import PermissionCard, { type PermissionResponse } from './PermissionCard';
-import { ToolFailed, ToolOk, ToolRunning } from '../icons';
+import { AgentAsset, ToolFailed, ToolOk, ToolRunning } from '../icons';
 
 const Markdown = memo(function Markdown({ text }: { text: string }) {
   return <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>;
@@ -12,6 +12,99 @@ const Markdown = memo(function Markdown({ text }: { text: string }) {
 function summarizeInput(input: unknown): string {
   const s = JSON.stringify(input) ?? '';
   return s.length > 120 ? s.slice(0, 120) + '…' : s;
+}
+
+/**
+ * A subagent-launching tool call's own input — untyped at the SDK layer, and the tool's
+ * *name* isn't a stable signal either (confirmed empirically: the CLI currently calls it
+ * "Agent", not the SDK docs' "Task"). Gate on `subagent_type` being present instead of on
+ * a name — a missing/renamed field just falls back to the generic raw-JSON summary below.
+ */
+function taskSummary(input: unknown): { subagentType: string; description: string } | null {
+  if (typeof input !== 'object' || input === null) return null;
+  const i = input as Record<string, unknown>;
+  if (typeof i['subagent_type'] !== 'string') return null;
+  const description = typeof i['description'] === 'string' ? i['description'] : null;
+  return { subagentType: i['subagent_type'], description: description ?? '' };
+}
+
+function renderItem(
+  item: TranscriptItem,
+  key: React.Key,
+  onPermission: (requestId: string, response: PermissionResponse) => void,
+): React.ReactNode {
+  switch (item.kind) {
+    case 'user':
+      return <div key={key} className="t-user">{item.text}</div>;
+    case 'text':
+      return <div key={key} className="t-text"><Markdown text={item.text} /></div>;
+    case 'thinking':
+      return (
+        <details key={key} className="t-thinking">
+          <summary>
+            {item.done ? 'thought' : 'thinking…'}
+            {item.estimatedTokens > 0 ? ` (~${item.estimatedTokens} tokens)` : ''}
+          </summary>
+          <div className="body">{item.text}</div>
+        </details>
+      );
+    case 'tool': {
+      const task = taskSummary(item.input);
+      return (
+        <details key={key} className={`t-tool${item.isError ? ' error' : ''}`}>
+          <summary>
+            {task ? (
+              <>
+                <AgentAsset size={13} className="task-badge" />
+                <span className="tname">{task.subagentType}</span>{' '}
+                {task.description}
+              </>
+            ) : (
+              <>
+                <span className="tname">{item.name}</span>{' '}
+                {summarizeInput(item.input)}
+              </>
+            )}
+            <span className={`tool-status ${item.output === undefined ? 'run' : item.isError ? 'err' : 'ok'}`}>
+              {item.output === undefined ? <ToolRunning size={13} /> : item.isError ? <ToolFailed size={13} /> : <ToolOk size={13} />}
+            </span>
+          </summary>
+          <pre>
+            {JSON.stringify(item.input, null, 2)}
+            {item.output !== undefined ? `\n─── result${item.truncated ? ' (truncated)' : ''} ───\n${item.output}` : ''}
+          </pre>
+          {item.items?.length ? (
+            <div className="t-nested">
+              {item.items.map((nested, j) => renderItem(nested, j, onPermission))}
+            </div>
+          ) : null}
+        </details>
+      );
+    }
+    case 'permission':
+      return (
+        <PermissionCard
+          key={item.requestId}
+          item={item}
+          onRespond={(response) => onPermission(item.requestId, response)}
+        />
+      );
+    case 'turn_footer':
+      return (
+        <div key={key} className="t-footer">
+          {item.stopReason} · ${item.costUsd.toFixed(4)} · {(item.durationMs / 1000).toFixed(1)}s
+          {item.model ? ` · ${item.model}` : ''}
+        </div>
+      );
+    case 'note':
+      return <div key={key} className={`t-note ${item.level}`}>{item.text}</div>;
+    case 'context_compacted':
+      return (
+        <div key={key} className="t-compacted">
+          — compacted: {item.preTokens.toLocaleString()} → {item.postTokens.toLocaleString()} —
+        </div>
+      );
+  }
 }
 
 export default function Transcript({
@@ -38,63 +131,7 @@ export default function Transcript({
         stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
       }}
     >
-      {items.map((item, i) => {
-        switch (item.kind) {
-          case 'user':
-            return <div key={i} className="t-user">{item.text}</div>;
-          case 'text':
-            return <div key={i} className="t-text"><Markdown text={item.text} /></div>;
-          case 'thinking':
-            return (
-              <details key={i} className="t-thinking">
-                <summary>
-                  {item.done ? 'thought' : 'thinking…'}
-                  {item.estimatedTokens > 0 ? ` (~${item.estimatedTokens} tokens)` : ''}
-                </summary>
-                <div className="body">{item.text}</div>
-              </details>
-            );
-          case 'tool':
-            return (
-              <details key={i} className={`t-tool${item.isError ? ' error' : ''}`}>
-                <summary>
-                  <span className="tname">{item.name}</span>{' '}
-                  {summarizeInput(item.input)}
-                  <span className={`tool-status ${item.output === undefined ? 'run' : item.isError ? 'err' : 'ok'}`}>
-                    {item.output === undefined ? <ToolRunning size={13} /> : item.isError ? <ToolFailed size={13} /> : <ToolOk size={13} />}
-                  </span>
-                </summary>
-                <pre>
-                  {JSON.stringify(item.input, null, 2)}
-                  {item.output !== undefined ? `\n─── result${item.truncated ? ' (truncated)' : ''} ───\n${item.output}` : ''}
-                </pre>
-              </details>
-            );
-          case 'permission':
-            return (
-              <PermissionCard
-                key={item.requestId}
-                item={item}
-                onRespond={(response) => onPermission(item.requestId, response)}
-              />
-            );
-          case 'turn_footer':
-            return (
-              <div key={i} className="t-footer">
-                {item.stopReason} · ${item.costUsd.toFixed(4)} · {(item.durationMs / 1000).toFixed(1)}s
-                {item.model ? ` · ${item.model}` : ''}
-              </div>
-            );
-          case 'note':
-            return <div key={i} className={`t-note ${item.level}`}>{item.text}</div>;
-          case 'context_compacted':
-            return (
-              <div key={i} className="t-compacted">
-                — compacted: {item.preTokens.toLocaleString()} → {item.postTokens.toLocaleString()} —
-              </div>
-            );
-        }
-      })}
+      {items.map((item, i) => renderItem(item, i, onPermission))}
     </div>
   );
 }

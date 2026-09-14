@@ -168,6 +168,8 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 @keyframes spin { to { transform: rotate(360deg); } }
 .t-tool.error summary .tname { color: var(--red); }
 .t-tool pre { margin: 0; padding: 8px; border-top: 1px solid var(--border); max-height: 260px; overflow: auto; white-space: pre-wrap; }
+.t-nested { margin: 8px; padding-left: 8px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.task-badge { vertical-align: -2px; margin-right: 2px; color: var(--muted); }
 .t-footer { color: var(--muted); font-size: calc(11.5px * var(--font-scale)); border-top: 1px dashed var(--border); padding-top: 4px; }
 .t-note { font-size: calc(12.5px * var(--font-scale)); padding: 5px 9px; border-radius: 6px; }
 .t-note.warn { background: var(--warn-bg); color: var(--amber); }

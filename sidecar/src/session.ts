@@ -151,15 +151,17 @@ export function translateSdkMessage(
       }
       break;
     case 'stream_event': {
-      const event = (message as unknown as { event: unknown }).event as {
+      const outer = message as unknown as { event: unknown; parent_tool_use_id?: string | null };
+      const parentToolUseId = outer.parent_tool_use_id ?? undefined;
+      const event = outer.event as {
         type: string;
         delta?: { type: string; text?: string; thinking?: string };
       };
       if (event.type === 'content_block_delta' && event.delta) {
         if (event.delta.type === 'text_delta' && event.delta.text) {
-          events.push({ type: 'stream_delta', deltaType: 'text', text: event.delta.text });
+          events.push({ type: 'stream_delta', deltaType: 'text', text: event.delta.text, ...(parentToolUseId ? { parentToolUseId } : {}) });
         } else if (event.delta.type === 'thinking_delta' && event.delta.thinking) {
-          events.push({ type: 'stream_delta', deltaType: 'thinking', text: event.delta.thinking });
+          events.push({ type: 'stream_delta', deltaType: 'thinking', text: event.delta.thinking, ...(parentToolUseId ? { parentToolUseId } : {}) });
         } else {
           logs.push(`unmapped stream delta: ${JSON.stringify(event.delta).slice(0, 300)}`);
         }
@@ -167,18 +169,22 @@ export function translateSdkMessage(
       break;
     }
     case 'assistant': {
-      const content = (message as unknown as { message: { content: unknown[] } }).message.content;
-      events.push({ type: 'assistant_message', content });
+      const outer = message as unknown as { message: { content: unknown[] }; parent_tool_use_id?: string | null };
+      const parentToolUseId = outer.parent_tool_use_id ?? undefined;
+      const content = outer.message.content;
+      events.push({ type: 'assistant_message', content, ...(parentToolUseId ? { parentToolUseId } : {}) });
       for (const block of content) {
         const b = block as { type: string; id?: string; name?: string; input?: Record<string, unknown> };
         if (b.type === 'tool_use' && b.id && b.name) {
-          events.push({ type: 'tool_started', toolUseId: b.id, name: b.name, input: b.input ?? {} });
+          events.push({ type: 'tool_started', toolUseId: b.id, name: b.name, input: b.input ?? {}, ...(parentToolUseId ? { parentToolUseId } : {}) });
         }
       }
       break;
     }
     case 'user': {
-      const content = (message as unknown as { message: { content: unknown } }).message.content;
+      const outer = message as unknown as { message: { content: unknown }; parent_tool_use_id?: string | null };
+      const parentToolUseId = outer.parent_tool_use_id ?? undefined;
+      const content = outer.message.content;
       if (Array.isArray(content)) {
         for (const block of content) {
           const b = block as {
@@ -195,6 +201,7 @@ export function translateSdkMessage(
               isError: b.is_error === true,
               output: full.slice(0, TOOL_OUTPUT_LIMIT),
               truncated: full.length > TOOL_OUTPUT_LIMIT,
+              ...(parentToolUseId ? { parentToolUseId } : {}),
             });
           }
         }
@@ -269,6 +276,10 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   const options: Options = {
     cwd: config.cwd,
     includePartialMessages: true,
+    // Forward a Task-tool subagent's own thinking/text (not just its tool_use/tool_result
+    // calls) so the frontend can render a nested transcript under the Task call — harmless
+    // no-op for sessions that never invoke Task.
+    forwardSubagentText: true,
     settingSources: ['project'],
     systemPrompt: config.appendSystemPrompt
       ? { type: 'preset', preset: 'claude_code', append: config.appendSystemPrompt }

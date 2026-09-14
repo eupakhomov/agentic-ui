@@ -135,12 +135,16 @@ export interface StreamDeltaEvent {
   type: 'stream_delta';
   deltaType: 'text' | 'thinking';
   text: string;
+  /** set when this delta was produced inside a subagent — the toolUseId of the enclosing Task call */
+  parentToolUseId?: string;
 }
 
 export interface AssistantMessageEvent {
   type: 'assistant_message';
   /** Anthropic-format content blocks (text / thinking / tool_use) */
   content: unknown[];
+  /** set when this message was produced inside a subagent — the toolUseId of the enclosing Task call */
+  parentToolUseId?: string;
 }
 
 export interface ToolStartedEvent {
@@ -148,6 +152,8 @@ export interface ToolStartedEvent {
   toolUseId: string;
   name: string;
   input: Record<string, unknown>;
+  /** set when this tool call was made by a subagent — the toolUseId of the enclosing Task call */
+  parentToolUseId?: string;
 }
 
 export interface ToolResultEvent {
@@ -156,6 +162,8 @@ export interface ToolResultEvent {
   isError: boolean;
   output: string;
   truncated: boolean;
+  /** set when this result belongs to a subagent's tool call — the toolUseId of the enclosing Task call */
+  parentToolUseId?: string;
 }
 
 export interface PermissionRequestEvent {

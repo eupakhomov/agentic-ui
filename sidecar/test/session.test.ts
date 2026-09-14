@@ -69,6 +69,31 @@ describe('translateSdkMessage', () => {
     expect(events).toEqual([{ type: 'stream_delta', deltaType: 'thinking', text: 'pondering' }]);
   });
 
+  it('carries parentToolUseId on a stream_delta produced inside a subagent', () => {
+    const { events } = translateSdkMessage(
+      {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hi' } },
+        parent_tool_use_id: 'tu_task',
+      },
+      state(),
+    );
+    expect(events).toEqual([{ type: 'stream_delta', deltaType: 'text', text: 'hi', parentToolUseId: 'tu_task' }]);
+  });
+
+  it('omits parentToolUseId (not just undefined) when the SDK reports null', () => {
+    const { events } = translateSdkMessage(
+      {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hi' } },
+        parent_tool_use_id: null,
+      },
+      state(),
+    );
+    expect(events).toEqual([{ type: 'stream_delta', deltaType: 'text', text: 'hi' }]);
+    expect(events[0]).not.toHaveProperty('parentToolUseId');
+  });
+
   it('logs unmapped stream deltas instead of emitting an event', () => {
     const { events, logs } = translateSdkMessage(
       { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'input_json_delta' } } },
@@ -104,6 +129,25 @@ describe('translateSdkMessage', () => {
     ]);
   });
 
+  it('carries parentToolUseId through assistant_message and tool_started when produced inside a subagent', () => {
+    const { events } = translateSdkMessage(
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 'tu2', name: 'Read', input: { file_path: 'x.ts' } }] },
+        parent_tool_use_id: 'tu_task',
+      },
+      state(),
+    );
+    expect(events).toEqual([
+      {
+        type: 'assistant_message',
+        content: [{ type: 'tool_use', id: 'tu2', name: 'Read', input: { file_path: 'x.ts' } }],
+        parentToolUseId: 'tu_task',
+      },
+      { type: 'tool_started', toolUseId: 'tu2', name: 'Read', input: { file_path: 'x.ts' }, parentToolUseId: 'tu_task' },
+    ]);
+  });
+
   it('translates a user message tool_result into tool_result, truncating long output', () => {
     const long = 'x'.repeat(17 * 1024);
     const { events } = translateSdkMessage(
@@ -119,6 +163,20 @@ describe('translateSdkMessage', () => {
     expect(ev.isError).toBe(false);
     expect(ev.truncated).toBe(true);
     expect(ev.output.length).toBe(16384);
+  });
+
+  it('carries parentToolUseId on a tool_result produced inside a subagent', () => {
+    const { events } = translateSdkMessage(
+      {
+        type: 'user',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'tu2', content: 'ok', is_error: false }] },
+        parent_tool_use_id: 'tu_task',
+      },
+      state(),
+    );
+    expect(events).toEqual([
+      { type: 'tool_result', toolUseId: 'tu2', isError: false, output: 'ok', truncated: false, parentToolUseId: 'tu_task' },
+    ]);
   });
 
   it('ignores a user message with non-array content', () => {

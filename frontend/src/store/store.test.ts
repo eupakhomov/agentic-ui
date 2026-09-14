@@ -137,6 +137,51 @@ describe('transcript reduction', () => {
   });
 });
 
+describe('nested subagent transcript', () => {
+  it('routes a tool_started with parentToolUseId under the owning Task call, not top level', () => {
+    useStore.getState().apply(SID, env('tool_started', { toolUseId: 'tu_task', name: 'Task', input: { description: 'explore' } }));
+    useStore.getState().apply(SID, env('tool_started', { toolUseId: 'tu_read', name: 'Read', input: { file_path: 'a.ts' }, parentToolUseId: 'tu_task' }));
+
+    const t = useStore.getState().views[SID]!.transcript;
+    expect(t).toHaveLength(1);
+    const task = t[0] as { kind: 'tool'; items?: unknown[] };
+    expect(task.items).toHaveLength(1);
+    expect(task.items![0]).toMatchObject({ kind: 'tool', toolUseId: 'tu_read', name: 'Read' });
+  });
+
+  it('resolves a nested tool_result against the nested tool_started, not a same-id top-level one', () => {
+    useStore.getState().apply(SID, env('tool_started', { toolUseId: 'tu_task', name: 'Task', input: {} }));
+    useStore.getState().apply(SID, env('tool_started', { toolUseId: 'tu_shared', name: 'Bash', input: { command: 'ls' }, parentToolUseId: 'tu_task' }));
+    useStore.getState().apply(SID, env('tool_result', { toolUseId: 'tu_shared', output: 'ok', isError: false, parentToolUseId: 'tu_task' }));
+
+    const task = useStore.getState().views[SID]!.transcript[0] as { items?: { toolUseId: string; output?: string }[] };
+    expect(task.items).toHaveLength(1);
+    expect(task.items![0]).toMatchObject({ toolUseId: 'tu_shared', output: 'ok' });
+  });
+
+  it('coalesces nested thinking deltas and applies thinking_progress to the nested item', () => {
+    useStore.getState().apply(SID, env('tool_started', { toolUseId: 'tu_task', name: 'Task', input: {} }));
+    useStore.getState().apply(SID, env('stream_delta', { deltaType: 'thinking', text: 'pon', parentToolUseId: 'tu_task' }));
+    useStore.getState().apply(SID, env('stream_delta', { deltaType: 'thinking', text: 'dering', parentToolUseId: 'tu_task' }));
+    useStore.getState().apply(SID, env('thinking_progress', { estimatedTokens: 42, estimatedTokensDelta: 42 }));
+
+    const task = useStore.getState().views[SID]!.transcript[0] as { items?: { kind: string; text: string; estimatedTokens: number; done: boolean }[] };
+    expect(task.items).toHaveLength(1);
+    expect(task.items![0]).toMatchObject({ kind: 'thinking', text: 'pondering', estimatedTokens: 42, done: false });
+
+    // top-level transcript is unaffected by the nested progress update
+    expect(useStore.getState().views[SID]!.transcript).toHaveLength(1);
+  });
+
+  it('falls back to flat top-level when parentToolUseId matches no known tool call', () => {
+    useStore.getState().apply(SID, env('tool_started', { toolUseId: 'tu_orphan', name: 'Read', input: {}, parentToolUseId: 'tu_missing' }));
+
+    const t = useStore.getState().views[SID]!.transcript;
+    expect(t).toHaveLength(1);
+    expect(t[0]).toMatchObject({ kind: 'tool', toolUseId: 'tu_orphan' });
+  });
+});
+
 describe('store actions outside reduce', () => {
   it('setWsStatus updates only wsStatus, preserving the rest of the view', () => {
     useStore.getState().apply(SID, env('state_changed', { state: 'RUNNING' }));

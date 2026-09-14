@@ -48,10 +48,10 @@ Bash is not path-policed — it flows through the normal approval path.
 |---|---|---|
 | `ready` | `pid`, `protocolVersion: 1`, `provider`, `capabilities` | first event after start |
 | `system_init` | `providerSessionId`, `model`, `cwd`, `tools[]`, `mcpServers[]`, `permissionMode` | provider session established — arrives with the **first turn**, not at startup (`ready` is the liveness signal); the backend must persist `providerSessionId` to enable `--resume` |
-| `stream_delta` | `deltaType: text\|thinking`, `text` | incremental generation output |
-| `assistant_message` | `content[]` (Anthropic-format blocks) | each completed assistant message |
-| `tool_started` | `toolUseId`, `name`, `input` | tool call issued |
-| `tool_result` | `toolUseId`, `isError`, `output` (≤16 KB), `truncated` | tool finished |
+| `stream_delta` | `deltaType: text\|thinking`, `text`, `parentToolUseId?` | incremental generation output |
+| `assistant_message` | `content[]` (Anthropic-format blocks), `parentToolUseId?` | each completed assistant message |
+| `tool_started` | `toolUseId`, `name`, `input`, `parentToolUseId?` | tool call issued |
+| `tool_result` | `toolUseId`, `isError`, `output` (≤16 KB), `truncated`, `parentToolUseId?` | tool finished |
 | `permission_request` | `requestId`, `toolName`, `input`, `suggestions[]` | user approval needed; adapter blocks that tool until the matching `permission_response` (no timeout — waiting is the UI's job) |
 | `thinking_progress` | `estimatedTokens`, `estimatedTokensDelta` | running token estimate while the model thinks (drive spinners/pills; not billed usage) |
 | `permission_mode_changed` | `mode` | confirms `set_permission_mode` |
@@ -135,6 +135,17 @@ a hardcoded provider name.
 - Skills/agents are discovered from `<cwd>/.claude/skills` and `.claude/agents` at
   process start (the adapter loads project settings); changes require a respawn —
   which `--resume` makes cheap.
+- **Subagent nesting.** The adapter always sets `forwardSubagentText: true`, so a
+  `Task` tool call's own subagent conversation (thinking, tool calls, text) is
+  forwarded as normal `stream_delta`/`assistant_message`/`tool_started`/`tool_result`
+  events, each carrying `parentToolUseId` set to the `toolUseId` of the enclosing
+  `Task` call — the frontend nests these under that call instead of rendering them
+  flat. `thinking_progress` carries no such field (the underlying SDK message has
+  none) and is applied positionally by the frontend instead. A subagent's own
+  `permission_request`, if any, is **not** correlated to its parent `Task` call (the
+  SDK's tool-approval callback exposes no parent id either) and always renders flat.
+  Codex has no subagent mechanism and never populates `parentToolUseId`, but the field
+  is still declared in its (synced) protocol types for parity.
 - Thinking control is `--thinking` (off / adaptive / fixed budget) + `--effort`
   (reasoning-effort level). On Claude 5 models thinking is **redacted**: raw deltas
   carry token estimates, not text — the adapter requests `display: 'summarized'`, so

@@ -10,7 +10,11 @@ export type TranscriptItem =
   | { kind: 'user'; text: string }
   | { kind: 'thinking'; text: string; estimatedTokens: number; done: boolean }
   | { kind: 'text'; text: string; done: boolean }
-  | { kind: 'tool'; toolUseId: string; name: string; input: unknown; output?: string; isError?: boolean; truncated?: boolean }
+  | {
+      kind: 'tool'; toolUseId: string; name: string; input: unknown; output?: string; isError?: boolean; truncated?: boolean;
+      /** a Task call's own subagent activity (thinking/text/tool calls), nested one level — see reduce()'s parentToolUseId routing */
+      items?: TranscriptItem[];
+    }
   | { kind: 'permission'; requestId: string; toolName: string; input: Record<string, unknown>; plan: string | null; decision: 'allow' | 'deny' | null }
   | { kind: 'turn_footer'; stopReason: string; costUsd: number; durationMs: number; model: string | null }
   | { kind: 'note'; level: 'info' | 'warn' | 'error'; text: string }
@@ -71,6 +75,73 @@ function last<T>(arr: T[]): T | undefined {
   return arr[arr.length - 1];
 }
 
+/**
+ * The four event types below all append to or patch "the current list of transcript
+ * items" — which is either the top-level transcript, or (when the event carries a
+ * parentToolUseId) a Task call's nested subagent activity. Shared here so both scopes
+ * get identical behavior; mutates and returns `arr`.
+ */
+function applyBranchEvent(arr: TranscriptItem[], type: string, p: Record<string, unknown>): TranscriptItem[] {
+  switch (type) {
+    case 'stream_delta': {
+      const deltaType = p['deltaType'] as 'text' | 'thinking';
+      const text = p['text'] as string;
+      const tail = last(arr);
+      if (deltaType === 'thinking') {
+        if (tail?.kind === 'thinking' && !tail.done) arr[arr.length - 1] = { ...tail, text: tail.text + text };
+        else arr.push({ kind: 'thinking', text, estimatedTokens: 0, done: false });
+      } else {
+        if (tail?.kind === 'text' && !tail.done) arr[arr.length - 1] = { ...tail, text: tail.text + text };
+        else {
+          markThinkingDone(arr);
+          arr.push({ kind: 'text', text, done: false });
+        }
+      }
+      return arr;
+    }
+    case 'assistant_message': {
+      // close the streamed text block; recover content when deltas were coalesced away
+      const tail = last(arr);
+      if (tail?.kind === 'text' && !tail.done) arr[arr.length - 1] = { ...tail, done: true };
+      else {
+        const blocks = (p['content'] as { type: string; text?: string; thinking?: string }[] | undefined) ?? [];
+        const thinkingText = blocks.filter((b) => b.type === 'thinking' && b.thinking).map((b) => b.thinking).join('');
+        if (thinkingText) arr.push({ kind: 'thinking', text: thinkingText, estimatedTokens: 0, done: true });
+        const text = blocks.filter((b) => b.type === 'text' && b.text).map((b) => b.text).join('');
+        if (text) arr.push({ kind: 'text', text, done: true });
+      }
+      markThinkingDone(arr);
+      return arr;
+    }
+    case 'tool_started':
+      arr.push({ kind: 'tool', toolUseId: p['toolUseId'] as string, name: p['name'] as string, input: p['input'] });
+      return arr;
+    case 'tool_result': {
+      const id = p['toolUseId'] as string;
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const item = arr[i]!;
+        if (item.kind === 'tool' && item.toolUseId === id) {
+          arr[i] = { ...item, output: p['output'] as string, isError: p['isError'] as boolean, truncated: p['truncated'] as boolean };
+          break;
+        }
+      }
+      return arr;
+    }
+    default:
+      return arr;
+  }
+}
+
+/** Index of the top-level 'tool' item with this toolUseId, or -1 — used to route a
+ * subagent event (parentToolUseId set) into that Task call's nested items. */
+function findTopLevelToolIndex(arr: TranscriptItem[], toolUseId: string): number {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const item = arr[i]!;
+    if (item.kind === 'tool' && item.toolUseId === toolUseId) return i;
+  }
+  return -1;
+}
+
 /** Applies one journal event to a session view (mutates a fresh copy). */
 function reduce(view: SessionView, e: Envelope): SessionView {
   const v: SessionView = { ...view, transcript: [...view.transcript] };
@@ -91,54 +162,41 @@ function reduce(view: SessionView, e: Envelope): SessionView {
     case 'user_message':
       t.push({ kind: 'user', text: p['text'] as string });
       break;
-    case 'stream_delta': {
-      const deltaType = p['deltaType'] as 'text' | 'thinking';
-      const text = p['text'] as string;
-      const tail = last(t);
-      if (deltaType === 'thinking') {
-        if (tail?.kind === 'thinking' && !tail.done) t[t.length - 1] = { ...tail, text: tail.text + text };
-        else t.push({ kind: 'thinking', text, estimatedTokens: 0, done: false });
+    case 'stream_delta':
+    case 'assistant_message':
+    case 'tool_started':
+    case 'tool_result': {
+      // A subagent's own thinking/text/tool calls (Task tool) carry parentToolUseId —
+      // route those into the owning Task call's nested `items` instead of top level.
+      // Falls back to flat top-level if the parent isn't found (defensive: never drop
+      // an event over a lookup miss).
+      const parentToolUseId = p['parentToolUseId'] as string | undefined;
+      const parentIdx = parentToolUseId ? findTopLevelToolIndex(t, parentToolUseId) : -1;
+      if (parentIdx !== -1) {
+        const parent = t[parentIdx] as Extract<TranscriptItem, { kind: 'tool' }>;
+        const items = applyBranchEvent(parent.items ? [...parent.items] : [], e.type, p);
+        t[parentIdx] = { ...parent, items };
       } else {
-        if (tail?.kind === 'text' && !tail.done) t[t.length - 1] = { ...tail, text: tail.text + text };
-        else {
-          markThinkingDone(t);
-          t.push({ kind: 'text', text, done: false });
-        }
+        applyBranchEvent(t, e.type, p);
       }
       break;
     }
     case 'thinking_progress': {
-      const tail = last(t);
-      if (tail?.kind === 'thinking' && !tail.done) {
-        t[t.length - 1] = { ...tail, estimatedTokens: p['estimatedTokens'] as number };
-      }
-      break;
-    }
-    case 'assistant_message': {
-      // close the streamed text block; recover content when deltas were coalesced away
-      const tail = last(t);
-      if (tail?.kind === 'text' && !tail.done) t[t.length - 1] = { ...tail, done: true };
-      else {
-        const blocks = (p['content'] as { type: string; text?: string; thinking?: string }[] | undefined) ?? [];
-        const thinkingText = blocks.filter((b) => b.type === 'thinking' && b.thinking).map((b) => b.thinking).join('');
-        if (thinkingText) t.push({ kind: 'thinking', text: thinkingText, estimatedTokens: 0, done: true });
-        const text = blocks.filter((b) => b.type === 'text' && b.text).map((b) => b.text).join('');
-        if (text) t.push({ kind: 'text', text, done: true });
-      }
-      markThinkingDone(t);
-      break;
-    }
-    case 'tool_started':
-      t.push({ kind: 'tool', toolUseId: p['toolUseId'] as string, name: p['name'] as string, input: p['input'] });
-      break;
-    case 'tool_result': {
-      const id = p['toolUseId'] as string;
-      for (let i = t.length - 1; i >= 0; i--) {
-        const item = t[i]!;
-        if (item.kind === 'tool' && item.toolUseId === id) {
-          t[i] = { ...item, output: p['output'] as string, isError: p['isError'] as boolean, truncated: p['truncated'] as boolean };
-          break;
+      // No parentToolUseId is available for this event type (the underlying SDK message
+      // carries none) — resolve the open thinking item positionally instead: if the last
+      // top-level item is an in-flight Task call, its own preceding stream_delta(thinking)
+      // already nested the open thinking item under `items`, so that's unambiguous.
+      const estimatedTokens = p['estimatedTokens'] as number;
+      const topTail = last(t);
+      if (topTail?.kind === 'tool' && topTail.output === undefined && topTail.items) {
+        const nestedTail = last(topTail.items);
+        if (nestedTail?.kind === 'thinking' && !nestedTail.done) {
+          const items = [...topTail.items];
+          items[items.length - 1] = { ...nestedTail, estimatedTokens };
+          t[t.length - 1] = { ...topTail, items };
         }
+      } else if (topTail?.kind === 'thinking' && !topTail.done) {
+        t[t.length - 1] = { ...topTail, estimatedTokens };
       }
       break;
     }
@@ -257,6 +315,12 @@ function markThinkingDone(t: TranscriptItem[]): void {
       return;
     }
     if (item.kind === 'user') return;
+    // an in-flight Task call's own open thinking, one level deep (see reduce()'s
+    // parentToolUseId routing — a nested tool item never itself carries `items`)
+    if (item.kind === 'tool' && item.output === undefined && item.items) {
+      markThinkingDone(item.items);
+      return;
+    }
   }
 }
 
