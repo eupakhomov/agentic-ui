@@ -79,6 +79,7 @@ claude-ui/
 | 11 | [phase-11-monorepo.md](phase-11-monorepo.md) | Monorepo support: a service is a folder inside a git repo (`servicePath` as identity, `repoPath` demoted to git root), cwd = the package subfolder, whole worktree writable, manifest-driven workspace detection, per-subtree discovery staleness |
 | 12 | [phase-12-linear-cache-serena-context.md](phase-12-linear-cache-serena-context.md) | Linear ticket list/import cache (15 min, refresh, system-session pre-warm + prefetch); Serena stdio MCP as a per-session opt-in from a local checkout; per-session context-usage chip with a compact-in-place suggestion |
 | 13 | [phase-13-graphify.md](phase-13-graphify.md) | Graphify knowledge-graph MCP as the second code-intelligence tool: global one-of selector (`none`/Serena/Graphify), per-session code-only graph built asynchronously outside the worktree and refreshed after every turn, driven from a reviewed local checkout via `uv` |
+| 14 | [phase-14-codegraph.md](phase-14-codegraph.md) | CodeGraph MCP as the third code-intelligence tool in the same one-of selector: per-session index built synchronously during PROVISIONING inside the worktree (git-excluded), kept fresh by the server's own watcher, driven from a reviewed local checkout on the backend's Node with telemetry/update-check/daemon off |
 
 Each phase ends in a runnable state, has a **Definition of Done** checklist, and a
 **manual test script** with concrete commands and expected results. A phase is not
