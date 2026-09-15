@@ -152,17 +152,17 @@ class SessionRepositoryDbTest {
 	}
 
 	@Test
-	void serenaEnabledRoundTripsThroughInsert() {
+	void codeIntelRoundTripsThroughInsert() {
 		UUID id = UUID.randomUUID();
 		SessionEntity entity = SessionEntity.builder()
 				.id(id).name("t-" + id).provider("claude")
 				.repoPath("/repo").branch("b-" + id).baseBranch("main").worktreePath("/wt/" + id)
 				.skillSources(mapper.createArrayNode()).agentSources(mapper.createArrayNode())
-				.state(SessionState.IDLE).serenaEnabled(true).build();
+				.state(SessionState.IDLE).codeIntel("graphify").build();
 
 		sessions.insert(entity);
 
-		assertThat(sessions.get(id).serenaEnabled()).isTrue();
+		assertThat(sessions.get(id).codeIntel()).isEqualTo("graphify");
 	}
 
 	@Test

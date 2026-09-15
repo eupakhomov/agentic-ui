@@ -279,3 +279,27 @@ describe('evaluateContextWarn / dismissContextWarn', () => {
     expect(useStore.getState().views[SID]!.ctxSuggestionVisible).toBe(true);
   });
 });
+
+describe('code_intel_status', () => {
+  it('tracks BUILDING chip-only, without a transcript line', () => {
+    useStore.getState().apply(SID, env('code_intel_status', { tool: 'graphify', status: 'BUILDING' }));
+    const v = useStore.getState().views[SID]!;
+    expect(v.codeIntelStatus).toMatchObject({ tool: 'graphify', status: 'BUILDING', nodes: null, edges: null, message: null });
+    expect(v.transcript.some((i) => i.kind === 'note')).toBe(false);
+  });
+
+  it('records READY with counts and one transcript line', () => {
+    useStore.getState().apply(SID, env('code_intel_status', { tool: 'graphify', status: 'BUILDING' }));
+    useStore.getState().apply(SID, env('code_intel_status', { tool: 'graphify', status: 'READY', nodes: 2572, edges: 7685, durationMs: 80123 }, 2));
+    const v = useStore.getState().views[SID]!;
+    expect(v.codeIntelStatus).toMatchObject({ status: 'READY', nodes: 2572, edges: 7685 });
+    expect(v.transcript.at(-1)).toEqual({ kind: 'note', level: 'info', text: 'graphify graph ready — 2572 nodes / 7685 edges' });
+  });
+
+  it('records FAILED with the message as a warning line', () => {
+    useStore.getState().apply(SID, env('code_intel_status', { tool: 'graphify', status: 'FAILED', message: 'timed out after 15 min' }));
+    const v = useStore.getState().views[SID]!;
+    expect(v.codeIntelStatus).toMatchObject({ status: 'FAILED', message: 'timed out after 15 min' });
+    expect(v.transcript.at(-1)).toEqual({ kind: 'note', level: 'warn', text: 'graphify graph build failed: timed out after 15 min' });
+  });
+});

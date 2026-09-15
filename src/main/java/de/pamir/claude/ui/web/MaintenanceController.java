@@ -2,6 +2,7 @@ package de.pamir.claude.ui.web;
 
 import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.git.GitWorktreeService;
+import de.pamir.claude.ui.integration.GraphifyService;
 import de.pamir.claude.ui.session.SessionEntity;
 import de.pamir.claude.ui.session.SessionRepository;
 import de.pamir.claude.ui.session.SessionState;
@@ -16,8 +17,10 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -31,11 +34,14 @@ public class MaintenanceController {
 	private final AppProperties props;
 	private final SessionRepository sessions;
 	private final GitWorktreeService worktrees;
+	private final GraphifyService graphify;
 
-	public MaintenanceController(AppProperties props, SessionRepository sessions, GitWorktreeService worktrees) {
+	public MaintenanceController(AppProperties props, SessionRepository sessions, GitWorktreeService worktrees,
+								 GraphifyService graphify) {
 		this.props = props;
 		this.sessions = sessions;
 		this.worktrees = worktrees;
+		this.graphify = graphify;
 	}
 
 	@GetMapping("/orphans")
@@ -52,6 +58,9 @@ public class MaintenanceController {
 			return children
 					.filter(Files::isDirectory)
 					.filter(p -> !p.getFileName().toString().startsWith("."))
+					// the system session's scratch dirs live at _system/<id> — the container itself
+					// never matches a session's worktreePath, so it would always read as an orphan
+					.filter(p -> !p.getFileName().toString().equals("_system"))
 					.map(Path::toString)
 					.filter(p -> !active.contains(p))
 					.sorted()
@@ -61,10 +70,15 @@ public class MaintenanceController {
 		}
 	}
 
+	/**
+	 * Removes orphan worktrees plus leftover per-session graph dirs under {@code <worktree-root>/
+	 * .graphify/} (docs/plan/phase-13-graphify.md decision 6 — dot-prefixed, so {@link #orphans}
+	 * never lists them as worktrees) whose session is closed, failed or gone.
+	 */
 	@PostMapping("/orphans/clean")
 	public List<String> clean() {
-		List<String> removed = orphans();
-		for (String orphan : removed) {
+		List<String> removed = new ArrayList<>(orphans());
+		for (String orphan : orphans()) {
 			Path worktree = Path.of(orphan);
 			// find the repo this worktree belongs to via its session row if any, else best-effort by all known repos
 			String repo = sessions.findAll().stream()
@@ -79,6 +93,11 @@ public class MaintenanceController {
 				deleteRecursively(worktree);
 			}
 		}
+		Set<UUID> activeIds = sessions.findAll().stream()
+				.filter(s -> s.state() != SessionState.CLOSED && s.state() != SessionState.FAILED)
+				.map(SessionEntity::id)
+				.collect(Collectors.toSet());
+		removed.addAll(graphify.cleanOrphanGraphs(activeIds));
 		return removed;
 	}
 

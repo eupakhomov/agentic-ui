@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import { WsSession } from '../api/ws';
 import type { Envelope, PermissionMode, SessionEntity } from '../protocol';
-import { useStore } from '../store/store';
+import { type CodeIntelStatus, useStore } from '../store/store';
 import { notify, notificationForEvent } from '../notify';
 import { registerWidget, unregisterWidget } from '../hotkeys/widgetRegistry';
 import {
@@ -294,8 +294,10 @@ export default function SessionWidget({
           {entity?.ecosystemPath && (
             <span className="chip" title={`read-only context: ${entity.ecosystemPath}`}><EcosystemContext /></span>
           )}
-          {entity?.serenaEnabled && (
-            <span className="chip" title="Serena MCP enabled">serena</span>
+          {entity?.codeIntel && (
+            <span className={codeIntelChipClass(view?.codeIntelStatus ?? null)} title={codeIntelChipTitle(entity.codeIntel, view?.codeIntelStatus ?? null)}>
+              {entity.codeIntel}
+            </span>
           )}
           {entity?.ticketRef && (
             <span className="chip" title="linked ticket"><LinkedTicket />{entity.ticketRef}</span>
@@ -507,4 +509,27 @@ export default function SessionWidget({
       )}
     </div>
   );
+}
+
+/** phase 13: colour = state — pulse while the graph builds, plain when ready, --red on failure (no status yet = plain). */
+function codeIntelChipClass(status: CodeIntelStatus | null): string {
+  if (!status) return 'chip';
+  if (status.status === 'BUILDING') return 'chip pulse';
+  if (status.status === 'FAILED') return 'chip code-intel-failed';
+  return 'chip';
+}
+
+function codeIntelChipTitle(tool: string, status: CodeIntelStatus | null): string {
+  if (!status) return `${tool} MCP server attached`;
+  if (status.status === 'BUILDING') return `${tool}: building the code graph…`;
+  if (status.status === 'FAILED') return `${tool}: graph build failed — ${status.message ?? 'unknown error'} (retried after the next turn)`;
+  const counts = status.nodes != null && status.edges != null ? `${status.nodes} nodes / ${status.edges} edges, ` : '';
+  return `${tool}: graph ${counts}built ${agoText(status.at)}`;
+}
+
+function agoText(iso: string): string {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  return `${Math.round(s / 3600)} h ago`;
 }

@@ -4,6 +4,7 @@ import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitWorktreeService;
+import de.pamir.claude.ui.integration.GraphifyService;
 import de.pamir.claude.ui.integration.SerenaService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -40,7 +41,19 @@ class SessionConfigFactoryTest {
 		// touch the (null in these tests) SettingsRepository regardless — overriding current() to
 		// return a fixed snapshot sidesteps that entirely.
 		Settings fixed = new Settings(linearOAuth, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
-				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv");
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv", "", "none");
+		return new SettingsService(null, null, null) {
+			@Override
+			public Settings current() {
+				return fixed;
+			}
+		};
+	}
+
+	/** Same fixed-snapshot fake, with the phase-13 code-intelligence selector set (docs/plan/phase-13-graphify.md decision 1). */
+	private static SettingsService fakeSettingsWithCodeIntel(String codeIntel) {
+		Settings fixed = new Settings(false, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
+				false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", codeIntel);
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -50,7 +63,7 @@ class SessionConfigFactoryTest {
 	}
 
 	private SessionConfigFactory factoryWith(AppProperties props, SettingsService settings) {
-		return new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, null, null);
+		return new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, null, null, null);
 	}
 
 	/** A {@link GitWorktreeService} whose git-touching methods are stubbed — see docs/plan/phase-11-monorepo.md Step 3. */
@@ -213,7 +226,7 @@ class SessionConfigFactoryTest {
 		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
 				null, mapper, null, 8080, fakeCatalog(Map.of("widget", new ProviderCapabilities(
 						List.of("default"), true, true, true, true, true, true, true, true, true, true, true,
-						List.of("maxTurns"), true, true, true, "claude-code"))), null, null);
+						List.of("maxTurns"), true, true, true, "claude-code"))), null, null, null);
 		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -228,7 +241,7 @@ class SessionConfigFactoryTest {
 	void prepareAcceptsTheSameFieldForAProviderThatSupportsIt() {
 		AppProperties props = propsWithLinearKey("", "authtoken");
 		SessionConfigFactory factory = new SessionConfigFactory(props, fakeSettings(false, false, false),
-				null, mapper, null, 8080, fakeCatalog(Map.of("widget", fullCapabilities())), null, null);
+				null, mapper, null, 8080, fakeCatalog(Map.of("widget", fullCapabilities())), null, null, null);
 		ObjectNode overrides = mapper.createObjectNode().put("provider", "widget").put("maxTurns", 5);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -242,7 +255,7 @@ class SessionConfigFactoryTest {
 
 	private static SettingsService fakeSettingsWithEcosystem(String ecosystemRoot) {
 		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv");
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "none");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -258,7 +271,7 @@ class SessionConfigFactoryTest {
 				List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, "/repo")));
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
 				fakeSettingsWithEcosystem("/eco"), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null);
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
 				.withServicePath(servicePath);
@@ -274,7 +287,7 @@ class SessionConfigFactoryTest {
 		GitWorktreeService worktrees = fakeWorktrees(Map.of(), List.of()); // repoRootOf always empty
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
 				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null);
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
 				.withServicePath("/not-a-repo/foo");
@@ -293,7 +306,7 @@ class SessionConfigFactoryTest {
 		// anything that isn't the repo root itself, without even calling the (empty) findServices fake.
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
 				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null);
+				fakeCatalog(Map.of("claude", fullCapabilities())), worktrees, null, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
 				.withServicePath(servicePath);
@@ -309,7 +322,7 @@ class SessionConfigFactoryTest {
 		String repo = System.getProperty("user.dir");
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
 				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), null, null);
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", repo, null, mapper.createObjectNode(), Map.of(), false);
 
@@ -367,15 +380,15 @@ class SessionConfigFactoryTest {
 	void prepareLayersASerenaMcpEntryWhenEnabledAndConfigured() {
 		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", null);
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
-				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena);
-		ObjectNode overrides = mapper.createObjectNode().put("serenaEnabled", true);
+				fakeSettingsWithCodeIntel("serena"), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena, null);
+		ObjectNode overrides = mapper.createObjectNode().put("codeIntelEnabled", true);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
 
 		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
 
-		assertThat(prepared.entity().serenaEnabled()).isTrue();
+		assertThat(prepared.entity().codeIntel()).isEqualTo("serena");
 		assertThat(prepared.entity().mcpConfig().path("serena").path("command").asText()).isEqualTo("uv");
 		assertThat(serenaArgs(prepared.entity())).containsExactly("run", "--directory", "/mnt/d/projects/serena",
 				"serena", "start-mcp-server", "--context", "claude-code", "--project", "/worktree",
@@ -386,23 +399,24 @@ class SessionConfigFactoryTest {
 	void prepareLeavesMcpConfigUnchangedWhenSerenaIsNotEnabled() {
 		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", null);
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
-				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena);
+				fakeSettingsWithCodeIntel("serena"), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena, null);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, mapper.createObjectNode(), Map.of(), false);
 
 		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
 
-		assertThat(prepared.entity().serenaEnabled()).isFalse();
+		assertThat(prepared.entity().codeIntel()).isNull();
 		assertThat(prepared.entity().mcpConfig()).isNull();
 	}
 
 	@Test
 	void prepareKeepsAnExplicitSerenaMcpEntryUntouched() {
+		// deliberately the phase-12 `serenaEnabled` key: templates already in the DB carry it (decision 5)
 		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", null);
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
-				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena);
+				fakeSettingsWithCodeIntel("serena"), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena, null);
 		ObjectNode overrides = mapper.createObjectNode().put("serenaEnabled", true);
 		overrides.putObject("mcpConfig").putObject("serena").put("command", "custom-uv");
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
@@ -417,8 +431,8 @@ class SessionConfigFactoryTest {
 	void prepareUsesTheProvidersDeclaredSerenaContext() {
 		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", null);
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
-				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("codex", codexLikeCapabilities())), null, serena);
+				fakeSettingsWithCodeIntel("serena"), null, mapper, null, 8080,
+				fakeCatalog(Map.of("codex", codexLikeCapabilities())), null, serena, null);
 		ObjectNode overrides = mapper.createObjectNode().put("provider", "codex").put("serenaEnabled", true);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -432,8 +446,8 @@ class SessionConfigFactoryTest {
 	void prepareRejectsSerenaEnabledWhenNotConfigured() {
 		SerenaService serena = fakeSerena(false, "", "uv", null);
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
-				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena);
+				fakeSettingsWithCodeIntel("serena"), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, serena, null);
 		ObjectNode overrides = mapper.createObjectNode().put("serenaEnabled", true);
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
@@ -448,14 +462,187 @@ class SessionConfigFactoryTest {
 	void extraSystemPromptIncludesSerenaOverrideOnlyForClaudeCodeContext() {
 		SerenaService serena = fakeSerena(true, "/mnt/d/projects/serena", "uv", "SERENA OVERRIDE TEXT");
 		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
-				fakeSettings(false, false, false), null, mapper, null, 8080,
-				fakeCatalog(Map.of("claude", fullCapabilities(), "codex", codexLikeCapabilities())), null, serena);
+				fakeSettingsWithCodeIntel("serena"), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities(), "codex", codexLikeCapabilities())), null, serena, null);
 		SessionEntity claudeSession = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("claude")
 				.repoPath("/repo").branch("b").baseBranch("main").worktreePath("/wt")
-				.state(SessionState.CREATING).kind("user").serenaEnabled(true).build();
+				.state(SessionState.CREATING).kind("user").codeIntel("serena").build();
 		SessionEntity codexSession = claudeSession.toBuilder().provider("codex").build();
 
 		assertThat(factory.extraSystemPrompt(claudeSession)).contains("SERENA OVERRIDE TEXT");
 		assertThat(factory.extraSystemPrompt(codexSession)).isNull();
+	}
+
+	// --- phase 13: graphify as the selected code-intelligence tool ---
+
+	private static GraphifyService fakeGraphify(boolean configured, String root, String uvCommand) {
+		AppProperties props = new AppProperties("/repo", "/home/u/claude-worktrees", "", "", 4, "", "", "", "logs", 30,
+				65536, 1048576, Map.of());
+		return new GraphifyService(null, props, null, null) {
+			@Override
+			public boolean configured() {
+				return configured;
+			}
+
+			@Override
+			public String root() {
+				return root;
+			}
+
+			@Override
+			public String uvCommand() {
+				return uvCommand;
+			}
+		};
+	}
+
+	private static List<String> graphifyArgs(SessionEntity entity) {
+		List<String> args = new ArrayList<>();
+		entity.mcpConfig().path("graphify").path("args").forEach(n -> args.add(n.asText()));
+		return args;
+	}
+
+	private SessionConfigFactory graphifyFactory(String codeIntel, SerenaService serena, GraphifyService graphify) {
+		return new SessionConfigFactory(propsWithLinearKey("", "authtoken"), fakeSettingsWithCodeIntel(codeIntel),
+				null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities(), "codex", codexLikeCapabilities())), null, serena,
+				graphify);
+	}
+
+	private static SessionService.CreateOptions codeIntelOptions(ObjectNode overrides) {
+		return new SessionService.CreateOptions("s", "branch", "main", System.getProperty("user.dir"), null,
+				overrides, Map.of(), false);
+	}
+
+	@Test
+	void prepareLayersAGraphifyMcpEntryPointingAtTheSessionsOwnGraphWhenSelected() {
+		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(true, "/serena", "uv", null),
+				fakeGraphify(true, "/mnt/d/projects/graphify", "/opt/uv"));
+		UUID id = UUID.fromString("00000000-0000-0000-0000-000000000042");
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(id, Path.of("/worktree"),
+				codeIntelOptions(mapper.createObjectNode().put("codeIntelEnabled", true)));
+
+		assertThat(prepared.entity().codeIntel()).isEqualTo("graphify");
+		assertThat(prepared.entity().mcpConfig().has("serena")).isFalse();
+		assertThat(prepared.entity().mcpConfig().path("graphify").path("command").asText()).isEqualTo("/opt/uv");
+		assertThat(prepared.entity().mcpConfig().path("graphify").has("env")).isFalse();
+		assertThat(graphifyArgs(prepared.entity())).containsExactly("run", "--directory", "/mnt/d/projects/graphify",
+				"--no-dev", "--extra", "mcp", "--extra", "sql", "graphify-mcp",
+				"/home/u/claude-worktrees/.graphify/00000000-0000-0000-0000-000000000042/graph.json");
+	}
+
+	@Test
+	void prepareLayersSerenaNotGraphifyWhenSerenaIsSelectedEvenWithAGraphifyRoot() {
+		SessionConfigFactory factory = graphifyFactory("serena", fakeSerena(true, "/serena", "uv", null),
+				fakeGraphify(true, "/graphify", "uv"));
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"),
+				codeIntelOptions(mapper.createObjectNode().put("codeIntelEnabled", true)));
+
+		assertThat(prepared.entity().codeIntel()).isEqualTo("serena");
+		assertThat(prepared.entity().mcpConfig().has("serena")).isTrue();
+		assertThat(prepared.entity().mcpConfig().has("graphify")).isFalse();
+	}
+
+	@Test
+	void prepareKeepsAnExplicitGraphifyMcpEntryUntouched() {
+		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(false, "", "uv", null),
+				fakeGraphify(true, "/graphify", "uv"));
+		ObjectNode overrides = mapper.createObjectNode().put("codeIntelEnabled", true);
+		overrides.putObject("mcpConfig").putObject("graphify").put("command", "custom-graphify");
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"),
+				codeIntelOptions(overrides));
+
+		assertThat(prepared.entity().mcpConfig().path("graphify").path("command").asText()).isEqualTo("custom-graphify");
+	}
+
+	@Test
+	void prepareWithTheFlagOffNeverAttachesATool() {
+		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(true, "/serena", "uv", null),
+				fakeGraphify(true, "/graphify", "uv"));
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"),
+				codeIntelOptions(mapper.createObjectNode().put("codeIntelEnabled", false)));
+
+		assertThat(prepared.entity().codeIntel()).isNull();
+		assertThat(prepared.entity().mcpConfig()).isNull();
+		assertThat(factory.extraSystemPrompt(prepared.entity())).isNull();
+	}
+
+	@Test
+	void prepareRejectsTheFlagWhenTheSelectorIsNone() {
+		SessionConfigFactory factory = graphifyFactory("none", fakeSerena(true, "/serena", "uv", null),
+				fakeGraphify(true, "/graphify", "uv"));
+
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> factory.prepare(UUID.randomUUID(),
+				Path.of("/worktree"), codeIntelOptions(mapper.createObjectNode().put("codeIntelEnabled", true)))))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessage("Code intelligence is not configured (Settings → MCP servers)");
+	}
+
+	@Test
+	void prepareRejectsGraphifyWhenSelectedButNotConfigured() {
+		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(true, "/serena", "uv", null),
+				fakeGraphify(false, "", "uv"));
+
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> factory.prepare(UUID.randomUUID(),
+				Path.of("/worktree"), codeIntelOptions(mapper.createObjectNode().put("codeIntelEnabled", true)))))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("Graphify is not configured");
+	}
+
+	@Test
+	void legacySerenaEnabledKeyResolvesToWhateverToolIsSelected() {
+		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(false, "", "uv", null),
+				fakeGraphify(true, "/graphify", "uv"));
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"),
+				codeIntelOptions(mapper.createObjectNode().put("serenaEnabled", true)));
+
+		assertThat(prepared.entity().codeIntel()).isEqualTo("graphify");
+	}
+
+	@Test
+	void codeIntelEnabledWinsOverTheLegacyAliasWhenBothArePresent() {
+		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(false, "", "uv", null),
+				fakeGraphify(true, "/graphify", "uv"));
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"),
+				codeIntelOptions(mapper.createObjectNode().put("serenaEnabled", true).put("codeIntelEnabled", false)));
+
+		assertThat(prepared.entity().codeIntel()).isNull();
+	}
+
+	@Test
+	void extraSystemPromptCarriesTheGraphifyBlockForEveryProviderWhileSerenasStaysClaudeOnly() {
+		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(true, "/serena", "uv", "SERENA OVERRIDE TEXT"),
+				fakeGraphify(true, "/graphify", "uv"));
+		SessionEntity claudeGraphify = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("claude")
+				.repoPath("/repo").branch("b").baseBranch("main").worktreePath("/wt")
+				.state(SessionState.CREATING).kind("user").codeIntel("graphify").build();
+		SessionEntity codexGraphify = claudeGraphify.toBuilder().provider("codex").build();
+		SessionEntity codexSerena = claudeGraphify.toBuilder().provider("codex").codeIntel("serena").build();
+
+		assertThat(factory.extraSystemPrompt(claudeGraphify)).contains("graphify` MCP server").doesNotContain("SERENA");
+		assertThat(factory.extraSystemPrompt(codexGraphify)).contains("graphify` MCP server");
+		assertThat(factory.extraSystemPrompt(codexSerena)).isNull();
+	}
+
+	@Test
+	void configOverridesFromCarriesTheFlagNotTheTool() {
+		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(false, "", "uv", null),
+				fakeGraphify(true, "/graphify", "uv"));
+		SessionEntity source = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("claude")
+				.repoPath("/repo").branch("b").baseBranch("main").worktreePath("/wt")
+				.state(SessionState.CREATING).kind("user").codeIntel("serena").build();
+
+		ObjectNode overrides = factory.configOverridesFrom(source);
+
+		assertThat(overrides.path("codeIntelEnabled").asBoolean()).isTrue();
+		assertThat(overrides.has("serenaEnabled")).isFalse();
+		assertThat(factory.configOverridesFrom(source.toBuilder().codeIntel(null).build())
+				.path("codeIntelEnabled").asBoolean()).isFalse();
 	}
 }

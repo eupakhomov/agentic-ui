@@ -6,6 +6,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -77,6 +78,12 @@ public class SettingsService {
 	private static final String CONTEXT_WARN_PERCENT_KEY = "session.context-warn-percent";
 	private static final String MCP_SERENA_ROOT_KEY = "mcp.serena-root";
 	private static final String MCP_UV_PATH_KEY = "mcp.uv-path";
+	private static final String MCP_GRAPHIFY_ROOT_KEY = "mcp.graphify-root";
+	private static final String CODE_INTEL_KEY = "mcp.code-intel";
+	public static final String CODE_INTEL_NONE = "none";
+	public static final String CODE_INTEL_SERENA = "serena";
+	public static final String CODE_INTEL_GRAPHIFY = "graphify";
+	public static final Set<String> CODE_INTEL_VALUES = Set.of(CODE_INTEL_NONE, CODE_INTEL_SERENA, CODE_INTEL_GRAPHIFY);
 
 	/** One row per {@link Settings}/{@link SettingsPatch} component — see the class doc. */
 	private record Field<T>(String key, Supplier<T> defaultValue, Function<String, T> parse,
@@ -159,6 +166,15 @@ public class SettingsService {
 			Integer::parseInt, Object::toString, v -> Math.min(95, Math.max(30, v)), SettingsPatch::contextWarnPercent);
 	private final Field<String> mcpSerenaRoot = strField(MCP_SERENA_ROOT_KEY, () -> "", SettingsPatch::mcpSerenaRoot);
 	private final Field<String> mcpUvPath = strField(MCP_UV_PATH_KEY, () -> "uv", SettingsPatch::mcpUvPath);
+	private final Field<String> mcpGraphifyRoot = strField(MCP_GRAPHIFY_ROOT_KEY, () -> "", SettingsPatch::mcpGraphifyRoot);
+	/**
+	 * Stored raw: "" = unset. An unknown value normalizes to "" (unset) rather than failing — the
+	 * controller rejects it up front; this just keeps a hand-edited row from breaking {@link
+	 * #current()}. The resolved value (decision 12's default) is computed in {@link #current()},
+	 * since a {@code Field} default can't see another key.
+	 */
+	private final Field<String> codeIntelField = new Field<>(CODE_INTEL_KEY, () -> "", Function.identity(),
+			Function.identity(), v -> normalizeCodeIntel(v).orElse(""), SettingsPatch::codeIntel);
 
 	private final List<Field<?>> fields;
 
@@ -182,7 +198,7 @@ public class SettingsService {
 				librarySyncIntervalMinutes, defaultProvider, systemProviderField, memoryRoot, memoryEnabled,
 				memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes, memoryRetentionDays,
 				memoryReflectionApprovalRequired, serviceDiscoveryEnabled, serviceDiscoveryStalenessDays,
-				serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath);
+				serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot, codeIntelField);
 	}
 
 	/** One snapshot of every setting in {@link #fields}, cached until the next {@link #apply}. */
@@ -192,6 +208,8 @@ public class SettingsService {
 			return c;
 		}
 		Map<String, String> raw = repo.all();
+		String serenaRoot = mcpSerenaRoot.resolve(raw);
+		String storedCodeIntel = codeIntelField.resolve(raw);
 		Settings built = new Settings(
 				linearOAuthEnabled.resolve(raw),
 				ticketImportSpec.resolve(raw),
@@ -218,10 +236,53 @@ public class SettingsService {
 				serviceDiscoveryStalenessDays.resolve(raw),
 				serviceDiscoveryModel.resolve(raw),
 				contextWarnPercent.resolve(raw),
-				mcpSerenaRoot.resolve(raw),
-				mcpUvPath.resolve(raw));
+				serenaRoot,
+				mcpUvPath.resolve(raw),
+				mcpGraphifyRoot.resolve(raw),
+				storedCodeIntel.isBlank() ? defaultCodeIntel(serenaRoot) : storedCodeIntel);
 		cache = built;
 		return built;
+	}
+
+	/**
+	 * The {@code mcp.code-intel} row as stored (empty = never set, so {@link Settings#codeIntel()}
+	 * is showing decision 12's computed default). The controller needs the distinction: blanking
+	 * the Serena root on an install that never touched the selector just flips that default to
+	 * {@code none}, whereas blanking the root of an explicitly selected tool is refused.
+	 */
+	public Optional<String> storedCodeIntel() {
+		return repo.get(CODE_INTEL_KEY).flatMap(SettingsService::normalizeCodeIntel);
+	}
+
+	/** Decision 12: an install already using Serena keeps it without a Settings visit; nobody gets graphify by accident. */
+	public static String defaultCodeIntel(String serenaRoot) {
+		return serenaRoot == null || serenaRoot.isBlank() ? CODE_INTEL_NONE : CODE_INTEL_SERENA;
+	}
+
+	/**
+	 * Validates a selector against the roots as they will be once a patch is applied (the controller
+	 * passes post-patch values): a tool can't be selected without its root, and the selected tool's
+	 * root can't be blanked ("select none first"). Throws {@link IllegalArgumentException} (→ 400).
+	 */
+	public static void validateCodeIntel(String selector, String serenaRoot, String graphifyRoot) {
+		String tool = normalizeCodeIntel(selector).orElseThrow(() -> new IllegalArgumentException(
+				"Code intelligence must be one of none/serena/graphify, got: " + selector));
+		boolean serenaBlank = serenaRoot == null || serenaRoot.isBlank();
+		boolean graphifyBlank = graphifyRoot == null || graphifyRoot.isBlank();
+		if (CODE_INTEL_SERENA.equals(tool) && serenaBlank) {
+			throw new IllegalArgumentException(
+					"Serena is the selected code-intelligence tool and needs a Serena root — set one, or select none first");
+		}
+		if (CODE_INTEL_GRAPHIFY.equals(tool) && graphifyBlank) {
+			throw new IllegalArgumentException(
+					"Graphify is the selected code-intelligence tool and needs a Graphify root — set one, or select none first");
+		}
+	}
+
+	/** Case-insensitive, trimmed; empty for blank/unknown so callers decide between "unset" and "invalid". */
+	private static Optional<String> normalizeCodeIntel(String raw) {
+		String v = raw == null ? "" : raw.strip().toLowerCase(Locale.ROOT);
+		return CODE_INTEL_VALUES.contains(v) ? Optional.of(v) : Optional.empty();
 	}
 
 	/** Applies every non-null field of {@code patch}; {@code null} means "leave this setting alone". */

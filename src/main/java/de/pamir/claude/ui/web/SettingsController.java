@@ -5,6 +5,7 @@ import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsPatch;
 import de.pamir.claude.ui.config.SettingsService;
+import de.pamir.claude.ui.integration.GraphifyService;
 import de.pamir.claude.ui.integration.SerenaService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -24,11 +25,14 @@ public class SettingsController {
 	private final SettingsService settings;
 	private final AppProperties props;
 	private final SerenaService serena;
+	private final GraphifyService graphify;
 
-	public SettingsController(SettingsService settings, AppProperties props, SerenaService serena) {
+	public SettingsController(SettingsService settings, AppProperties props, SerenaService serena,
+							  GraphifyService graphify) {
 		this.settings = settings;
 		this.props = props;
 		this.serena = serena;
+		this.graphify = graphify;
 	}
 
 	@GetMapping
@@ -41,12 +45,32 @@ public class SettingsController {
 		// Validated against the patch's own (not-yet-persisted) values, not settings.current(), so a
 		// bad root/uv path never lands in the DB — see SerenaService.validate's own contract (a blank
 		// root always passes; clearing/disabling Serena must never be blocked).
+		Settings current = settings.current();
+		String uvPath = patch.mcpUvPath() != null ? patch.mcpUvPath() : current.mcpUvPath();
 		if (patch.mcpSerenaRoot() != null) {
-			String uvPath = patch.mcpUvPath() != null ? patch.mcpUvPath() : settings.current().mcpUvPath();
 			serena.validate(patch.mcpSerenaRoot(), uvPath);
 		}
+		if (patch.mcpGraphifyRoot() != null) {
+			graphify.validate(patch.mcpGraphifyRoot(), uvPath);
+		}
+		validateCodeIntel(patch, current);
 		settings.apply(patch);
 		return view();
+	}
+
+	/**
+	 * The code-intelligence selector is checked against the roots as they will be *after* the patch
+	 * (phase-13 Step 1): a tool needs its root, and blanking the selected tool's root is refused.
+	 * An install that never touched the selector (decision 12's computed default) is exempt from
+	 * the second rule — blanking its Serena root just flips the default back to {@code none}.
+	 */
+	private void validateCodeIntel(SettingsPatch patch, Settings current) {
+		String serenaRoot = patch.mcpSerenaRoot() != null ? patch.mcpSerenaRoot() : current.mcpSerenaRoot();
+		String graphifyRoot = patch.mcpGraphifyRoot() != null ? patch.mcpGraphifyRoot() : current.mcpGraphifyRoot();
+		String selector = patch.codeIntel() != null && !patch.codeIntel().isBlank()
+				? patch.codeIntel()
+				: settings.storedCodeIntel().orElseGet(() -> SettingsService.defaultCodeIntel(serenaRoot));
+		SettingsService.validateCodeIntel(selector, serenaRoot, graphifyRoot);
 	}
 
 	private SettingsView view() {

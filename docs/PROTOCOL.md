@@ -289,6 +289,13 @@ approval round-trip. Full mapping tables and rationale:
   child and the parent when the child calls the `report_result` MCP tool (7.4); the
   same payload also lands as a `user_message` in the parent's queue/transcript, tagged
   `[child report — <name> / <service>]`. See docs/plan/phase-7-ux-and-orchestration.md.
+  `code_intel_status {tool, status, nodes?, edges?, durationMs?, message?}` — emitted by
+  `GraphifyService` on every transition of a `codeIntel: "graphify"` session's background
+  graph build: `status` is `BUILDING|READY|FAILED`, `nodes`/`edges` are the last known
+  counts (carried over on a no-change refresh), `durationMs` is the run that produced a
+  READY/FAILED, `message` the failure reason. Journaled (so the widget chip replays after
+  a reconnect/restart); a FAILED build never fails the session — the next completed turn
+  triggers a retry. See docs/plan/phase-13-graphify.md Step 3.
 - On connect the journal is replayed from `afterSeq`, terminated by
   `{seq, type: "replay_complete", payload:{lastSeq}}`, then live events follow —
   no gaps, no duplicates (seq strictly increases).

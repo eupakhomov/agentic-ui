@@ -236,9 +236,36 @@ git clone https://github.com/oraios/serena.git ~/serena   # or wherever you keep
 Then in Settings → "MCP servers": set **Serena root** to the checkout path (saving
 validates it's a real Serena checkout and that `uv --version` runs) and, only if `uv`
 isn't already on the backend's `PATH`, **uv path** to its full path. Once configured, the
-create dialog's "Serena (symbolic code tools)" checkbox appears (default off — each
-enabled session runs its own Python process plus a language server, so it's not
-something to turn on for every session by default).
+**Code intelligence** selector in the same section offers `Serena` (an install with a
+Serena root and no explicit selection reads `Serena` already), and the create dialog's
+"Code intelligence (Serena — …)" checkbox appears (default off — each enabled session
+runs its own Python process plus a language server, so it's not something to turn on for
+every session by default).
+
+## 8c. Optional: graphify (knowledge-graph code tools)
+
+The other code-intelligence tool (docs/plan/phase-13-graphify.md): a per-session,
+AST-only knowledge graph of the session's code, queried through a stdio MCP server
+(`query_graph`, `get_neighbors`, `shortest_path`, …). One tool per install — the
+**Code intelligence** selector picks Serena *or* graphify, never both. Prerequisites:
+`uv` as above, plus a checkout at the reviewed commit:
+
+```bash
+git clone https://github.com/Graphify-Labs/graphify.git ~/graphify
+git -C ~/graphify checkout c7ec108        # v0.9.62 — the commit the security review covered
+```
+
+Then in Settings → "MCP servers": set **Graphify root** to the checkout path and pick
+`Graphify` in the selector. **The first save of the root is also the first env sync**
+(`uv run --no-dev --extra mcp --extra sql graphify --version` — ~110 wheels on a cold
+cache, a few seconds warm; the input pulses meanwhile and the save has a 180 s budget).
+If it times out, run that exact command once by hand (the error text spells it out) and
+save again. Do *not* run graphify's own `graphify install`, `hook install` or the
+`/graphify` skill anywhere on the box — they rewrite `~/.claude/settings.json` and git
+hooks and `pip install` from PyPI inside agent sessions; this app drives only the `update`
+CLI and the MCP server from the checkout, code-only, with everything written to
+`~/claude-worktrees/.graphify/<sessionId>/` (never inside a worktree). Moving the checkout
+to a newer commit means re-reviewing it first.
 
 ## 9. Updating
 

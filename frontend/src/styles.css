@@ -110,6 +110,8 @@ button.primary:disabled { background: var(--panel2); color: var(--muted); }
 button.danger { background: var(--red); color: var(--on-accent); border: none; }
 button.danger:disabled { background: var(--panel2); color: var(--muted); }
 button.pulse:disabled { color: var(--text); animation: pulse 1.2s infinite; }
+/* same in-flight affordance for a text input whose blur-to-save can take a while (a graphify root's first env sync) */
+input.pulse:disabled { color: var(--text); animation: pulse 1.2s infinite; }
 input, select, textarea { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: calc(13px * var(--font-scale)); font-family: inherit; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
 code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(12.5px * var(--font-scale)); }
@@ -165,6 +167,9 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .chip.mode-bypassPermissions { border-color: var(--red); color: var(--red); }
 .chip.ctx-warn { color: var(--amber); border-color: var(--amber); }
 .chip.ctx-danger { color: var(--red); border-color: var(--red); }
+/* phase 13: the code-intel chip pulses while the session's graph builds, goes --red when the build failed */
+.chip.pulse { animation: pulse 1.2s infinite; }
+.chip.code-intel-failed { color: var(--red); border-color: var(--red); }
 .chip.clickable { cursor: pointer; }
 .chip.selected { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

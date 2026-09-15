@@ -38,5 +38,13 @@ public record Settings(
 		/** Serena checkout root; empty = Serena unavailable (docs/plan/phase-12-linear-cache-serena-context.md Track B) */
 		String mcpSerenaRoot,
 		/** {@code uv} command/path, for hosts where it isn't on the backend's PATH; defaults to "uv" */
-		String mcpUvPath) {
+		String mcpUvPath,
+		/** graphify checkout root; empty = graphify unavailable (docs/plan/phase-13-graphify.md Step 1) */
+		String mcpGraphifyRoot,
+		/**
+		 * Which code-intelligence MCP tool sessions may opt into: {@code none}/{@code serena}/{@code
+		 * graphify} — one per install (phase-13 decision 1). Always resolved here: an unset selector
+		 * reads {@code serena} when a Serena root is configured, else {@code none} (decision 12).
+		 */
+		String codeIntel) {
 }

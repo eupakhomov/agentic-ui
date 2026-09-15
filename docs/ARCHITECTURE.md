@@ -333,6 +333,49 @@ Two small standalone features, no design doc of their own:
   the original sketch: `GET /api/usage/stale-sessions` surfaces PARKED/CRASHED/FAILED
   sessions whose worktree has sat untouched for 3+ days, for manual cleanup.
 
+## 3g. Code intelligence: Serena / graphify one-of (Phases 12B, 13)
+
+Two MCP-served "stop grepping, ask the tool" integrations, deliberately **one per
+install** (`mcp.code-intel ∈ {none, serena, graphify}`, Settings → "MCP servers";
+docs/plan/phase-13-graphify.md decision 1): each spawns a process per session and wants a
+competing "use me first" system-prompt nudge. Sessions carry one flag (`codeIntelEnabled`,
+with phase 12's `serenaEnabled` still accepted as an alias) that
+`SessionConfigFactory.prepare` resolves to the selected tool and records as
+`session.code_intel` (`'serena'`/`'graphify'`/NULL, V17) — recorded per session because the
+MCP entry is baked into `mcp_config` at creation, so flipping the selector later never
+changes what a live session's chip says. `withDefaultCodeIntelMcp` layers the matching
+server with the same merge rule as Linear/memory (the session's own key wins);
+`codeIntelSystemPromptBlock` appends Serena's Claude-Code-only override or graphify's
+provider-neutral block (`GraphifyService.SYSTEM_PROMPT_BLOCK`, both providers).
+
+- **Serena** (phase 12 Track B): a *live* language-server view — `SerenaService` holds the
+  root/uv-path settings + validation; the entry is `uv run --directory <root> serena
+  start-mcp-server --context <ProviderCapabilities.serenaContext> --project <cwdPath>`;
+  `SidecarManager` sets `MCP_TIMEOUT=300000` for it (cold language-server download).
+- **graphify** (phase 13): a *pre-built* structural map — `GraphifyService` owns settings +
+  validation (the `--version` probe on save doubles as the first `uv` env sync, 180 s
+  budget), the invariant process prefix (`uv run --directory <root> --no-dev --extra mcp
+  --extra sql`), and the **build pipeline**: `build()` right after the worktree exists
+  (`SessionService.create`, async — the MCP server starts before the graph exists and its
+  tools return "graph.json not found" until it appears), `refreshAfterTurn()` from the
+  `turn_complete` housekeeping block (single-flight per session + a dirty flag, so turns
+  finishing mid-build coalesce into exactly one more run), `ensureBuilt()` on resume/wake
+  (READY iff the graph file survived the restart, else a build), `delete()` on both close
+  paths and from `MaintenanceController.clean()`'s orphan sweep. Every run is `graphify
+  update <cwdPath>` (AST-only by construction — no semantic pass, no API key, nothing
+  leaves the machine) with `GRAPHIFY_OUT=<worktree-root>/.graphify/<id>` (outside the
+  worktree, dot-prefixed so the orphan scan skips it), `GRAPHIFY_VIZ_NODE_LIMIT=0` (no
+  `graph.html` — it loads vis-network from unpkg), stdout/stderr appended to
+  `logs/graphify/<id>.log`, a 15 min hard cap, on a 2-thread daemon executor. Status is
+  in-memory (`BuildState`) plus a journaled `code_intel_status {tool, status, nodes?,
+  edges?, durationMs?, message?}` per transition (docs/PROTOCOL.md) — no column — which
+  the store reduces into `SessionView.codeIntelStatus` for the widget chip (`.pulse`
+  while BUILDING, `--red` on FAILED) and one transcript line per outcome. A FAILED build
+  never fails the session; the next turn retries. Security posture from the pre-phase
+  review (never graphify's skill/`install`/hooks/semantic backend): decision 14 in the
+  phase doc. Measured: this repo builds in ~11 s from empty and ~7 s on refresh with the
+  worktree on ext4 (the ~80 s spike figure was a DrvFS artefact).
+
 ## 4. Backlog implementation sketches (remaining: 5.4, 5.6–5.8, 5.10–5.11)
 
 ### 5.4 Templates v2 — remaining gap

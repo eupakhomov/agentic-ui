@@ -91,8 +91,8 @@ export interface SessionEntity {
   prCheckedAt: string | null;
   /** Opt-in end-of-session memory retrospective (phase 5.3) */
   reflectionEnabled: boolean;
-  /** Opt-in Serena (symbolic code tools) MCP server (phase 12 track B) */
-  serenaEnabled: boolean;
+  /** which code-intelligence MCP server was attached at creation (phase 13 decision 5); null = none */
+  codeIntel: 'serena' | 'graphify' | null;
   /** Latest known context-window usage (phase 12 track C); null until the first turn */
   contextTokens: number | null;
   contextWindow: number | null;
@@ -203,7 +203,14 @@ export interface Settings {
   mcpSerenaRoot: string;
   /** `uv` command/path, for hosts where it isn't on the backend's PATH; default "uv" */
   mcpUvPath: string;
+  /** graphify checkout root; empty = graphify unavailable (phase 13) */
+  mcpGraphifyRoot: string;
+  /** which code-intelligence tool sessions may opt into — one per install (phase 13 decision 1); always resolved */
+  codeIntel: CodeIntel;
 }
+
+/** phase 13: the global one-of code-intelligence selector; `none` hides the create-dialog checkbox */
+export type CodeIntel = 'none' | 'serena' | 'graphify';
 
 // --- layered memory (phase 5.3) ---
 

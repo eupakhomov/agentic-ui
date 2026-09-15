@@ -56,7 +56,8 @@ export default function CreateSessionDialog({
   const [instructions, setInstructions] = useState('');
   const [ecosystemPath, setEcosystemPath] = useState('');
   const [reflectionEnabled, setReflectionEnabled] = useState(false);
-  const [serenaEnabled, setSerenaEnabled] = useState(false);
+  /** phase 13: one flag; which tool it attaches is the global Settings selector (`settings.codeIntel`) */
+  const [codeIntelEnabled, setCodeIntelEnabled] = useState(false);
   const [selectedSkillAssets, setSelectedSkillAssets] = useState<Map<string, LibraryAsset>>(new Map());
   const [selectedAgentAssets, setSelectedAgentAssets] = useState<Map<string, LibraryAsset>>(new Map());
   const [extraSkill, setExtraSkill] = useState('');
@@ -239,7 +240,7 @@ export default function CreateSessionDialog({
       if (instructions.trim()) overrides['instructions'] = instructions.trim();
       overrides['ecosystemPath'] = ecosystemPath.trim() || null;
       overrides['reflectionEnabled'] = reflectionEnabled;
-      overrides['serenaEnabled'] = serenaEnabled;
+      overrides['codeIntelEnabled'] = codeIntelEnabled;
       if (promptFromTicket && resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
       const sniffSource = (raw: string) =>
         raw.startsWith('http') || raw.endsWith('.git') ? { type: 'repo', ref: raw } : { type: 'dir', ref: raw };
@@ -455,12 +456,14 @@ export default function CreateSessionDialog({
               distill this session into long-term memory when it closes (or via the widget's brain button anytime)
             </label>
 
-            {settings?.mcpSerenaRoot && (
+            {settings && settings.codeIntel !== 'none' && (
               <>
-                <label>Serena</label>
+                <label>Code intelligence</label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
-                  <input type="checkbox" checked={serenaEnabled} onChange={(e) => setSerenaEnabled(e.target.checked)} />
-                  symbolic code tools (find_symbol, references, …) via a per-session Serena MCP server
+                  <input type="checkbox" checked={codeIntelEnabled} onChange={(e) => setCodeIntelEnabled(e.target.checked)} />
+                  {settings.codeIntel === 'serena'
+                    ? 'Serena — symbolic code tools (find_symbol, references, …) via a per-session MCP server'
+                    : 'Graphify — knowledge-graph tools (query_graph, get_neighbors, …) over a per-session code graph built in the background'}
                 </label>
               </>
             )}

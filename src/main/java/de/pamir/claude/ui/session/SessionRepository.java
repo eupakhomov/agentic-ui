@@ -38,7 +38,7 @@ public class SessionRepository {
 							allowed_tools, disallowed_tools, mcp_config, env_vars, skill_sources, agent_sources,
 							instructions, thinking, effort, max_turns, fallback_model, cost_budget_usd,
 							kickoff_prompt, state, kind, ticket_ref, continued_from_id, parent_session_id,
-							reflection_enabled, serena_enabled)
+							reflection_enabled, code_intel)
 						VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb,
 							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
@@ -48,7 +48,7 @@ public class SessionRepository {
 						json(s.mcpConfig()), json(s.envVars()), json(s.skillSources()), json(s.agentSources()),
 						s.instructions(), s.thinking(), s.effort(), s.maxTurns(), s.fallbackModel(), s.costBudgetUsd(),
 						s.kickoffPrompt(), s.state().name(), s.kind(), s.ticketRef(), s.continuedFromId(),
-						s.parentSessionId(), s.reflectionEnabled(), s.serenaEnabled())
+						s.parentSessionId(), s.reflectionEnabled(), s.codeIntel())
 				.update();
 	}
 
@@ -285,7 +285,7 @@ public class SessionRepository {
 				rs.getTimestamp("pr_checked_at") == null ? null : rs.getTimestamp("pr_checked_at").toInstant(),
 				rs.getBoolean("reflection_enabled"),
 				(Long) rs.getObject("reflected_seq"),
-				rs.getBoolean("serena_enabled"),
+				rs.getString("code_intel"),
 				(Integer) rs.getObject("context_tokens"),
 				(Integer) rs.getObject("context_window"),
 				rs.getTimestamp("created_at").toInstant(),

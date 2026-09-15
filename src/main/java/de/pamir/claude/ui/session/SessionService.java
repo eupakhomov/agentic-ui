@@ -6,6 +6,7 @@ import tools.jackson.databind.node.ObjectNode;
 import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitCommandRunner;
+import de.pamir.claude.ui.integration.GraphifyService;
 import de.pamir.claude.ui.git.GitWorktreeService;
 import de.pamir.claude.ui.discovery.ServiceDiscoveryRequested;
 import de.pamir.claude.ui.journal.EventJournal;
@@ -50,6 +51,8 @@ public class SessionService {
 	private final SystemSessionService systemSessionService;
 	private final AutoTitleService autoTitleService;
 	private final ProviderCatalog catalog;
+	/** Graph build lifecycle for {@code codeIntel == "graphify"} sessions (docs/plan/phase-13-graphify.md Step 3); null in unit tests. */
+	private final GraphifyService graphify;
 	private final Map<UUID, Object> locks = new ConcurrentHashMap<>();
 	/** Guards the enforceSessionLimit()+insert critical section — see {@link #enforceSessionLimitAndInsert}. */
 	private final Object sessionLimitLock = new Object();
@@ -64,7 +67,7 @@ public class SessionService {
 						  JournalPublisher journalPublisher, ObjectMapper mapper,
 						  ApplicationEventPublisher events,
 						  SessionConfigFactory configFactory, SystemSessionService systemSessionService,
-						  AutoTitleService autoTitleService, ProviderCatalog catalog) {
+						  AutoTitleService autoTitleService, ProviderCatalog catalog, GraphifyService graphify) {
 		this.props = props;
 		this.settings = settings;
 		this.sessions = sessions;
@@ -80,6 +83,7 @@ public class SessionService {
 		this.systemSessionService = systemSessionService;
 		this.autoTitleService = autoTitleService;
 		this.catalog = catalog;
+		this.graphify = graphify;
 	}
 
 	// ------------------------------------------------------------------ creation
@@ -150,6 +154,11 @@ public class SessionService {
 				record(id, "warning", mapper.createObjectNode().put("message", warning.message()));
 			}
 			writeMcpConfig(entity);
+			// decision 2: the graph builds in the background from here on — the session is usable
+			// immediately, its MCP server tolerates the graph appearing later (Step 0)
+			if (graphify != null) {
+				graphify.build(entity);
+			}
 
 			transition(id, SessionState.STARTING);
 			SessionEntity persisted = sessions.get(id);
@@ -177,6 +186,9 @@ public class SessionService {
 			enforceSessionLimit(session.kind());
 			transition(id, SessionState.STARTING);
 			spawn(session, true);
+			if (graphify != null) {
+				graphify.ensureBuilt(session);
+			}
 			return sessions.get(id);
 		}
 	}
@@ -289,6 +301,7 @@ public class SessionService {
 				transition(id, SessionState.CLOSING);
 				sidecars.terminate(id);
 				deleteRecursively(Path.of(session.worktreePath()));
+				deleteGraph(id);
 				transition(id, SessionState.CLOSED);
 				releaseSessionState(id);
 				return;
@@ -310,6 +323,7 @@ public class SessionService {
 				}
 			}
 			worktrees.removeWorktree(Path.of(session.repoPath()), worktree);
+			deleteGraph(id);
 			transition(id, SessionState.CLOSED);
 			releaseSessionState(id);
 			if (session.reflectionEnabled()) {
@@ -318,6 +332,13 @@ public class SessionService {
 			if (settings.current().serviceDiscoveryEnabled()) {
 				events.publishEvent(new ServiceDiscoveryRequested(id, session.servicePath(), session.repoPath()));
 			}
+		}
+	}
+
+	/** Best-effort: a failed graph-dir removal is logged inside, never blocks a close. */
+	private void deleteGraph(UUID id) {
+		if (graphify != null) {
+			graphify.delete(id);
 		}
 	}
 
@@ -373,6 +394,9 @@ public class SessionService {
 				try {
 					journal.deleteDeltasBefore(id, journal.lastSeq(id));
 					autoTitleService.maybeAutoTitle(id);
+					if (graphify != null) {
+						graphify.refreshAfterTurn(sessions.get(id)); // decision 8: coalesced, non-blocking
+					}
 				} catch (RuntimeException e) {
 					log.warn("post-turn housekeeping failed for {}: {}", id, e.getMessage());
 				}
@@ -611,7 +635,9 @@ public class SessionService {
 	 * exists. Confirmed live (docs/plan/phase-12-linear-cache-serena-context.md Track B manual
 	 * test) that Serena's own {@code .serena/.gitignore} (written inside that directory) does
 	 * NOT keep the directory itself out of {@code git status} — only entries *inside* it — so
-	 * this repo-level exclude line is required, not optional polish.
+	 * this repo-level exclude line is required, not optional polish. Graphify (the other
+	 * {@code codeIntel} tool) needs no line: its graph lives outside the worktree entirely
+	 * (docs/plan/phase-13-graphify.md decision 6).
 	 */
 	private void excludeProvisionedAssets(Path worktree, Path assetsRoot) {
 		try {
@@ -687,6 +713,9 @@ public class SessionService {
 					.put("message", "wake failed: " + e.getMessage()).put("fatal", true));
 			transition(session.id(), SessionState.CRASHED);
 			throw e;
+		}
+		if (graphify != null) {
+			graphify.ensureBuilt(session); // decision 11: READY iff the graph survived, else rebuild
 		}
 	}
 }

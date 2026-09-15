@@ -353,23 +353,46 @@ effect on the next use with no backend restart.
   worktree itself (not the original checkout) as its context — see
   `docs/plan/phase-11-monorepo.md`. Polyrepo (a folder of separate repos, or detection
   left off) is unchanged.
-- **MCP servers** (Settings dialog → "MCP servers"; feature docs:
-  `docs/plan/phase-12-linear-cache-serena-context.md` Track B) — `mcp.serena-root` (path to a
-  Serena checkout; empty = Serena unavailable) and `mcp.uv-path` (default `uv`, for hosts where
-  it isn't on the backend's PATH). Saving validates the root is a directory whose
-  `pyproject.toml` names `serena-agent` and that `<uv> --version` runs (`SerenaService`); a
-  failure is a 400 with the reason, not silent. A session/template opts in per-session via
-  `serenaEnabled` (default off — each enabled session runs its own Python process plus a
-  language server) — the create dialog's "Serena (symbolic code tools)" checkbox only renders
-  when the root is configured. A Serena-enabled session gets a `serena` stdio MCP entry layered
-  into its `mcpConfig` (unless it already declares one — same rule as Linear/memory), pointing
-  at its own `cwdPath` (monorepo: the package folder) with `--context` from the provider's own
-  `capabilities.json` (`claude-code`/`codex` — no provider name in Java); Claude sessions
-  additionally get Serena's own recommended system-prompt override appended via the existing
-  `extraSystemPrompt` seam (captured once per root via `serena prompts
-  print-cc-system-prompt-override`, memoized, never blocks session creation on failure). The
-  sidecar env gets `MCP_TIMEOUT=300000` when Serena is enabled, since its language server can
-  take minutes to download on a cold cache.
+- **MCP servers / code intelligence** (Settings dialog → "MCP servers"; feature docs:
+  `docs/plan/phase-12-linear-cache-serena-context.md` Track B for Serena,
+  `docs/plan/phase-13-graphify.md` for graphify, `docs/ARCHITECTURE.md` §3g for both) —
+  a **Code intelligence** selector `mcp.code-intel ∈ {none, serena, graphify}` (one tool
+  per install, never both: each spawns a process per session and wants a competing "use
+  me first" prompt; unset reads `serena` when a Serena root exists, else `none`), plus
+  `mcp.serena-root` / `mcp.graphify-root` (paths to local checkouts; empty = that tool
+  unavailable) and `mcp.uv-path` (default `uv`, shared by both). Saving validates a root
+  (directory, `pyproject.toml` names `serena-agent` / `graphifyy`, the uv probe runs —
+  for graphify the probe is `uv run --directory <root> --no-dev --extra mcp --extra sql
+  graphify --version`, which is also the first env sync, 180 s budget) and refuses
+  selecting a tool without its root or blanking the selected tool's root ("select none
+  first"); failures are 400s with the reason. Sessions/templates opt in with one flag,
+  **`codeIntelEnabled`** (default off; phase 12's `serenaEnabled` is accepted as a legacy
+  alias), resolved at creation to the selected tool and stored as `session.code_intel`
+  (`'serena'`/`'graphify'`/NULL — baked per session, so flipping the selector later doesn't
+  change a live session; the widget chip reads the tool name). The create dialog's
+  checkbox names the selected tool and is hidden when `none`; the flag with `none`
+  selected is a 400, never a silent downgrade.
+  - *Serena* (symbolic code tools): a `serena` stdio entry layered into `mcpConfig`
+    (unless the session already declares one — same rule as Linear/memory) pointing at
+    its own `cwdPath` with `--context` from the provider's `capabilities.json`
+    (`claude-code`/`codex`); Claude sessions also get Serena's own system-prompt override
+    via `extraSystemPrompt`; the sidecar env gets `MCP_TIMEOUT=300000` (cold language-server
+    download).
+  - *graphify* (knowledge-graph tools — `query_graph`, `get_neighbors`, `shortest_path`,
+    `get_community`, `god_nodes`, `graph_stats`…): a `graphify` stdio entry (`… graphify-mcp
+    <graph>`) plus our own provider-neutral prompt block (both providers). The graph is
+    **per session, code-only, built in the background** right after the worktree exists
+    (`GraphifyService.build`, the session is usable immediately) and **refreshed after
+    every completed turn** (single-flight + coalesced — turns finishing mid-build queue
+    exactly one more run; ~11 s from empty / ~7 s refresh for this repo on ext4), stored
+    at `<worktree-root>/.graphify/<sessionId>/` (never inside the worktree — the Git panel
+    stays clean), logged to `logs/graphify/<sessionId>.log`, removed on close and by
+    `POST /api/maintenance/orphans/clean`. Status is journaled as `code_intel_status`
+    (chip pulses while building, `--red` on failure; a failed build never fails the
+    session, the next turn retries). Posture from the pre-phase security review: only the
+    `update` CLI (AST-only — no semantic pass, no API key, nothing leaves the machine) and
+    the MCP server are used, from a reviewed local checkout via `uv run … --no-dev`; never
+    graphify's `/graphify` skill, `graphify install`, git hooks or `graph.html`.
 - **Context warning threshold** (Settings dialog → "Sessions", `session.context-warn-
   percent`, default 70, floor 30, ceiling 95) — one number, same meaning for every
   session. Every session carries `contextTokens`/`contextWindow` (latest known,

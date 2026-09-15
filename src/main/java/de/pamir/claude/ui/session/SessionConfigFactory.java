@@ -4,6 +4,7 @@ import de.pamir.claude.ui.config.AppProperties;
 import de.pamir.claude.ui.config.Settings;
 import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.git.GitWorktreeService;
+import de.pamir.claude.ui.integration.GraphifyService;
 import de.pamir.claude.ui.integration.SerenaService;
 import de.pamir.claude.ui.memory.MemoryEpisodeRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,11 +47,12 @@ public class SessionConfigFactory {
 	private final ProviderCatalog catalog;
 	private final GitWorktreeService worktrees;
 	private final SerenaService serena;
+	private final GraphifyService graphify;
 
 	public SessionConfigFactory(AppProperties props, SettingsService settings, TemplateRepository templates,
 								 ObjectMapper mapper, MemoryEpisodeRepository episodes,
 								 @Value("${server.port:8080}") int serverPort, ProviderCatalog catalog,
-								 GitWorktreeService worktrees, SerenaService serena) {
+								 GitWorktreeService worktrees, SerenaService serena, GraphifyService graphify) {
 		this.props = props;
 		this.settings = settings;
 		this.templates = templates;
@@ -60,6 +62,7 @@ public class SessionConfigFactory {
 		this.catalog = catalog;
 		this.worktrees = worktrees;
 		this.serena = serena;
+		this.graphify = graphify;
 	}
 
 	/** The resolved entity (still transient — not yet inserted) plus any non-fatal warnings to journal. */
@@ -98,10 +101,7 @@ public class SessionConfigFactory {
 		Integer maxTurns = config.hasNonNull("maxTurns") ? config.get("maxTurns").asInt() : null;
 		String fallbackModel = nullableText(config, "fallbackModel");
 		List<String> contextDirs = stringList(config, "contextDirs");
-		boolean serenaEnabled = config.path("serenaEnabled").asBoolean(false);
-		if (serenaEnabled && !serena.configured()) {
-			throw new IllegalArgumentException("Serena is not configured (Settings → MCP servers)");
-		}
+		String codeIntel = resolveCodeIntel(config, s);
 		ProviderCapabilities caps = catalog.get(provider);
 		// Unsupported controls are rejected at creation time, not silently downgraded (DoD from
 		// docs/plan/phase-5.13-codex-provider.md, generalized in
@@ -165,8 +165,8 @@ public class SessionConfigFactory {
 			}
 		}
 		String cwdPath = computeCwdPath(repo, resolution.servicePath(), worktree);
-		JsonNode mcpConfig = withDefaultSerenaMcp(withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig)),
-				provider, serenaEnabled, cwdPath);
+		JsonNode mcpConfig = withDefaultCodeIntelMcp(withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig)),
+				provider, codeIntel, cwdPath, id);
 
 		SessionEntity entity = SessionEntity.builder()
 				.id(id).name(options.name())
@@ -184,9 +184,37 @@ public class SessionConfigFactory {
 				.state(SessionState.CREATING).kind("user").ticketRef(nullableText(config, "ticketRef"))
 				.continuedFromId(options.continuedFromId()).parentSessionId(options.parentSessionId())
 				.reflectionEnabled(config.path("reflectionEnabled").asBoolean(s.memoryReflectionDefault()))
-				.serenaEnabled(serenaEnabled)
+				.codeIntel(codeIntel)
 				.build();
 		return new Prepared(entity, warnings);
+	}
+
+	/**
+	 * The per-session code-intelligence flag ({@code codeIntelEnabled}; the phase-12 {@code
+	 * serenaEnabled} key is accepted as a legacy alias since templates in the DB still carry it)
+	 * resolved to the globally selected tool (docs/plan/phase-13-graphify.md decisions 1 and 5).
+	 * A session with the flag off never reads either service; with it on, {@code none} or an
+	 * unconfigured selected tool is a 400 — never a silent downgrade.
+	 */
+	private String resolveCodeIntel(JsonNode config, Settings s) {
+		boolean enabled = config.path("codeIntelEnabled").asBoolean(config.path("serenaEnabled").asBoolean(false));
+		if (!enabled) {
+			return null;
+		}
+		String tool = s.codeIntel();
+		if (SettingsService.CODE_INTEL_NONE.equals(tool)) {
+			throw new IllegalArgumentException("Code intelligence is not configured (Settings → MCP servers)");
+		}
+		boolean configured = switch (tool) {
+			case SettingsService.CODE_INTEL_SERENA -> serena.configured();
+			case SettingsService.CODE_INTEL_GRAPHIFY -> graphify.configured();
+			default -> false;
+		};
+		if (!configured) {
+			String label = Character.toUpperCase(tool.charAt(0)) + tool.substring(1);
+			throw new IllegalArgumentException(label + " is not configured (Settings → MCP servers)");
+		}
+		return tool;
 	}
 
 	private record ServiceResolution(String repoPath, String servicePath) {
@@ -340,17 +368,46 @@ public class SessionConfigFactory {
 	}
 
 	/**
-	 * The Serena (symbolic code tools) MCP server block, or null when Serena isn't enabled for
-	 * this session or isn't configured backend-wide (docs/plan/phase-12-linear-cache-serena-
-	 * context.md Track B, decision 2 — opt-in per session, default off). {@code --context} comes
-	 * from the provider's own declared capability ({@link ProviderCapabilities#serenaContext()}),
-	 * never a hardcoded provider name (same seam as the rest of this file).
+	 * Layers the session's code-intelligence MCP server — {@code serena} or {@code graphify} per
+	 * the resolved {@code codeIntel}, nothing for null — with the same merge rule as Linear/memory
+	 * (the session's own entry under that key wins). Serena: docs/plan/phase-12-linear-cache-
+	 * serena-context.md Track B decision 2, {@code --context} from the provider's own declared
+	 * capability ({@link ProviderCapabilities#serenaContext()}), never a hardcoded provider name.
+	 * Graphify: docs/plan/phase-13-graphify.md Step 2.
 	 */
-	JsonNode withDefaultSerenaMcp(JsonNode configured, String provider, boolean serenaEnabled, String cwdPath) {
-		if (!serenaEnabled) {
+	JsonNode withDefaultCodeIntelMcp(JsonNode configured, String provider, String codeIntel, String cwdPath,
+									   UUID sessionId) {
+		if (codeIntel == null) {
 			return configured;
 		}
-		return withDefaultServer(configured, "serena", serenaMcpServer(provider, cwdPath));
+		return switch (codeIntel) {
+			case SettingsService.CODE_INTEL_SERENA ->
+					withDefaultServer(configured, "serena", serenaMcpServer(provider, cwdPath));
+			case SettingsService.CODE_INTEL_GRAPHIFY ->
+					withDefaultServer(configured, "graphify", graphifyMcpServer(sessionId));
+			default -> configured;
+		};
+	}
+
+	/**
+	 * The graphify knowledge-graph MCP server block (docs/plan/phase-13-graphify.md Step 2):
+	 * {@code graphify-mcp <graphDir>/graph.json} through the same reviewed-checkout {@code uv run}
+	 * prefix as every other graphify process. No {@code env} — the server needs none. The graph
+	 * file need not exist yet: the server starts regardless and its tools return a "not found"
+	 * error until the background build (Step 3) writes it.
+	 */
+	private ObjectNode graphifyMcpServer(UUID sessionId) {
+		if (!graphify.configured()) {
+			return null;
+		}
+		List<String> base = graphify.baseCommand();
+		ObjectNode servers = mapper.createObjectNode();
+		ObjectNode entry = servers.putObject("graphify");
+		entry.put("command", base.getFirst());
+		ArrayNode args = entry.putArray("args");
+		base.subList(1, base.size()).forEach(args::add);
+		args.add("graphify-mcp").add(graphify.graphFile(sessionId).toString());
+		return servers;
 	}
 
 	private ObjectNode serenaMcpServer(String provider, String cwdPath) {
@@ -460,9 +517,6 @@ public class SessionConfigFactory {
 	 * (its context differs and the override text is Claude-Code-specific).
 	 */
 	private String serenaSystemPromptBlock(SessionEntity session) {
-		if (!session.serenaEnabled()) {
-			return null;
-		}
 		String context = catalog.get(session.provider()).serenaContext();
 		if (!"claude-code".equals(context)) {
 			return null;
@@ -470,11 +524,27 @@ public class SessionConfigFactory {
 		return serena.ccSystemPromptOverride();
 	}
 
-	/** The extra system-prompt text a spawn should append (memory + orchestration + Serena blocks), or null if all are empty. */
+	/**
+	 * Serena → its own Claude-Code-only override (above); graphify → our provider-neutral block
+	 * for every provider (docs/plan/phase-13-graphify.md decision 10 — the sidecars merge it into
+	 * the system prompt/instructions alike); no tool → nothing.
+	 */
+	private String codeIntelSystemPromptBlock(SessionEntity session) {
+		if (session.codeIntel() == null) {
+			return null;
+		}
+		return switch (session.codeIntel()) {
+			case SettingsService.CODE_INTEL_SERENA -> serenaSystemPromptBlock(session);
+			case SettingsService.CODE_INTEL_GRAPHIFY -> GraphifyService.SYSTEM_PROMPT_BLOCK;
+			default -> null;
+		};
+	}
+
+	/** The extra system-prompt text a spawn should append (memory + orchestration + code-intel blocks), or null if all are empty. */
 	String extraSystemPrompt(SessionEntity session) {
 		String joined = Stream
 				.of(memorySystemPromptBlock(session), orchestrationSystemPromptBlock(session),
-						serenaSystemPromptBlock(session))
+						codeIntelSystemPromptBlock(session))
 				.filter(Objects::nonNull)
 				.collect(Collectors.joining("\n\n"));
 		return joined.isBlank() ? null : joined;
@@ -537,7 +607,8 @@ public class SessionConfigFactory {
 			overrides.put("costBudgetUsd", source.costBudgetUsd().toPlainString());
 		}
 		overrides.put("reflectionEnabled", source.reflectionEnabled());
-		overrides.put("serenaEnabled", source.serenaEnabled());
+		// the tool itself is re-resolved from the global selector at prepare() time (decision 5)
+		overrides.put("codeIntelEnabled", source.codeIntel() != null);
 		return overrides;
 	}
 

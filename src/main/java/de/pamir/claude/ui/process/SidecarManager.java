@@ -3,6 +3,7 @@ package de.pamir.claude.ui.process;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import de.pamir.claude.ui.config.AppProperties;
+import de.pamir.claude.ui.config.SettingsService;
 import de.pamir.claude.ui.session.ProviderCapabilities;
 import de.pamir.claude.ui.session.ProviderCatalog;
 import de.pamir.claude.ui.session.SessionEntity;
@@ -69,12 +70,13 @@ public class SidecarManager {
 		command.addAll(buildArgs(session, mcpConfigFile, resume, extraSystemPrompt));
 
 		ProcessBuilder builder = new ProcessBuilder(command).directory(Path.of(session.worktreePath()).toFile());
-		if (session.serenaEnabled()) {
+		if (SettingsService.CODE_INTEL_SERENA.equals(session.codeIntel())) {
 			// Serena's language server can take minutes to download on a cold cache (docs/plan/
 			// phase-12-linear-cache-serena-context.md Step B0) — a generous, conservative default
 			// the client's own MCP handshake timeout should honor, so it doesn't give up on Serena
 			// as a dead server mid-download. Set before the session's own envVars so it can still
-			// override this.
+			// override this. Serena-only: graphify's stdio server initializes in under a second
+			// (phase-13 Step 0) and the graph is built out of band.
 			builder.environment().put("MCP_TIMEOUT", "300000");
 		}
 		if (session.envVars() != null && session.envVars().isObject()) {

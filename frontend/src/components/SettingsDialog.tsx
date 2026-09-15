@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/rest';
 import { getFontSize, getTheme, setFontSize, setTheme, type FontSize, type Theme } from '../prefs';
-import type { ProviderView, Settings } from '../protocol';
+import type { CodeIntel, ProviderView, Settings } from '../protocol';
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
@@ -25,7 +25,10 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [contextWarnPercentDraft, setContextWarnPercentDraft] = useState('');
   const [mcpSerenaRootDraft, setMcpSerenaRootDraft] = useState('');
   const [mcpUvPathDraft, setMcpUvPathDraft] = useState('');
+  const [mcpGraphifyRootDraft, setMcpGraphifyRootDraft] = useState('');
   const [mcpSerenaError, setMcpSerenaError] = useState('');
+  /** the graphify root save doubles as its first `uv` env sync (up to 180 s) — pulse the input meanwhile */
+  const [mcpGraphifySaving, setMcpGraphifySaving] = useState(false);
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -45,6 +48,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setContextWarnPercentDraft(String(s.contextWarnPercent));
       setMcpSerenaRootDraft(s.mcpSerenaRoot);
       setMcpUvPathDraft(s.mcpUvPath);
+      setMcpGraphifyRootDraft(s.mcpGraphifyRoot);
     }).catch(() => setSettings(null));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
@@ -168,6 +172,29 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     void api.updateSettings({ mcpUvPath: mcpUvPathDraft })
       .then((s) => { setSettings(s); setMcpUvPathDraft(s.mcpUvPath); })
       .catch((e: unknown) => setMcpSerenaError(e instanceof Error ? e.message : String(e)));
+  };
+
+  const saveMcpGraphifyRoot = () => {
+    if (!settings || mcpGraphifyRootDraft === settings.mcpGraphifyRoot) return;
+    setMcpSerenaError('');
+    setMcpGraphifySaving(true);
+    void api.updateSettings({ mcpGraphifyRoot: mcpGraphifyRootDraft })
+      .then((s) => { setSettings(s); setMcpGraphifyRootDraft(s.mcpGraphifyRoot); })
+      .catch((e: unknown) => setMcpSerenaError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setMcpGraphifySaving(false));
+  };
+
+  const saveCodeIntel = (tool: CodeIntel) => {
+    if (!settings) return;
+    const previous = settings.codeIntel;
+    setMcpSerenaError('');
+    setSettings({ ...settings, codeIntel: tool });
+    void api.updateSettings({ codeIntel: tool })
+      .then(setSettings)
+      .catch((e: unknown) => {
+        setSettings({ ...settings, codeIntel: previous });
+        setMcpSerenaError(e instanceof Error ? e.message : String(e));
+      });
   };
 
   const toggleVectorize = () => {
@@ -377,6 +404,17 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
 
             <h3 style={{ margin: '18px 0 10px' }}>MCP servers</h3>
             <div className="form-grid">
+              <label>Code intelligence</label>
+              <select
+                value={settings.codeIntel}
+                onChange={(e) => saveCodeIntel(e.target.value as CodeIntel)}
+                title="which code-intelligence MCP tool a session may opt into (one per install; the create dialog's checkbox names it). A tool needs its root below."
+              >
+                <option value="none">none</option>
+                <option value="serena" disabled={!settings.mcpSerenaRoot}>Serena (symbolic code tools)</option>
+                <option value="graphify" disabled={!settings.mcpGraphifyRoot}>Graphify (knowledge graph)</option>
+              </select>
+
               <label>Serena root</label>
               <input
                 className="full"
@@ -385,7 +423,19 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setMcpSerenaRootDraft(e.target.value)}
                 onBlur={saveMcpSerenaRoot}
                 placeholder="path to a Serena checkout; empty = Serena unavailable"
-                title="Serena (symbolic code tools) MCP server checkout root — enables the per-session Serena checkbox in the create dialog"
+                title="Serena (symbolic code tools) MCP server checkout root — selectable above once set"
+              />
+
+              <label>Graphify root</label>
+              <input
+                className={mcpGraphifySaving ? 'full pulse' : 'full'}
+                style={{ gridColumn: '2 / -1' }}
+                value={mcpGraphifyRootDraft}
+                disabled={mcpGraphifySaving}
+                onChange={(e) => setMcpGraphifyRootDraft(e.target.value)}
+                onBlur={saveMcpGraphifyRoot}
+                placeholder="path to a graphify checkout; empty = graphify unavailable"
+                title="graphify (knowledge-graph code tools) checkout root, driven via uv — selectable above once set. The first save also syncs its Python env, which can take a minute or two."
               />
 
               <label>uv path</label>

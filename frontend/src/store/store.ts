@@ -47,6 +47,18 @@ export interface SessionView {
    * re-show on the next context_usage while still above threshold — see evaluateContextWarn. */
   ctxWarnArmed: boolean;
   ctxSuggestionVisible: boolean;
+  /** phase 13: the session's graphify graph-build state (journaled `code_intel_status`); null until the first event */
+  codeIntelStatus: CodeIntelStatus | null;
+}
+
+export interface CodeIntelStatus {
+  tool: string;
+  status: 'BUILDING' | 'READY' | 'FAILED';
+  nodes: number | null;
+  edges: number | null;
+  message: string | null;
+  /** event timestamp — the chip's "built X ago" */
+  at: string;
 }
 
 const emptyView = (): SessionView => ({
@@ -69,6 +81,7 @@ const emptyView = (): SessionView => ({
   autoCompactAt: null,
   ctxWarnArmed: true,
   ctxSuggestionVisible: false,
+  codeIntelStatus: null,
 });
 
 function last<T>(arr: T[]): T | undefined {
@@ -291,6 +304,22 @@ function reduce(view: SessionView, e: Envelope): SessionView {
       v.contextWindow = p['window'] as number;
       v.autoCompactAt = p['autoCompactAt'] == null ? null : (p['autoCompactAt'] as number);
       break;
+    case 'code_intel_status': {
+      const status = p['status'] as CodeIntelStatus['status'];
+      const nodes = p['nodes'] == null ? null : (p['nodes'] as number);
+      const edges = p['edges'] == null ? null : (p['edges'] as number);
+      const message = p['message'] == null ? null : (p['message'] as string);
+      v.codeIntelStatus = { tool: p['tool'] as string, status, nodes, edges, message, at: e.ts ?? new Date().toISOString() };
+      // BUILDING is chip-only (a refresh after every turn would otherwise spam the transcript);
+      // a result line lands once per outcome so it's visible after the fact
+      if (status === 'READY') {
+        const counts = nodes != null && edges != null ? ` — ${nodes} nodes / ${edges} edges` : '';
+        t.push({ kind: 'note', level: 'info', text: `${p['tool']} graph ready${counts}` });
+      } else if (status === 'FAILED') {
+        t.push({ kind: 'note', level: 'warn', text: `${p['tool']} graph build failed: ${message ?? 'unknown error'}` });
+      }
+      break;
+    }
     case 'context_compacted':
       t.push({
         kind: 'context_compacted',

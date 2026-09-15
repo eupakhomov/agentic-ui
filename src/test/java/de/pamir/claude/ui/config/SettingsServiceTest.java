@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Fakes SettingsRepository with an in-memory map (same pattern SessionServiceTest uses for
@@ -176,6 +177,78 @@ class SettingsServiceTest {
 		SettingsService settings = newService();
 		settings.apply(SettingsPatch.builder().mcpUvPath("/opt/uv/bin/uv").build());
 		assertThat(settings.current().mcpUvPath()).isEqualTo("/opt/uv/bin/uv");
+	}
+
+	// --- phase 13: mcp.graphify-root + mcp.code-intel selector ---
+
+	@Test
+	void mcpGraphifyRootDefaultsToEmptyAndRoundTrips() {
+		SettingsService settings = newService();
+		assertThat(settings.current().mcpGraphifyRoot()).isEmpty();
+
+		settings.apply(SettingsPatch.builder().mcpGraphifyRoot("/mnt/d/projects/graphify").build());
+		assertThat(settings.current().mcpGraphifyRoot()).isEqualTo("/mnt/d/projects/graphify");
+	}
+
+	@Test
+	void codeIntelDefaultsToNoneWithoutASerenaRoot() {
+		SettingsService settings = newService();
+		assertThat(settings.current().codeIntel()).isEqualTo("none");
+		assertThat(settings.storedCodeIntel()).isEmpty();
+	}
+
+	@Test
+	void codeIntelDefaultsToSerenaWhenASerenaRootIsConfiguredButTheSelectorWasNeverSet() {
+		// decision 12: an install already on Serena keeps working with no Settings visit
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().mcpSerenaRoot("/mnt/d/projects/serena").build());
+		assertThat(settings.current().codeIntel()).isEqualTo("serena");
+		assertThat(settings.storedCodeIntel()).isEmpty();
+	}
+
+	@Test
+	void codeIntelRoundTripsAnExplicitChoiceOverTheDefault() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().mcpSerenaRoot("/mnt/d/projects/serena").codeIntel("none").build());
+		assertThat(settings.current().codeIntel()).isEqualTo("none");
+		assertThat(settings.storedCodeIntel()).contains("none");
+
+		settings.apply(SettingsPatch.builder().codeIntel("Graphify").build());
+		assertThat(settings.current().codeIntel()).isEqualTo("graphify");
+	}
+
+	@Test
+	void codeIntelTreatsAnUnknownStoredValueAsUnset() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().codeIntel("bogus").build());
+		assertThat(settings.storedCodeIntel()).isEmpty();
+		assertThat(settings.current().codeIntel()).isEqualTo("none");
+	}
+
+	@Test
+	void validateCodeIntelAcceptsNoneRegardlessOfRoots() {
+		SettingsService.validateCodeIntel("none", "", "");
+		SettingsService.validateCodeIntel("none", "/serena", "/graphify");
+	}
+
+	@Test
+	void validateCodeIntelRequiresTheSelectedToolsRoot() {
+		SettingsService.validateCodeIntel("serena", "/serena", "");
+		SettingsService.validateCodeIntel("graphify", "", "/graphify");
+
+		assertThatThrownBy(() -> SettingsService.validateCodeIntel("serena", "", "/graphify"))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("select none first");
+		assertThatThrownBy(() -> SettingsService.validateCodeIntel("graphify", "/serena", " "))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("Graphify root");
+	}
+
+	@Test
+	void validateCodeIntelRejectsAnUnknownSelector() {
+		assertThatThrownBy(() -> SettingsService.validateCodeIntel("both", "/serena", "/graphify"))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("none/serena/graphify");
 	}
 
 	@Test

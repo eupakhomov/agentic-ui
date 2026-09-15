@@ -98,7 +98,8 @@ export const api = {
     | 'defaultProvider' | 'systemProvider' | 'codexPricing' | 'memoryRoot' | 'memoryEnabled' | 'memoryReflectionDefault'
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
     | 'memoryReflectionApprovalRequired' | 'serviceDiscoveryEnabled' | 'serviceDiscoveryStalenessDays'
-    | 'serviceDiscoveryModel' | 'contextWarnPercent' | 'mcpSerenaRoot' | 'mcpUvPath'>>) =>
+    | 'serviceDiscoveryModel' | 'contextWarnPercent' | 'mcpSerenaRoot' | 'mcpUvPath' | 'mcpGraphifyRoot'
+    | 'codeIntel'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
   listProviders: () => request<ProviderView[]>('GET', '/api/providers'),
   libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>
