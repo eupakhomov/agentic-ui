@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MetaControllerTest {
 
 	private static SettingsService fakeSettings(String ecosystemRoot) {
-		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
+		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, true, 180,
 				"", "", false, true, 60, "claude", "", "", true, false, "cheap", 5, 0, true, true, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override
@@ -43,7 +43,8 @@ class MetaControllerTest {
 	private static GitWorktreeService fakeWorktrees(Map<String, List<GitWorktreeService.ServiceInfo>> byRoot) {
 		return new GitWorktreeService(null) {
 			@Override
-			public List<ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs) {
+			public List<ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs,
+												   boolean monorepoDetectionEnabled) {
 				return byRoot.getOrDefault(ecosystemRoot.toString(), List.of());
 			}
 		};

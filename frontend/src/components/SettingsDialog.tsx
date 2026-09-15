@@ -86,6 +86,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       .catch(() => setEcosystemRootDraft(settings.ecosystemRoot));
   };
 
+  const toggleMonorepoDetection = () => {
+    if (!settings) return;
+    const next = { ...settings, monorepoDetectionEnabled: !settings.monorepoDetectionEnabled };
+    setSettings(next);
+    void api.updateSettings({ monorepoDetectionEnabled: next.monorepoDetectionEnabled }).catch(() => setSettings(settings));
+  };
+
   const saveMonorepoGlobs = () => {
     if (!settings || monorepoGlobsDraft === settings.monorepoServiceGlobs) return;
     void api.updateSettings({ monorepoServiceGlobs: monorepoGlobsDraft })
@@ -305,6 +312,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 placeholder="parent folder of your services; empty = no default wider context"
                 title="default read-only context folder + service discovery root, overridable per session"
               />
+
+              <label>Monorepo detection</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input type="checkbox" checked={settings.monorepoDetectionEnabled} onChange={toggleMonorepoDetection} />
+                auto-split a repo into its workspace packages as separate services; off = every repo under
+                the ecosystem root is one service, even if it has a workspace manifest
+              </label>
 
               <label>Monorepo package globs</label>
               <input

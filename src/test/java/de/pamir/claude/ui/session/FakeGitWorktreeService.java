@@ -65,7 +65,8 @@ final class FakeGitWorktreeService extends GitWorktreeService {
 	}
 
 	@Override
-	public List<GitWorktreeService.ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs) {
+	public List<GitWorktreeService.ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs,
+															   boolean monorepoDetectionEnabled) {
 		return knownServices;
 	}
 }

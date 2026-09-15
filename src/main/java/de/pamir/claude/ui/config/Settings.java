@@ -13,6 +13,7 @@ public record Settings(
 		String ticketImportSpec,
 		String ecosystemRoot,
 		String monorepoServiceGlobs,
+		boolean monorepoDetectionEnabled,
 		boolean prChecksEnabled,
 		int prCheckPollIntervalSeconds,
 		String librarySkillsRoot,

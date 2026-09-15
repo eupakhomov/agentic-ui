@@ -92,7 +92,8 @@ export const api = {
     request<TicketList>('POST', `/api/tickets/recent?refresh=${refresh}`, undefined, signal),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
-    | 'monorepoServiceGlobs' | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
+    | 'monorepoServiceGlobs' | 'monorepoDetectionEnabled'
+    | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
     | 'libraryVectorize' | 'librarySyncEnabled' | 'librarySyncIntervalMinutes'
     | 'defaultProvider' | 'systemProvider' | 'codexPricing' | 'memoryRoot' | 'memoryEnabled' | 'memoryReflectionDefault'
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'

@@ -14,6 +14,7 @@ public record SettingsPatch(
 		String ticketImportSpec,
 		String ecosystemRoot,
 		String monorepoServiceGlobs,
+		Boolean monorepoDetectionEnabled,
 		Boolean prChecksEnabled,
 		Integer prCheckPollIntervalSeconds,
 		String librarySkillsRoot,
@@ -48,6 +49,7 @@ public record SettingsPatch(
 		private String ticketImportSpec;
 		private String ecosystemRoot;
 		private String monorepoServiceGlobs;
+		private Boolean monorepoDetectionEnabled;
 		private Boolean prChecksEnabled;
 		private Integer prCheckPollIntervalSeconds;
 		private String librarySkillsRoot;
@@ -89,6 +91,11 @@ public record SettingsPatch(
 
 		public Builder monorepoServiceGlobs(String v) {
 			this.monorepoServiceGlobs = v;
+			return this;
+		}
+
+		public Builder monorepoDetectionEnabled(Boolean v) {
+			this.monorepoDetectionEnabled = v;
 			return this;
 		}
 
@@ -208,7 +215,8 @@ public record SettingsPatch(
 		}
 
 		public SettingsPatch build() {
-			return new SettingsPatch(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs, prChecksEnabled,
+			return new SettingsPatch(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs,
+					monorepoDetectionEnabled, prChecksEnabled,
 					prCheckPollIntervalSeconds, librarySkillsRoot, libraryAgentsRoot, libraryVectorize,
 					librarySyncEnabled, librarySyncIntervalMinutes, defaultProvider, systemProvider, codexPricing,
 					memoryRoot, memoryEnabled, memoryReflectionDefault, memoryReflectionModel,

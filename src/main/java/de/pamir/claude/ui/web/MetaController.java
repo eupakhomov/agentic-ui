@@ -43,10 +43,12 @@ public class MetaController {
 	@GetMapping("/repo/services")
 	public ServicesResponse services() {
 		List<String> globs = monorepoGlobs();
+		boolean monorepoDetectionEnabled = settings.current().monorepoDetectionEnabled();
 		List<ServiceInfo> services = new ArrayList<>();
 		String ecosystemRoot = settings.current().ecosystemRoot();
 		if (!ecosystemRoot.isBlank()) {
-			worktrees.findServices(Path.of(ecosystemRoot), globs).forEach(svc -> services.add(toServiceInfo(svc)));
+			worktrees.findServices(Path.of(ecosystemRoot), globs, monorepoDetectionEnabled)
+					.forEach(svc -> services.add(toServiceInfo(svc)));
 		}
 		Path configured = Path.of(props.repoPath());
 		// The configured default repo goes through the same detection as everything else — a
@@ -55,7 +57,7 @@ public class MetaController {
 		// path, since a monorepo's packages never equal the repo root), don't duplicate it.
 		if (services.stream().noneMatch(s -> s.repoPath().equals(configured.toString()))
 				&& Files.exists(configured.resolve(".git"))) {
-			List<ServiceInfo> defaults = worktrees.findServices(configured, globs).stream()
+			List<ServiceInfo> defaults = worktrees.findServices(configured, globs, monorepoDetectionEnabled).stream()
 					.map(this::toServiceInfo).toList();
 			services.addAll(0, defaults);
 		}
