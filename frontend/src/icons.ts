@@ -38,6 +38,7 @@ export {
   Minimize2 as Restore,
   Minus as MinimizeToDock,
   GitBranch as GitPanelIcon,
+  Info as InfoTag,
   Copy as Duplicate,
   Download as DownloadIcon,
   Square as Interrupt,
