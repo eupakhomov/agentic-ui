@@ -280,6 +280,14 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     // calls) so the frontend can render a nested transcript under the Task call — harmless
     // no-op for sessions that never invoke Task.
     forwardSubagentText: true,
+    // Without this, "provider default" thinking (config.thinking left unset, so no
+    // `thinking` option below and no per-call `display: 'summarized'`) gets raw redacted
+    // thinking blocks — empty `thinking` text plus an opaque `signature`, so the frontend
+    // never has text to show even though thinking_progress events still fire. This
+    // Settings-level flag requests API-side summaries independently of the per-call
+    // `thinking.display`, so it also covers that case; harmless to also set when a
+    // `thinking.display` is already explicit (off has nothing to summarize either way).
+    settings: { showThinkingSummaries: true },
     settingSources: ['project'],
     systemPrompt: config.appendSystemPrompt
       ? { type: 'preset', preset: 'claude_code', append: config.appendSystemPrompt }

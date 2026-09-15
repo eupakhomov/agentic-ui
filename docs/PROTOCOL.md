@@ -150,9 +150,18 @@ a hardcoded provider name.
   (reasoning-effort level). On Claude 5 models thinking is **redacted**: raw deltas
   carry token estimates, not text — the adapter requests `display: 'summarized'`, so
   UIs receive readable summarized `stream_delta(thinking)` text plus
-  `thinking_progress` estimates. Adaptive mode means the model decides when to think:
-  trivial prompts legitimately produce zero thinking events even with thinking
-  enabled. (The SDK's `maxThinkingTokens` is deprecated and not used.)
+  `thinking_progress` estimates. "Provider default" (no `--thinking` override) gets no
+  per-call `display` field, so the adapter also sets the Settings-level
+  `showThinkingSummaries: true` flag unconditionally — without it, provider-default
+  turns still emit `thinking_progress` but the redacted `thinking` block itself has
+  empty text (just an opaque `signature`), so the frontend would have nothing to show.
+  Adaptive mode means the model decides when to think: trivial prompts legitimately
+  produce zero thinking events even with thinking enabled — confirmed live: the same
+  session, same `adaptive` setting, switched from Haiku (thinks regardless of prompt
+  triviality) to Sonnet (correctly skips thinking for "what is 7+5", still thinks fully
+  for a genuinely hard problem) mid-conversation. This is intended per-model behavior,
+  not something to work around by forcing a fixed budget on model switch. (The SDK's
+  `maxThinkingTokens` is deprecated and not used.)
 - Model IDs in `system_init` are concrete (e.g. `claude-sonnet-5`) even when the
   adapter was launched with an alias (`sonnet`).
 - After `interrupt`, the turn ends with a `turn_complete` (possibly an error subtype)
