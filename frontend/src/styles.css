@@ -122,8 +122,29 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .widget.waiting { border-color: var(--amber); }
 .widget.crashed { border-color: var(--red); }
 .widget.focused { box-shadow: 0 0 0 2px var(--accent); }
-.widget-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--panel2); cursor: move; }
-.widget-header .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* overflow-x is a last-resort safety net, not the primary mechanism: .header-info's own
+   shrinking/collapsing (below) keeps things fitting in all but the narrowest widgets, but
+   if even the trailing mode/cost/ctx chips + action buttons can't all fit, a quick scroll
+   beats a permanently unreachable close button */
+.widget-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--panel2); cursor: move; overflow-x: auto; overflow-y: hidden; }
+.widget-header .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 40px; max-width: 200px; }
+/* the info group absorbs all shrinking (and clips internally) so the mode/cost/ctx chips
+   and action buttons after it — flex-shrink:0 below — never get pushed past the header edge.
+   It's also its own size container: how much room IT actually has left (after the header's
+   other, protected children take theirs) is what decides whether path/branch/model collapse
+   — querying the header's own total width can't tell, since that varies with how many
+   buttons/chips are present elsewhere. */
+.header-info { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; overflow: hidden; container-type: inline-size; }
+.widget-header > *:not(.header-info) { flex-shrink: 0; }
+.info-chips-full { display: contents; }
+/* path/branch/model can each run long (branch names especially) — ellipsize individually
+   so a long value degrades gracefully instead of hard-clipping mid-character */
+.info-chips-full .chip { flex-shrink: 0; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.chip.info-chips-collapsed { display: none; }
+@container (max-width: 420px) {
+  .info-chips-full { display: none; }
+  .chip.info-chips-collapsed { display: inline-flex; }
+}
 .spacer { flex: 1; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .dot.IDLE { background: var(--green); }

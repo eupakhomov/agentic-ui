@@ -116,7 +116,8 @@ public class ServiceDiscoveryMcpTools {
 		if (session.ecosystemPath() == null || session.ecosystemPath().isBlank()) {
 			return List.of();
 		}
-		return worktrees.findServices(Path.of(session.ecosystemPath()), monorepoGlobs()).stream()
+		return worktrees.findServices(Path.of(session.ecosystemPath()), monorepoGlobs(),
+				settings.current().monorepoDetectionEnabled()).stream()
 				.map(GitWorktreeService.ServiceInfo::servicePath).toList();
 	}
 

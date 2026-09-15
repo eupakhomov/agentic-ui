@@ -39,7 +39,7 @@ class SessionConfigFactoryTest {
 		// evaluates method arguments before the callee can short-circuit, so current() must not
 		// touch the (null in these tests) SettingsRepository regardless — overriding current() to
 		// return a fixed snapshot sidesteps that entirely.
-		Settings fixed = new Settings(linearOAuth, "", "", "", true, 180, "", "", false, true, 60, "claude", "", "",
+		Settings fixed = new Settings(linearOAuth, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
 				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override
@@ -63,7 +63,8 @@ class SessionConfigFactoryTest {
 			}
 
 			@Override
-			public List<GitWorktreeService.ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs) {
+			public List<GitWorktreeService.ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs,
+																	   boolean monorepoDetectionEnabled) {
 				return knownServices;
 			}
 		};
@@ -240,7 +241,7 @@ class SessionConfigFactoryTest {
 	// --- prepare() servicePath resolution (docs/plan/phase-11-monorepo.md Step 3) ---
 
 	private static SettingsService fakeSettingsWithEcosystem(String ecosystemRoot) {
-		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
+		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, true, 180,
 				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override

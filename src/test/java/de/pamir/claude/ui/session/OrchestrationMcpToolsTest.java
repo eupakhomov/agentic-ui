@@ -44,7 +44,7 @@ class OrchestrationMcpToolsTest {
 	}
 
 	private static SettingsService fakeSettings(String ecosystemRoot) {
-		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, 180,
+		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, true, 180,
 				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override

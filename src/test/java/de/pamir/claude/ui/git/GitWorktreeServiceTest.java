@@ -71,9 +71,24 @@ class GitWorktreeServiceTest {
 		Files.createDirectories(mono.resolve("packages/bar"));
 		commit(mono, "init");
 
-		assertThat(worktrees.findServices(mono, DEFAULT_GLOBS)).containsExactlyInAnyOrder(
+		assertThat(worktrees.findServices(mono, DEFAULT_GLOBS, true)).containsExactlyInAnyOrder(
 				new GitWorktreeService.ServiceInfo("packages/bar", mono.resolve("packages/bar").toString(), mono.toString()),
 				new GitWorktreeService.ServiceInfo("packages/foo", mono.resolve("packages/foo").toString(), mono.toString()));
+	}
+
+	@Test
+	void findServicesWithDetectionDisabledYieldsOneServiceEvenWithAWorkspaceManifest(@TempDir Path tmp) throws IOException {
+		// the auth-gateway case: a repo can declare package.json#workspaces purely to publish
+		// sub-packages without being a "monorepo" this app should split into several services
+		Path mono = tmp.resolve("mono");
+		initRepo(mono);
+		Files.writeString(mono.resolve("package.json"), "{\"workspaces\": [\"packages/*\"]}");
+		Files.createDirectories(mono.resolve("packages/foo"));
+		Files.createDirectories(mono.resolve("packages/bar"));
+		commit(mono, "init");
+
+		assertThat(worktrees.findServices(mono, DEFAULT_GLOBS, false))
+				.containsExactly(new GitWorktreeService.ServiceInfo("mono", mono.toString(), mono.toString()));
 	}
 
 	@Test
@@ -89,7 +104,7 @@ class GitWorktreeServiceTest {
 		initRepo(solo);
 		commit(solo, "init");
 
-		assertThat(worktrees.findServices(eco, DEFAULT_GLOBS)).containsExactlyInAnyOrder(
+		assertThat(worktrees.findServices(eco, DEFAULT_GLOBS, true)).containsExactlyInAnyOrder(
 				new GitWorktreeService.ServiceInfo("mono/packages/foo", mono.resolve("packages/foo").toString(), mono.toString()),
 				new GitWorktreeService.ServiceInfo("solo", solo.toString(), solo.toString()));
 	}
@@ -106,7 +121,7 @@ class GitWorktreeServiceTest {
 		commit(bar, "init");
 
 		List<GitWorktreeService.RepoInfo> repos = worktrees.findRepos(eco);
-		List<GitWorktreeService.ServiceInfo> services = worktrees.findServices(eco, DEFAULT_GLOBS);
+		List<GitWorktreeService.ServiceInfo> services = worktrees.findServices(eco, DEFAULT_GLOBS, true);
 
 		assertThat(services).hasSameSizeAs(repos);
 		for (GitWorktreeService.RepoInfo repo : repos) {
@@ -128,7 +143,7 @@ class GitWorktreeServiceTest {
 		commit(sub, "init");
 		commit(mono, "init");
 
-		assertThat(worktrees.findServices(mono, DEFAULT_GLOBS)).containsExactly(
+		assertThat(worktrees.findServices(mono, DEFAULT_GLOBS, true)).containsExactly(
 				new GitWorktreeService.ServiceInfo("packages/sub", sub.toString(), sub.toString()));
 	}
 
@@ -140,7 +155,7 @@ class GitWorktreeServiceTest {
 
 		// name falls back to the folder's own basename ("repo") rather than an empty relativize()
 		// result, since here the ecosystem root passed in IS the one-and-only service.
-		assertThat(worktrees.findServices(repo, DEFAULT_GLOBS))
+		assertThat(worktrees.findServices(repo, DEFAULT_GLOBS, true))
 				.containsExactly(new GitWorktreeService.ServiceInfo("repo", repo.toString(), repo.toString()));
 	}
 
@@ -184,7 +199,7 @@ class GitWorktreeServiceTest {
 	void isKnownServiceAlwaysAllowsTheRepoRootItselfEvenWithNoEcosystemConfigured() {
 		Path repoRoot = Path.of("/repo");
 
-		assertThat(worktrees.isKnownService(null, DEFAULT_GLOBS, repoRoot, repoRoot)).isTrue();
+		assertThat(worktrees.isKnownService(null, DEFAULT_GLOBS, true, repoRoot, repoRoot)).isTrue();
 	}
 
 	@Test
@@ -192,7 +207,7 @@ class GitWorktreeServiceTest {
 		Path repoRoot = Path.of("/repo");
 		Path servicePath = Path.of("/repo/packages/foo");
 
-		assertThat(worktrees.isKnownService(null, DEFAULT_GLOBS, repoRoot, servicePath)).isFalse();
+		assertThat(worktrees.isKnownService(null, DEFAULT_GLOBS, true, repoRoot, servicePath)).isFalse();
 	}
 
 	@Test
@@ -203,7 +218,19 @@ class GitWorktreeServiceTest {
 		Files.createDirectories(mono.resolve("packages/foo"));
 		commit(mono, "init");
 
-		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, mono, mono.resolve("packages/foo"))).isTrue();
-		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, mono, mono.resolve("packages/unknown"))).isFalse();
+		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, true, mono, mono.resolve("packages/foo"))).isTrue();
+		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, true, mono, mono.resolve("packages/unknown"))).isFalse();
+	}
+
+	@Test
+	void isKnownServiceRejectsAPackageWhenDetectionIsDisabled(@TempDir Path tmp) throws IOException {
+		Path mono = tmp.resolve("mono");
+		initRepo(mono);
+		Files.writeString(mono.resolve("package.json"), "{\"workspaces\": [\"packages/*\"]}");
+		Files.createDirectories(mono.resolve("packages/foo"));
+		commit(mono, "init");
+
+		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, false, mono, mono.resolve("packages/foo"))).isFalse();
+		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, false, mono, mono)).isTrue();
 	}
 }

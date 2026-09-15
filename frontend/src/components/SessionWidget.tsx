@@ -7,7 +7,7 @@ import { notify, notificationForEvent } from '../notify';
 import { registerWidget, unregisterWidget } from '../hotkeys/widgetRegistry';
 import {
   ChildOf, Close, ContinuedFrom, DownloadIcon, Duplicate, EcosystemContext, GitPanelIcon,
-  Interrupt, LinkedTicket, Maximize, Memory, MinimizeToDock, PullRequest, Restore, SystemSession,
+  InfoTag, Interrupt, LinkedTicket, Maximize, Memory, MinimizeToDock, PullRequest, Restore, SystemSession,
 } from '../icons';
 import Transcript from './Transcript';
 import CloseDialog from './CloseDialog';
@@ -223,6 +223,11 @@ export default function SessionWidget({
   const running = state === 'RUNNING' || state === 'WAITING_INPUT';
   const budget = view?.costBudgetUsd ?? entity?.costBudgetUsd ?? null;
   const ctxPercent = view?.contextTokens != null && view?.contextWindow ? Math.round((view.contextTokens / view.contextWindow) * 100) : 0;
+  const infoParts = [
+    entity?.kind === 'system' ? 'system' : entity?.servicePath?.split('/').pop(),
+    entity?.kind !== 'system' ? entity?.branch : undefined,
+    view?.model ?? entity?.model,
+  ].filter(Boolean) as string[];
   nameRef.current = view?.name ?? entity?.name ?? '';
   focusedRef.current = focusedId;
   const widgetClass = useMemo(() => {
@@ -242,74 +247,82 @@ export default function SessionWidget({
         onDoubleClick={(e) => {
           // only the empty drag area toggles maximize — the name label has its own
           // double-click (rename) and stops propagation before this ever runs
-          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('spacer')) {
+          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('header-info')) {
             onToggleMaximize();
           }
         }}
       >
-        <span className={`dot ${state}`} title={state} />
-        <span
-          className="name"
-          title={`${view.name ?? entity?.name ?? ''} — double-click to rename`}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            const next = prompt('Session name:', view.name ?? entity?.name ?? '');
-            if (next?.trim()) void api.patchSession(sessionId, { name: next.trim() });
-          }}
-        >
-          {view.name ?? entity?.name ?? sessionId.slice(0, 8)}
-        </span>
-        {entity?.kind === 'system' && (
-          <span className="chip" title="backend-initiated system session"><SystemSession />system</span>
-        )}
-        {entity?.kind !== 'system' && entity?.servicePath && (
-          <span className="chip" title={entity.servicePath}>
-            {entity.servicePath.split('/').pop()}
-          </span>
-        )}
-        {entity?.kind !== 'system' && <span className="chip" title="branch">{entity?.branch}</span>}
-        {(view.model ?? entity?.model) && (
+        <div className="header-info">
+          <span className={`dot ${state}`} title={state} />
           <span
-            className={`chip${canCycleModel ? ' clickable' : ''}`}
-            title={canCycleModel ? 'click to switch model' : undefined}
-            onClick={cycleModel}
-            onMouseDown={(e) => e.stopPropagation()}
+            className="name"
+            title={`${view.name ?? entity?.name ?? ''} — double-click to rename`}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              const next = prompt('Session name:', view.name ?? entity?.name ?? '');
+              if (next?.trim()) void api.patchSession(sessionId, { name: next.trim() });
+            }}
           >
-            {view.model ?? entity?.model}
+            {view.name ?? entity?.name ?? sessionId.slice(0, 8)}
           </span>
-        )}
-        {entity?.ecosystemPath && (
-          <span className="chip" title={`read-only context: ${entity.ecosystemPath}`}><EcosystemContext /></span>
-        )}
-        {entity?.serenaEnabled && (
-          <span className="chip" title="Serena MCP enabled">serena</span>
-        )}
-        {entity?.ticketRef && (
-          <span className="chip" title="linked ticket"><LinkedTicket />{entity.ticketRef}</span>
-        )}
-        {entity?.continuedFromId && (
-          <span className="chip" title={`continued from: ${continuedFromName ?? entity.continuedFromId}`}>
-            <ContinuedFrom />{continuedFromName ?? 'continued'}
+          <span className="info-chips-full">
+            {entity?.kind === 'system' && (
+              <span className="chip" title="backend-initiated system session"><SystemSession />system</span>
+            )}
+            {entity?.kind !== 'system' && entity?.servicePath && (
+              <span className="chip" title={entity.servicePath}>
+                {entity.servicePath.split('/').pop()}
+              </span>
+            )}
+            {entity?.kind !== 'system' && <span className="chip" title="branch">{entity?.branch}</span>}
+            {(view.model ?? entity?.model) && (
+              <span
+                className={`chip${canCycleModel ? ' clickable' : ''}`}
+                title={canCycleModel ? 'click to switch model' : undefined}
+                onClick={cycleModel}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {view.model ?? entity?.model}
+              </span>
+            )}
           </span>
-        )}
-        {entity?.parentSessionId && (
-          <span className="chip" title={`child of: ${parentName ?? entity.parentSessionId}`}>
-            <ChildOf />{parentName ?? 'parent'}
-          </span>
-        )}
-        {entity?.prUrl && (
-          <a
-            className={`chip clickable pr-${entity.prCheckStatus ?? 'PENDING'}`}
-            href={entity.prUrl}
-            target="_blank"
-            rel="noreferrer"
-            title={`PR — ${PR_STATUS_LABEL[entity.prCheckStatus ?? 'PENDING']}; click to open on GitHub`}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <PullRequest />PR
-          </a>
-        )}
-        <span className="spacer" />
+          {infoParts.length > 0 && (
+            // collapsed stand-in for the three chips above — shown instead of them (see
+            // .info-chips-full/.info-chips-collapsed) once the header runs out of room
+            <span className="chip info-chips-collapsed" title={infoParts.join(' · ')}><InfoTag /></span>
+          )}
+          {entity?.ecosystemPath && (
+            <span className="chip" title={`read-only context: ${entity.ecosystemPath}`}><EcosystemContext /></span>
+          )}
+          {entity?.serenaEnabled && (
+            <span className="chip" title="Serena MCP enabled">serena</span>
+          )}
+          {entity?.ticketRef && (
+            <span className="chip" title="linked ticket"><LinkedTicket />{entity.ticketRef}</span>
+          )}
+          {entity?.continuedFromId && (
+            <span className="chip" title={`continued from: ${continuedFromName ?? entity.continuedFromId}`}>
+              <ContinuedFrom />{continuedFromName ?? 'continued'}
+            </span>
+          )}
+          {entity?.parentSessionId && (
+            <span className="chip" title={`child of: ${parentName ?? entity.parentSessionId}`}>
+              <ChildOf />{parentName ?? 'parent'}
+            </span>
+          )}
+          {entity?.prUrl && (
+            <a
+              className={`chip clickable pr-${entity.prCheckStatus ?? 'PENDING'}`}
+              href={entity.prUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={`PR — ${PR_STATUS_LABEL[entity.prCheckStatus ?? 'PENDING']}; click to open on GitHub`}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <PullRequest />PR
+            </a>
+          )}
+        </div>
         <span
           className={`chip clickable mode-${view.permissionMode}`}
           title={view.permissionMode === 'bypassPermissions'

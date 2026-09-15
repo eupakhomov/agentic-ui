@@ -10,6 +10,13 @@ import { useTicketImport, type TicketImportOutcome } from '../hooks/useTicketImp
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 import { Close, ContinuedFrom } from '../icons';
 
+// "continue from" hands off from a session already on some-branch — default the new one to
+// some-branch-1 (or bump the trailing number on a repeat handoff) rather than leaving it blank
+function nextBranchName(previous: string): string {
+  const match = previous.match(/^(.*)-(\d+)$/);
+  return match ? `${match[1]}-${Number(match[2]) + 1}` : `${previous}-1`;
+}
+
 const MODE_DESCRIPTION: Record<PermissionMode, string> = {
   default: 'ask for edits & commands',
   acceptEdits: 'auto-accept edits, still ask for commands',
@@ -179,6 +186,7 @@ export default function CreateSessionDialog({
         fullTranscript ? api.exportTranscript(source.id) : api.handoffSummary(source.id),
       ]);
       setServicePath(detail.session.servicePath);
+      if (detail.session.branch) setBranch(nextBranchName(detail.session.branch));
       setProvider(detail.session.provider);
       if (detail.session.model) setModel(detail.session.model);
       setPermissionMode(detail.session.permissionMode);

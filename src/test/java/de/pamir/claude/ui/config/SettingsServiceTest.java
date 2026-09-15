@@ -84,6 +84,18 @@ class SettingsServiceTest {
 	}
 
 	@Test
+	void monorepoDetectionDefaultsToDisabled() {
+		assertThat(newService().current().monorepoDetectionEnabled()).isFalse();
+	}
+
+	@Test
+	void monorepoDetectionRoundTripsThroughApply() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().monorepoDetectionEnabled(true).build());
+		assertThat(settings.current().monorepoDetectionEnabled()).isTrue();
+	}
+
+	@Test
 	void systemProviderDefaultsToFollowingDefaultProvider() {
 		SettingsService settings = newService();
 		settings.apply(SettingsPatch.builder().defaultProvider("codex").build());

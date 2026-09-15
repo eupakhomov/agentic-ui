@@ -70,7 +70,7 @@ class SessionStateMachineTest {
 	}
 
 	private static SettingsService fakeSettings(boolean memoryEnabled, boolean serviceDiscoveryEnabled) {
-		Settings fixed = new Settings(false, "", "", "", true, 180, "", "", false, true, 60, "claude", "", "",
+		Settings fixed = new Settings(false, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
 				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv");
 		return new SettingsService(null, null, null) {
 			@Override
@@ -493,7 +493,7 @@ class SessionStateMachineTest {
 		worktrees.setRepoRootOfResult(Path.of(repo));
 		worktrees.setKnownServices(List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, repo)));
 
-		Settings fixedSettings = new Settings(false, "", "/eco", "packages/*,services/*,apps/*,libs/*", true, 180,
+		Settings fixedSettings = new Settings(false, "", "/eco", "packages/*,services/*,apps/*,libs/*", true, true, 180,
 				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv");
 		SettingsService settingsWithEcosystem = new SettingsService(null, null, null) {
 			@Override

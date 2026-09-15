@@ -87,6 +87,20 @@ Concretely, in a monorepo:
    `use` lines; else a persisted setting `ecosystem.monorepo-service-globs` (default
    `packages/*,services/*,apps/*,libs/*`) filtered to folders that contain a manifest. A repo
    with none of these is one service (= today).
+
+   **2026-09-15 follow-up — detection made opt-in, off by default**: real-world use surfaced
+   false positives — a repo (e.g. `auth-gateway`) can declare `package.json#workspaces`
+   purely to publish a couple of API-client sub-packages, without being a "monorepo" in the
+   sense this app cares about, and got silently split into several services. New setting
+   `ecosystem.monorepo-detection-enabled` (boolean, default `false`, Settings dialog →
+   "Sessions" → "Monorepo detection", one global toggle covering every repo under the
+   ecosystem root) gates the `ServiceDetector.detect` call in `GitWorktreeService.
+   addServicesForRepo` — off, every repo (or the ecosystem root itself, in layout (a)) is one
+   service regardless of any workspace manifest; on, behavior is exactly as designed above.
+   `findServices`/`isKnownService` both gained this as a new parameter. This is a deliberate
+   trade: a single ecosystem folder containing both plain repos and genuine monorepos now
+   needs the flag on for all of them (no per-repo override) — simplicity over per-repo mixed
+   support, which nothing had actually needed yet.
 5. **Layouts supported** — (a) ecosystem root **is** the monorepo; (b) ecosystem root is a
    folder of repos, one or more of which is a monorepo (depth 2: `root/<repo>/packages/*`).
    Deeper nesting is out of scope. Mixed (b) — some children polyrepos, some monorepos — is

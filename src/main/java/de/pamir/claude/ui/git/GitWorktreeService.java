@@ -154,19 +154,24 @@ public class GitWorktreeService {
 	 * #findRepos}), each result's {@code repoPath} the child. A repo with no detected workspace
 	 * folders contributes exactly one service, itself. {@code name} is {@code servicePath} relative
 	 * to {@code ecosystemRoot}, forward-slashed (decision 7) — polyrepo yields today's bare
-	 * basenames.
+	 * basenames. {@code monorepoDetectionEnabled} is the {@code ecosystem.monorepo-detection-enabled}
+	 * setting — {@code false} (the default) skips {@link ServiceDetector} entirely, so every repo is
+	 * one service regardless of any workspace manifest it happens to contain (a repo can declare
+	 * {@code package.json#workspaces} purely for publishing sub-packages without being a "monorepo"
+	 * in the sense this app cares about).
 	 */
-	public List<ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs) {
+	public List<ServiceInfo> findServices(Path ecosystemRoot, List<String> fallbackGlobs,
+										   boolean monorepoDetectionEnabled) {
 		List<ServiceInfo> services = new ArrayList<>();
 		if (ecosystemRoot == null || !Files.isDirectory(ecosystemRoot)) {
 			return services;
 		}
 		if (Files.exists(ecosystemRoot.resolve(".git"))) {
-			addServicesForRepo(services, ecosystemRoot, ecosystemRoot, fallbackGlobs);
+			addServicesForRepo(services, ecosystemRoot, ecosystemRoot, fallbackGlobs, monorepoDetectionEnabled);
 			return services;
 		}
 		for (RepoInfo repo : findRepos(ecosystemRoot)) {
-			addServicesForRepo(services, Path.of(repo.path()), ecosystemRoot, fallbackGlobs);
+			addServicesForRepo(services, Path.of(repo.path()), ecosystemRoot, fallbackGlobs, monorepoDetectionEnabled);
 		}
 		return services;
 	}
@@ -177,9 +182,11 @@ public class GitWorktreeService {
 	 * shared by {@code SessionConfigFactory} (session creation) and {@code ServiceDiscoveryService}
 	 * (manual rediscover/update), both of which need the same "is this a real, known service"
 	 * check (docs/plan/phase-11-monorepo.md Step 5). {@code ecosystemRoot} may be null/blank
-	 * (nothing configured) — then only the repo-root case passes.
+	 * (nothing configured) — then only the repo-root case passes. {@code monorepoDetectionEnabled}
+	 * is forwarded to {@link #findServices} as-is.
 	 */
-	public boolean isKnownService(Path ecosystemRoot, List<String> fallbackGlobs, Path repoRoot, Path servicePath) {
+	public boolean isKnownService(Path ecosystemRoot, List<String> fallbackGlobs, boolean monorepoDetectionEnabled,
+								   Path repoRoot, Path servicePath) {
 		Path normalizedService = servicePath.toAbsolutePath().normalize();
 		if (normalizedService.equals(repoRoot.toAbsolutePath().normalize())) {
 			return true;
@@ -187,14 +194,14 @@ public class GitWorktreeService {
 		if (ecosystemRoot == null) {
 			return false;
 		}
-		return findServices(ecosystemRoot, fallbackGlobs).stream()
+		return findServices(ecosystemRoot, fallbackGlobs, monorepoDetectionEnabled).stream()
 				.map(info -> Path.of(info.servicePath()).toAbsolutePath().normalize())
 				.anyMatch(normalizedService::equals);
 	}
 
 	private void addServicesForRepo(List<ServiceInfo> out, Path repoRoot, Path ecosystemRoot,
-									 List<String> fallbackGlobs) {
-		List<Path> detected = ServiceDetector.detect(repoRoot, fallbackGlobs);
+									 List<String> fallbackGlobs, boolean monorepoDetectionEnabled) {
+		List<Path> detected = monorepoDetectionEnabled ? ServiceDetector.detect(repoRoot, fallbackGlobs) : List.of();
 		if (detected.isEmpty()) {
 			out.add(new ServiceInfo(relativeName(ecosystemRoot, repoRoot), repoRoot.toString(), repoRoot.toString()));
 			return;

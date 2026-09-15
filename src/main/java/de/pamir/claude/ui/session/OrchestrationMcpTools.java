@@ -69,7 +69,8 @@ public class OrchestrationMcpTools {
 		if (session.ecosystemPath() == null || session.ecosystemPath().isBlank()) {
 			throw new IllegalStateException("no ecosystem folder is configured for this session");
 		}
-		return worktrees.findServices(Path.of(session.ecosystemPath()), monorepoGlobs());
+		return worktrees.findServices(Path.of(session.ecosystemPath()), monorepoGlobs(),
+				settings.current().monorepoDetectionEnabled());
 	}
 
 	@McpTool(name = "spawn_child_session",
@@ -103,7 +104,7 @@ public class OrchestrationMcpTools {
 				.orElseThrow(() -> new IllegalArgumentException("not a known service under this session's ecosystem: " + servicePath));
 		Path ecosystemRoot = parent.ecosystemPath() == null || parent.ecosystemPath().isBlank()
 				? null : Path.of(parent.ecosystemPath());
-		if (!worktrees.isKnownService(ecosystemRoot, monorepoGlobs(), repoRoot, service)) {
+		if (!worktrees.isKnownService(ecosystemRoot, monorepoGlobs(), settings.current().monorepoDetectionEnabled(), repoRoot, service)) {
 			throw new IllegalArgumentException("not a known service under this session's ecosystem: " + servicePath);
 		}
 		String baseBranch = worktrees.defaultBranch(repoRoot);

@@ -53,8 +53,8 @@ public class ServiceDiscoveryController {
 	@GetMapping("/services")
 	public List<ServiceView> services() {
 		String ecosystemRoot = settings.current().ecosystemRoot();
-		List<GitWorktreeService.ServiceInfo> known =
-				ecosystemRoot.isBlank() ? List.of() : worktrees.findServices(Path.of(ecosystemRoot), monorepoGlobs());
+		List<GitWorktreeService.ServiceInfo> known = ecosystemRoot.isBlank() ? List.of()
+				: worktrees.findServices(Path.of(ecosystemRoot), monorepoGlobs(), settings.current().monorepoDetectionEnabled());
 		Instant staleBefore = Instant.now().minus(settings.current().serviceDiscoveryStalenessDays(), ChronoUnit.DAYS);
 		return known.stream().map(svc -> {
 			var profile = profiles.findByServicePath(svc.servicePath());

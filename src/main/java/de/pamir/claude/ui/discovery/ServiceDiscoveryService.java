@@ -107,7 +107,7 @@ public class ServiceDiscoveryService {
 		}
 		String ecosystemRoot = settings.current().ecosystemRoot();
 		Path eco = ecosystemRoot.isBlank() ? null : Path.of(ecosystemRoot);
-		if (!worktrees.isKnownService(eco, monorepoGlobs(), repoRoot.get(), service)) {
+		if (!worktrees.isKnownService(eco, monorepoGlobs(), settings.current().monorepoDetectionEnabled(), repoRoot.get(), service)) {
 			return Optional.empty();
 		}
 		return repoRoot;

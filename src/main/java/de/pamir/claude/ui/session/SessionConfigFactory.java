@@ -233,7 +233,7 @@ public class SessionConfigFactory {
 			repo = options.repoPath();
 		}
 		Path ecosystemRoot = ecosystemPath == null || ecosystemPath.isBlank() ? null : Path.of(ecosystemPath);
-		if (!worktrees.isKnownService(ecosystemRoot, monorepoGlobs(s), repoRoot, servicePath)) {
+		if (!worktrees.isKnownService(ecosystemRoot, monorepoGlobs(s), s.monorepoDetectionEnabled(), repoRoot, servicePath)) {
 			throw new IllegalArgumentException("not a known service under this ecosystem: " + servicePathOption);
 		}
 		return new ServiceResolution(repo, servicePath.equals(repoRoot) ? null : servicePath.toString());

@@ -31,6 +31,7 @@ public class SettingsService {
 	private static final String ECOSYSTEM_ROOT_KEY = "ecosystem.root";
 	private static final String MONOREPO_SERVICE_GLOBS_KEY = "ecosystem.monorepo-service-globs";
 	private static final String DEFAULT_MONOREPO_SERVICE_GLOBS = "packages/*,services/*,apps/*,libs/*";
+	private static final String MONOREPO_DETECTION_ENABLED_KEY = "ecosystem.monorepo-detection-enabled";
 	private static final String PR_CHECKS_ENABLED_KEY = "pr-checks.enabled";
 	private static final String PR_CHECKS_POLL_INTERVAL_KEY = "pr-checks.poll-interval-seconds";
 	private static final String LIBRARY_SKILLS_ROOT_KEY = "library.skills-root";
@@ -119,6 +120,9 @@ public class SettingsService {
 	private final Field<String> ecosystemRoot = strField(ECOSYSTEM_ROOT_KEY, () -> "", SettingsPatch::ecosystemRoot);
 	private final Field<String> monorepoServiceGlobs = strField(MONOREPO_SERVICE_GLOBS_KEY,
 			() -> DEFAULT_MONOREPO_SERVICE_GLOBS, SettingsPatch::monorepoServiceGlobs);
+	/** Off by default: a repo is one poly-repo service unless explicitly opted into workspace detection. */
+	private final Field<Boolean> monorepoDetectionEnabled =
+			boolField(MONOREPO_DETECTION_ENABLED_KEY, false, SettingsPatch::monorepoDetectionEnabled);
 	private final Field<Boolean> prChecksEnabled = boolField(PR_CHECKS_ENABLED_KEY, true, SettingsPatch::prChecksEnabled);
 	private final Field<Integer> prCheckPollIntervalSeconds =
 			intField(PR_CHECKS_POLL_INTERVAL_KEY, 180, 30, SettingsPatch::prCheckPollIntervalSeconds);
@@ -172,7 +176,8 @@ public class SettingsService {
 		this.librarySkillsRoot = strField(LIBRARY_SKILLS_ROOT_KEY, () -> props == null ? "" : props.skillsRoot(),
 				SettingsPatch::librarySkillsRoot);
 		this.memoryRoot = strField(MEMORY_ROOT_KEY, () -> props == null ? "" : props.memoryRoot(), SettingsPatch::memoryRoot);
-		this.fields = List.of(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs, prChecksEnabled,
+		this.fields = List.of(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs,
+				monorepoDetectionEnabled, prChecksEnabled,
 				prCheckPollIntervalSeconds, librarySkillsRoot, libraryAgentsRoot, libraryVectorize, librarySyncEnabled,
 				librarySyncIntervalMinutes, defaultProvider, systemProviderField, memoryRoot, memoryEnabled,
 				memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes, memoryRetentionDays,
@@ -192,6 +197,7 @@ public class SettingsService {
 				ticketImportSpec.resolve(raw),
 				ecosystemRoot.resolve(raw),
 				monorepoServiceGlobs.resolve(raw),
+				monorepoDetectionEnabled.resolve(raw),
 				prChecksEnabled.resolve(raw),
 				prCheckPollIntervalSeconds.resolve(raw),
 				librarySkillsRoot.resolve(raw),

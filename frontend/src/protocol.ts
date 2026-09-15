@@ -170,6 +170,8 @@ export interface Settings {
   ecosystemRoot: string;
   /** comma-separated glob fallback for monorepo package detection, e.g. "packages/*,services/*" */
   monorepoServiceGlobs: string;
+  /** off by default: a repo is one poly-repo service unless workspace detection is explicitly enabled */
+  monorepoDetectionEnabled: boolean;
   prChecksEnabled: boolean;
   prCheckPollIntervalSeconds: number;
   librarySkillsRoot: string;
