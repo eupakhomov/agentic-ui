@@ -59,14 +59,16 @@ export default function CloseDialog({
             <pre style={{ background: 'var(--panel2)', padding: 10, borderRadius: 6, maxHeight: 180, overflow: 'auto' }}>
               {dirtyFiles.join('\n')}
             </pre>
-            <div className="form-grid">
-              <label>Commit message</label>
-              <input
-                value={commitMessage}
-                onChange={(e) => setCommitMessage(e.target.value)}
-                placeholder="used by Commit & close"
-              />
-            </div>
+            {sessionType !== 'review' && (
+              <div className="form-grid">
+                <label>Commit message</label>
+                <input
+                  value={commitMessage}
+                  onChange={(e) => setCommitMessage(e.target.value)}
+                  placeholder="used by Commit & close"
+                />
+              </div>
+            )}
             {error && <div className="error-text">{error}</div>}
             <div className="actions">
               <button onClick={onCancel}>Cancel</button>
