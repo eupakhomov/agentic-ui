@@ -1,4 +1,4 @@
-import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketList, TurnUsage } from '../protocol';
+import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, PrInfo, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketList, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('claude-ui.token');
 
@@ -78,8 +78,15 @@ export const api = {
   exportTranscript: (id: string) => requestText(`/api/sessions/${id}/export.md`),
   handoffSummary: (id: string) => requestText(`/api/sessions/${id}/handoff-summary`, 'POST'),
   services: () => request<ServicesResponse>('GET', '/api/repo/services'),
-  branches: (repo?: string) =>
-    request<string[]>('GET', `/api/repo/branches${repo ? `?repo=${encodeURIComponent(repo)}` : ''}`),
+  branches: (repo?: string, remote?: boolean) => {
+    const params = new URLSearchParams();
+    if (repo) params.set('repo', repo);
+    if (remote) params.set('remote', 'true');
+    const qs = params.toString();
+    return request<string[]>('GET', `/api/repo/branches${qs ? `?${qs}` : ''}`);
+  },
+  listPrs: (repo?: string) =>
+    request<PrInfo[]>('GET', `/api/repo/prs${repo ? `?repo=${encodeURIComponent(repo)}` : ''}`),
   listTemplates: () => request<Template[]>('GET', '/api/templates'),
   createTemplate: (body: unknown) => request<Template>('POST', '/api/templates', body),
   updateTemplate: (id: string, body: unknown) => request<Template>('PUT', `/api/templates/${id}`, body),

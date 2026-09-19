@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api/rest';
+import type { SessionType } from '../protocol';
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 export default function CloseDialog({
   sessionId,
+  sessionType,
   onClosed,
   onCancel,
 }: {
   sessionId: string;
+  sessionType: SessionType;
   onClosed: () => void;
   onCancel: () => void;
 }) {
@@ -67,8 +70,16 @@ export default function CloseDialog({
             {error && <div className="error-text">{error}</div>}
             <div className="actions">
               <button onClick={onCancel}>Cancel</button>
-              <button className="primary" disabled={busy} onClick={() => void close('commit')}>Commit &amp; close</button>
-              <button disabled={busy} onClick={() => void close('stash')}>Stash &amp; close</button>
+              {sessionType !== 'review' && (
+                <button className="primary" disabled={busy} onClick={() => void close('commit')}>Commit &amp; close</button>
+              )}
+              <button
+                className={sessionType === 'review' ? 'primary' : undefined}
+                disabled={busy}
+                onClick={() => void close('stash')}
+              >
+                Stash &amp; close
+              </button>
               <button
                 className="danger"
                 disabled={busy}

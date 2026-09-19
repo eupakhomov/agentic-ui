@@ -325,7 +325,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         <button className="icon-btn" title="Keyboard shortcuts (?)" onClick={() => setShowCheatsheet(true)}><Shortcuts /></button>
         <button className="icon-btn" title="Exposé — all sessions (e)" onClick={() => setShowExpose(true)}><Expose /></button>
         <button className="icon-btn" title="Settings (,)" onClick={() => setShowSettings(true)}><SettingsIcon /></button>
-        <button className="icon-btn" title="Quick session — ticket + service only (q)" onClick={() => setShowQuickCreate(true)}>
+        <button className="icon-btn" title="Quick session — service + branch + prompt (q)" onClick={() => setShowQuickCreate(true)}>
           <QuickSession />
         </button>
         {/* the one deliberate accent in the topbar: the primary action keeps its label */}

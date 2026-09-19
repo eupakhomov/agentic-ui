@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import type { PrCheckStatus } from '../protocol';
+import type { PrCheckStatus, SessionType } from '../protocol';
 import PrDialog from './PrDialog';
 import { AiSuggest, Close, GitPanelIcon, Refresh } from '../icons';
 
@@ -34,13 +34,15 @@ async function gitApi<T>(id: string, path: string, method = 'GET', body?: unknow
   return api.raw<T>(method, `/api/sessions/${id}/git/${path}`, body);
 }
 
-export default function GitPanel({ sessionId, onClose, prUrl, prCheckStatus, onPrCreated }: {
+export default function GitPanel({ sessionId, sessionType, onClose, prUrl, prCheckStatus, onPrCreated }: {
   sessionId: string;
+  sessionType: SessionType;
   onClose: () => void;
   prUrl: string | null;
   prCheckStatus: PrCheckStatus | null;
   onPrCreated: (url: string) => void;
 }) {
+  const isReview = sessionType === 'review';
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [diff, setDiff] = useState<string | null>(null);
@@ -105,60 +107,68 @@ export default function GitPanel({ sessionId, onClose, prUrl, prCheckStatus, onP
               {diff === null ? 'Show diff' : 'Hide diff'}
             </button>
             {diff !== null && <pre className="git-diff">{diff || '(no tracked changes)'}</pre>}
-            <div className="row" style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-              <input
-                style={{ flex: 1 }}
-                placeholder="commit message"
-                value={commitMessage}
-                onChange={(e) => setCommitMessage(e.target.value)}
-              />
-              <button
-                disabled={busy !== ''}
-                title="suggest a commit message from the diff"
-                onClick={() => void run('suggest-commit', async () => {
-                  const r = await gitApi<{ message: string }>(sessionId, 'commit-message/suggest', 'POST');
-                  setCommitMessage(r.message);
-                })}
-              >
-                {busy === 'suggest-commit' ? '…' : <AiSuggest />}
-              </button>
-              <button
-                className="primary"
-                disabled={!commitMessage.trim() || busy !== ''}
-                onClick={() => void run('commit', async () => {
-                  setStatus(await gitApi<GitStatus>(sessionId, 'commit', 'POST', { message: commitMessage.trim() }));
-                  setCommitMessage('');
-                  setDiff(null);
-                  setLog(await gitApi<LogEntry[]>(sessionId, 'log'));
-                })}
-              >
-                {busy === 'commit' ? '…' : 'Commit all'}
-              </button>
-            </div>
+            {isReview ? (
+              <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 6 }}>
+                review session — commit/push disabled
+              </div>
+            ) : (
+              <div className="row" style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <input
+                  style={{ flex: 1 }}
+                  placeholder="commit message"
+                  value={commitMessage}
+                  onChange={(e) => setCommitMessage(e.target.value)}
+                />
+                <button
+                  disabled={busy !== ''}
+                  title="suggest a commit message from the diff"
+                  onClick={() => void run('suggest-commit', async () => {
+                    const r = await gitApi<{ message: string }>(sessionId, 'commit-message/suggest', 'POST');
+                    setCommitMessage(r.message);
+                  })}
+                >
+                  {busy === 'suggest-commit' ? '…' : <AiSuggest />}
+                </button>
+                <button
+                  className="primary"
+                  disabled={!commitMessage.trim() || busy !== ''}
+                  onClick={() => void run('commit', async () => {
+                    setStatus(await gitApi<GitStatus>(sessionId, 'commit', 'POST', { message: commitMessage.trim() }));
+                    setCommitMessage('');
+                    setDiff(null);
+                    setLog(await gitApi<LogEntry[]>(sessionId, 'log'));
+                  })}
+                >
+                  {busy === 'commit' ? '…' : 'Commit all'}
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>worktree clean</div>
         )}
       </div>
 
-      <div className="git-section">
-        <div className="row" style={{ display: 'flex', gap: 6 }}>
-          <button
-            disabled={busy !== '' || noChanges}
-            title={noChanges ? 'nothing to push' : undefined}
-            onClick={() => void run('push', async () => { await gitApi(sessionId, 'push', 'POST', {}); await refresh(); })}
-          >
-            {busy === 'push' ? '…' : 'Push'}
-          </button>
-          <button
-            disabled={busy !== '' || noChanges}
-            title={noChanges ? 'no changes to open a PR for' : undefined}
-            onClick={() => setShowPrDialog(true)}
-          >
-            Open PR
-          </button>
+      {!isReview && (
+        <div className="git-section">
+          <div className="row" style={{ display: 'flex', gap: 6 }}>
+            <button
+              disabled={busy !== '' || noChanges}
+              title={noChanges ? 'nothing to push' : undefined}
+              onClick={() => void run('push', async () => { await gitApi(sessionId, 'push', 'POST', {}); await refresh(); })}
+            >
+              {busy === 'push' ? '…' : 'Push'}
+            </button>
+            <button
+              disabled={busy !== '' || noChanges}
+              title={noChanges ? 'no changes to open a PR for' : undefined}
+              onClick={() => setShowPrDialog(true)}
+            >
+              Open PR
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="git-section">
         <div className="git-label">recent commits</div>

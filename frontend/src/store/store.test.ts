@@ -201,6 +201,14 @@ describe('store actions outside reduce', () => {
     useStore.getState().seed(SID, (v) => ({ ...v, name: 'seeded' }));
     expect(useStore.getState().views[SID]?.name).toBe('seeded');
   });
+
+  // phase 15: the Exposé card's review chip reads this from the store, seeded once from the
+  // REST entity fetch the same way servicePath/branch already are (SessionWidget's effect)
+  it('sessionType defaults to null and can be seeded like servicePath/branch', () => {
+    expect(useStore.getState().views[SID]).toBeUndefined();
+    useStore.getState().seed(SID, (v) => ({ ...v, sessionType: 'review' }));
+    expect(useStore.getState().views[SID]?.sessionType).toBe('review');
+  });
 });
 
 describe('context_usage', () => {

@@ -55,7 +55,7 @@ class MetaControllerTest {
 		GitWorktreeService worktrees = fakeWorktrees(Map.of("/eco", List.of(
 				new GitWorktreeService.ServiceInfo("foo", "/eco/foo", "/eco/foo"),
 				new GitWorktreeService.ServiceInfo("bar", "/eco/bar", "/eco/bar"))));
-		MetaController controller = new MetaController(propsWithRepo("/does-not-exist"), fakeSettings("/eco"), worktrees);
+		MetaController controller = new MetaController(propsWithRepo("/does-not-exist"), fakeSettings("/eco"), worktrees, null);
 
 		MetaController.ServicesResponse response = controller.services();
 
@@ -71,7 +71,7 @@ class MetaControllerTest {
 		GitWorktreeService worktrees = fakeWorktrees(Map.of("/eco", List.of(
 				new GitWorktreeService.ServiceInfo("packages/foo", "/eco/packages/foo", "/eco"),
 				new GitWorktreeService.ServiceInfo("packages/bar", "/eco/packages/bar", "/eco"))));
-		MetaController controller = new MetaController(propsWithRepo("/does-not-exist"), fakeSettings("/eco"), worktrees);
+		MetaController controller = new MetaController(propsWithRepo("/does-not-exist"), fakeSettings("/eco"), worktrees, null);
 
 		MetaController.ServicesResponse response = controller.services();
 
@@ -89,7 +89,7 @@ class MetaControllerTest {
 		String servicePath = tmp + "/packages/foo";
 		GitWorktreeService worktrees = fakeWorktrees(Map.of(tmp.toString(),
 				List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, tmp.toString()))));
-		MetaController controller = new MetaController(propsWithRepo(tmp.toString()), fakeSettings(""), worktrees);
+		MetaController controller = new MetaController(propsWithRepo(tmp.toString()), fakeSettings(""), worktrees, null);
 
 		MetaController.ServicesResponse response = controller.services();
 
@@ -108,7 +108,7 @@ class MetaControllerTest {
 		GitWorktreeService worktrees = fakeWorktrees(Map.of(
 				"/eco", List.of(new GitWorktreeService.ServiceInfo("mono/packages/foo", servicePath, tmp.toString())),
 				tmp.toString(), List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, tmp.toString()))));
-		MetaController controller = new MetaController(propsWithRepo(tmp.toString()), fakeSettings("/eco"), worktrees);
+		MetaController controller = new MetaController(propsWithRepo(tmp.toString()), fakeSettings("/eco"), worktrees, null);
 
 		MetaController.ServicesResponse response = controller.services();
 

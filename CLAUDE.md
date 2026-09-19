@@ -324,6 +324,22 @@ finish; raise via the widget's cost chip), `maxTurns` (agentic turns per prompt)
 retrospective — see "Long-term memory" below; the widget's reflect (brain) button
 triggers one manually regardless of this flag).
 
+**Session types** (create dialog/template `sessionType ∈ {development, review}`, default
+`development` — see `docs/plan/phase-15-review-sessions.md`): a **review** session targets an
+existing PR (picked from `GET /api/repo/prs`) or a plain branch, checked out as a **detached
+worktree at the reviewed branch's tip** (`GitWorktreeService.createReviewWorktree` — `git fetch`
+then `git worktree add --detach`, never the branch itself, so a live development session already
+holding that branch doesn't conflict and the ref can never be moved by us). Commit/push/PR are
+blocked both in the UI (Git panel hides the controls) and at the REST layer (`GitSessionController`
+returns 409 for `/git/commit`, `/git/push`, `/git/pr`, and `close(dirtyMode: "commit")` is refused
+— stash/discard stay available for scratch notes). The agent gets a review-role system-prompt block
+(`SessionConfigFactory`) and submits findings via a human-gated `submit_pr_review` MCP tool
+(`ReviewMcpTools`, same in-process server as memory/orchestration) — one `gh api …/reviews` call
+posting a summary + inline file/line comments atomically, **not** pre-approved in `allowedTools`,
+so every submission passes the normal permission prompt. `sessionType` is identity, not tunable
+config — never copied via `configOverridesFrom`/`lastSessionConfig`, but `duplicate()` and a
+template's own `sessionType` config key both carry it explicitly.
+
 **Permission modes** (create dialog, or click the widget's mode chip to cycle at
 runtime): `default` (ask for edits & commands), `acceptEdits`, `plan`, and
 `bypassPermissions` — the last skips **every** approval prompt, Bash included, with

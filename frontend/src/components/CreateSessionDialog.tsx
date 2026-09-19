@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { assetStub, pickDefaultBranch, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type ProviderView, type ServicesResponse, type SessionSummary, type Settings, type Template } from '../protocol';
+import { assetStub, pickDefaultBranch, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type PrInfo, type ProviderView, type ServicesResponse, type SessionSummary, type SessionType, type Settings, type Template } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import ModelSelect from './ModelSelect';
 import { MODE_CYCLE, MODE_LABEL } from './SessionWidget';
@@ -41,10 +41,19 @@ export default function CreateSessionDialog({
 
   const [name, setName] = useState('');
   const [servicePath, setServicePath] = useState('');
+  const [sessionType, setSessionType] = useState<SessionType>('development');
   const [branch, setBranch] = useState('');
   const branchRef = useRef<HTMLInputElement>(null);
   const [baseBranch, setBaseBranch] = useState('main');
   const [syncBaseBranch, setSyncBaseBranch] = useState(true);
+  // review sessions only (proposal 1/12): PR-first target picking, with a plain-branch fallback
+  const [prs, setPrs] = useState<PrInfo[]>([]);
+  const [prsLoading, setPrsLoading] = useState(false);
+  const [prsError, setPrsError] = useState('');
+  const [selectedPrNumber, setSelectedPrNumber] = useState<number | null>(null);
+  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [prTitle, setPrTitle] = useState<string | null>(null);
+  const [reviewBranches, setReviewBranches] = useState<string[]>([]);
   const [templateId, setTemplateId] = useState('');
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [provider, setProvider] = useState('claude');
@@ -213,6 +222,51 @@ export default function CreateSessionDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRepoPath]);
 
+  // flipping to Review (proposal 12) fetches the repo's open PRs plus a remote-inclusive branch
+  // list for the fallback picker — a branch under review usually only exists on the remote
+  useEffect(() => {
+    if (sessionType !== 'review' || !selectedRepoPath) return;
+    setPrsLoading(true);
+    setPrsError('');
+    api.listPrs(selectedRepoPath)
+      .then(setPrs)
+      .catch((e) => setPrsError(e instanceof ApiError ? e.message : String(e)))
+      .finally(() => setPrsLoading(false));
+    api.branches(selectedRepoPath, true).then(setReviewBranches).catch(() => setReviewBranches([]));
+  }, [sessionType, selectedRepoPath]);
+
+  const pickPr = (num: number | null) => {
+    setSelectedPrNumber(num);
+    const pr = prs.find((p) => p.number === num) ?? null;
+    setPrUrl(pr?.url ?? null);
+    setPrTitle(pr?.title ?? null);
+    if (pr) {
+      setBranch(pr.headRefName);
+      setBaseBranch(pr.baseRefName);
+      if (!name.trim()) setName(`review: ${pr.headRefName}`);
+    }
+  };
+
+  const pickReviewBranch = (b: string) => {
+    setBranch(b);
+    setSelectedPrNumber(null);
+    setPrUrl(null);
+    setPrTitle(null);
+    if (b && !name.trim()) setName(`review: ${b}`);
+  };
+
+  useEffect(() => {
+    if (sessionType === 'development') {
+      setSelectedPrNumber(null);
+      setPrUrl(null);
+      setPrTitle(null);
+    } else {
+      // name/base-branch (the review target's identity) live in Advanced — surface them by default
+      // rather than leaving a reviewer to discover the collapsed section
+      setAdvancedOpen(true);
+    }
+  }, [sessionType]);
+
   const template = templates.find((t) => t.id === templateId);
   const kickoffPrompt = typeof template?.config['kickoffPrompt'] === 'string'
     ? (template.config['kickoffPrompt'] as string)
@@ -266,7 +320,7 @@ export default function CreateSessionDialog({
       if (advanced.trim()) Object.assign(overrides, JSON.parse(advanced) as Record<string, unknown>);
 
       const created = await api.createSession({
-        name: name.trim() || branch.trim(),
+        name: name.trim() || (sessionType === 'review' ? `review: ${branch.trim()}` : branch.trim()),
         branch: branch.trim(),
         baseBranch,
         repoPath: selectedRepoPath,
@@ -276,6 +330,9 @@ export default function CreateSessionDialog({
         kickoffValues,
         syncBaseBranch,
         continuedFromId: continuedFromId || null,
+        sessionType,
+        prUrl: sessionType === 'review' ? prUrl : null,
+        prTitle: sessionType === 'review' ? prTitle : null,
       });
       onCreated(created.id, draftInput || undefined);
     } catch (e) {
@@ -301,16 +358,59 @@ export default function CreateSessionDialog({
             ))}
           </select>
 
+          <label>Type</label>
+          <div className="chip-row full" style={{ gridColumn: '2 / -1' }}>
+            {(['development', 'review'] as SessionType[]).map((t) => (
+              <span
+                key={t}
+                className={`chip clickable${sessionType === t ? ' selected' : ''}`}
+                title={t === 'review' ? 'review an existing PR/branch — commit/push/PR are disabled' : 'develop on a new branch'}
+                onClick={() => setSessionType(t)}
+              >
+                {t === 'development' ? 'Development' : 'Review'}
+              </span>
+            ))}
+          </div>
+
           <label className="full" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <input type="checkbox" checked={syncBaseBranch} onChange={(e) => setSyncBaseBranch(e.target.checked)} />
             Update {baseBranch || 'base branch'} from origin before branching
           </label>
 
-          <label>Branch</label>
-          <input ref={branchRef} value={branch} onChange={(e) => setBranch(e.target.value)} list="branches" placeholder="feat/my-feature" />
-          <datalist id="branches">{branches.map((b) => <option key={b} value={b} />)}</datalist>
+          {sessionType === 'review' ? (
+            <>
+              <label>Pull request</label>
+              <select
+                value={selectedPrNumber ?? ''}
+                onChange={(e) => pickPr(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">{prsLoading ? 'loading PRs…' : '— pick an open PR —'}</option>
+                {prs.map((pr) => (
+                  <option key={pr.number} value={pr.number}>
+                    #{pr.number} {pr.title} ({pr.headRefName} → {pr.baseRefName}){pr.isDraft ? ' [draft]' : ''}
+                  </option>
+                ))}
+              </select>
+              {prsError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{prsError}</div>}
 
-          {ticketImportEnabled && (
+              <label>or review a branch</label>
+              <select
+                value={selectedPrNumber === null ? branch : ''}
+                onChange={(e) => pickReviewBranch(e.target.value)}
+              >
+                <option value="">— pick a branch —</option>
+                {reviewBranches.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </>
+          ) : (
+            <>
+              <label>Branch</label>
+              <input ref={branchRef} value={branch} onChange={(e) => setBranch(e.target.value)} list="branches" placeholder="feat/my-feature" />
+              <datalist id="branches">{branches.map((b) => <option key={b} value={b} />)}</datalist>
+            </>
+          )}
+
+          {sessionType === 'development' && ticketImportEnabled && (
             <>
               <label>Import ticket</label>
               <div className="row" style={{ display: 'flex', gap: 6 }}>
@@ -414,8 +514,14 @@ export default function CreateSessionDialog({
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="defaults to branch name" />
 
             <label>Base branch</label>
-            <select value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)}>
+            <select
+              value={baseBranch}
+              disabled={sessionType === 'review' && selectedPrNumber !== null}
+              title={sessionType === 'review' && selectedPrNumber !== null ? 'derived from the picked PR' : undefined}
+              onChange={(e) => setBaseBranch(e.target.value)}
+            >
               {(branches.length ? branches : ['main']).map((b) => <option key={b} value={b}>{b}</option>)}
+              {sessionType === 'review' && !branches.includes(baseBranch) && <option value={baseBranch}>{baseBranch}</option>}
             </select>
 
             <label>Template</label>

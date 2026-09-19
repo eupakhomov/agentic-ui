@@ -60,6 +60,7 @@ export default function ExposeOverlay({
               <div className="chip-row" style={{ marginTop: 4 }}>
                 {v?.branch && <span className="chip">{v.branch}</span>}
                 {v?.servicePath && <span className="chip" title={v.servicePath}>{v.servicePath.split('/').pop()}</span>}
+                {v?.sessionType === 'review' && <span className="chip" title="review session">review</span>}
                 <span className="chip">${(v?.costToDate ?? 0).toFixed(3)}</span>
               </div>
               <div className="expose-preview">

@@ -376,6 +376,50 @@ provider-neutral block (`GraphifyService.SYSTEM_PROMPT_BLOCK`, both providers).
   phase doc. Measured: this repo builds in ~11 s from empty and ~7 s on refresh with the
   worktree on ext4 (the ~80 s spike figure was a DrvFS artefact).
 
+## 3h. Review sessions (Phase 15)
+
+Full design + decisions: `docs/plan/phase-15-review-sessions.md`. `session.session_type`
+(V18, `'development'`/`'review'`, default `'development'`) makes the session's role
+explicit rather than approximated by hand (checking out a branch and talking the agent
+through `gh`).
+
+- **Target picking is PR-first**: `GET /api/repo/prs` (`GitOpsService.listOpenPrs`, `gh pr
+  list --json …`) backs a create-dialog picker; picking a PR derives `branch`/`baseBranch`
+  from its head/base and attaches `prUrl` at creation. A plain-branch fallback stays
+  possible (`MetaController.branches(..., remote=true)` adds remote-tracking branches for
+  that picker only — the ordinary dev-flow branch input/datalist is untouched); the PR is
+  then resolved lazily (`GitOpsService.resolvePr`, `gh pr view <branch>`) the first time
+  `submit_pr_review` needs one, attaching it onto the session at that point.
+- **Detached checkout, not a branch checkout**: `GitWorktreeService.createReviewWorktree`
+  (`git fetch origin <branch>` best-effort, then `git worktree add --detach <path> <tip>`,
+  `origin/<branch>` if the fetch succeeded else the local `<branch>`) — sidesteps `worktree
+  add`'s hard failure when the branch is already checked out elsewhere (the likely reviewer
+  scenario: a live development session in this app owns it) and makes "the reviewed branch
+  ref is never moved by us" structural rather than promised. Both this and `resolvePr`
+  validate the branch name (reject a leading `-`/anything outside a normal branch charset)
+  and pass `--` ahead of it in the `git`/`gh` argv, since a PR's `headRefName` is
+  GitHub-controlled input reaching a subprocess's argv, unlike a locally-typed dev branch.
+- **Blocked git-mutating surface, not a read-only worktree**: `GitSessionController`'s
+  existing `worktree(id, forWrite)` guard (shared by commit/push/PR) now also rejects a
+  review session outright (409, before its RUNNING/WAITING_INPUT check even runs); `close
+  (dirtyMode: "commit")` is refused the same way in `SessionService`. The worktree itself
+  stays fully writable — scratch notes, running a build/test suite as part of the review —
+  the write boundary that changed for phase 11 (`--writable-root`) is orthogonal to this.
+- **`submit_pr_review`** (`ReviewMcpTools`, same in-process MCP server as
+  memory/orchestration, gated on `session.sessionType == "review"`): one `gh api
+  repos/{owner}/{repo}/pulls/{n}/reviews` call, payload (event/body/comments) sent whole
+  over stdin (`--input -`) since `-f` flags can't express the comments array — GitHub
+  validates every inline comment's path/line against the diff atomically, so a 422 rejects
+  the whole review and its body is surfaced as the tool error verbatim. Deliberately **not**
+  in `allowedTools`' pre-approval list (unlike the three read-only memory tools) — the
+  normal tool-permission prompt is the human gate the whole design relies on instead of any
+  sidecar-level enforcement. Journals `pr_review_submitted {event, commentCount, prUrl}`.
+- **`sessionType` is identity, not tunable config** — a top-level `CreateOptions` field
+  (like name/branch/repo), never emitted by `configOverridesFrom`, so a quick session
+  created after a review session doesn't silently inherit `review` via
+  `lastSessionConfig`. `duplicate()` and a template's own `sessionType` config key both
+  carry it explicitly instead.
+
 ## 4. Backlog implementation sketches (remaining: 5.4, 5.6–5.8, 5.10–5.11)
 
 ### 5.4 Templates v2 — remaining gap

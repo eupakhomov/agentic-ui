@@ -2,6 +2,10 @@
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 
+/** 'development' (default) — normal branch/PR workflow. 'review' — targets an existing PR/branch,
+ * commit/push/PR are disabled (docs/plan/phase-15-review-sessions.md). */
+export type SessionType = 'development' | 'review';
+
 export type SessionState =
   | 'CREATING' | 'PROVISIONING' | 'STARTING' | 'IDLE' | 'RUNNING'
   | 'WAITING_INPUT' | 'PARKED' | 'CRASHED' | 'CLOSING' | 'CLOSED' | 'FAILED';
@@ -79,6 +83,8 @@ export interface SessionEntity {
   kickoffPrompt: string | null;
   /** 'user' (default) or 'system' — backend-initiated tasks, hidden by default in the dashboard */
   kind: 'user' | 'system';
+  /** 'development' (default) or 'review' — see docs/plan/phase-15-review-sessions.md */
+  sessionType: SessionType;
   /** Canonical ticket identifier (e.g. "ENG-123") if this session was created via ticket import */
   ticketRef: string | null;
   /** Source session this one carried a handoff summary/digest from (phase 7.3); null otherwise */
@@ -100,6 +106,17 @@ export interface SessionEntity {
 
 export type PrCheckStatus = 'PENDING' | 'SUCCESS' | 'FAILURE' | 'MERGED' | 'CLOSED' | 'ERROR';
 
+/** GET /api/repo/prs — open PRs for the review create-dialog's PR picker (phase 15). */
+export interface PrInfo {
+  number: number;
+  title: string;
+  headRefName: string;
+  baseRefName: string;
+  url: string;
+  author: string;
+  isDraft: boolean;
+}
+
 export interface SessionSummary {
   id: string;
   name: string;
@@ -111,6 +128,7 @@ export interface SessionSummary {
   permissionMode: PermissionMode;
   state: SessionState;
   kind: 'user' | 'system';
+  sessionType: SessionType;
   costToDate: number;
   updatedAt: string;
   lastSeq: number;

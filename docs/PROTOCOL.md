@@ -296,6 +296,10 @@ approval round-trip. Full mapping tables and rationale:
   READY/FAILED, `message` the failure reason. Journaled (so the widget chip replays after
   a reconnect/restart); a FAILED build never fails the session — the next completed turn
   triggers a retry. See docs/plan/phase-13-graphify.md Step 3.
+  `pr_review_submitted {event, commentCount, prUrl}` — journaled when a review session's
+  `submit_pr_review` MCP tool call succeeds: `event` is `COMMENT|REQUEST_CHANGES|APPROVE`,
+  `commentCount` the number of inline comments posted. See
+  docs/plan/phase-15-review-sessions.md.
 - On connect the journal is replayed from `afterSeq`, terminated by
   `{seq, type: "replay_complete", payload:{lastSeq}}`, then live events follow —
   no gaps, no duplicates (seq strictly increases).

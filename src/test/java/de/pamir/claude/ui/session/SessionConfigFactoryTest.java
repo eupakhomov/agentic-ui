@@ -630,6 +630,112 @@ class SessionConfigFactoryTest {
 		assertThat(factory.extraSystemPrompt(codexSerena)).isNull();
 	}
 
+	// --- sessionType (docs/plan/phase-15-review-sessions.md) ---
+
+	@Test
+	void prepareDefaultsSessionTypeToDevelopment() {
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, mapper.createObjectNode(), Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().sessionType()).isEqualTo("development");
+	}
+
+	@Test
+	void prepareHonorsAnExplicitTopLevelSessionType() {
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, mapper.createObjectNode(), Map.of(), false)
+				.withSessionType("review");
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().sessionType()).isEqualTo("review");
+	}
+
+	@Test
+	void prepareFallsBackToATemplatesSessionTypeConfigKeyWhenNoTopLevelOptionIsGiven() {
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null);
+		ObjectNode overrides = mapper.createObjectNode().put("sessionType", "review");
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().sessionType()).isEqualTo("review");
+	}
+
+	@Test
+	void prepareLetsAnExplicitTopLevelSessionTypeOverrideATemplatesOwnValue() {
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null);
+		// simulates a template whose own config carries sessionType=review, merged in ahead of the
+		// dialog's explicit choice — the top-level option must win either way (proposal 7)
+		ObjectNode overrides = mapper.createObjectNode().put("sessionType", "review");
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false)
+				.withSessionType("development");
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().sessionType()).isEqualTo("development");
+	}
+
+	@Test
+	void prepareRejectsAnUnknownSessionType() {
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null);
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, mapper.createObjectNode(), Map.of(), false)
+				.withSessionType("bogus");
+
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(
+						() -> factory.prepare(UUID.randomUUID(), Path.of("/worktree"), options)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("bogus");
+	}
+
+	@Test
+	void configOverridesFromNeverEmitsSessionType() {
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null);
+		SessionEntity review = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("claude")
+				.repoPath("/repo").branch("b").baseBranch("main").worktreePath("/wt")
+				.state(SessionState.CREATING).kind("user").sessionType("review").build();
+
+		assertThat(factory.configOverridesFrom(review).has("sessionType")).isFalse();
+	}
+
+	@Test
+	void extraSystemPromptCarriesTheReviewBlockOnlyForAReviewSessionAndMentionsThePrWhenAttached() {
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, false, false), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null);
+		SessionEntity dev = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("claude")
+				.repoPath("/repo").branch("b").baseBranch("main").worktreePath("/wt")
+				.state(SessionState.CREATING).kind("user").sessionType("development").build();
+		SessionEntity reviewNoPr = dev.toBuilder().sessionType("review").build();
+		SessionEntity reviewWithPr = reviewNoPr.toBuilder().prUrl("https://github.com/acme/widget/pull/7").build();
+
+		assertThat(factory.extraSystemPrompt(dev)).isNull();
+		assertThat(factory.extraSystemPrompt(reviewNoPr))
+				.contains("code-review session").contains("`b`").contains("`main`")
+				.contains("no PR is attached yet").contains("submit_pr_review");
+		assertThat(factory.extraSystemPrompt(reviewWithPr))
+				.contains("https://github.com/acme/widget/pull/7").doesNotContain("no PR is attached yet");
+	}
+
 	@Test
 	void configOverridesFromCarriesTheFlagNotTheTool() {
 		SessionConfigFactory factory = graphifyFactory("graphify", fakeSerena(false, "", "uv", null),

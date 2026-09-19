@@ -67,6 +67,40 @@ public class GitWorktreeService {
 		throw new GitException("worktree add failed: " + created.stderr());
 	}
 
+	/**
+	 * Detached checkout of a reviewed branch's tip (docs/plan/phase-15-review-sessions.md proposal
+	 * 5): {@code git fetch origin <branch>} (best-effort — a local-only branch skips it), then
+	 * {@code git worktree add --detach <worktreePath> <tip>}, where {@code tip} is {@code
+	 * origin/<branch>} when the fetch succeeded, else the local {@code branch}. Detached rather than
+	 * {@link #createWorktree}'s branch checkout for two reasons: {@code worktree add} on a branch
+	 * already checked out elsewhere fails outright (the likely reviewer scenario — a live
+	 * development session in this app owns the branch), and a detached HEAD makes "the reviewed
+	 * branch ref is never moved" structural instead of merely promised.
+	 */
+	public void createReviewWorktree(Path repo, Path worktreePath, String branch) {
+		validateBranchName(branch);
+		var fetched = git.run(repo, "fetch", "origin", "--", branch);
+		String tip = fetched.ok() ? "origin/" + branch : branch;
+		var created = git.run(repo, "worktree", "add", "--detach", "--", worktreePath.toString(), tip);
+		if (!created.ok()) {
+			throw new GitException("review worktree add failed: " + created.stderr());
+		}
+	}
+
+	private static final java.util.regex.Pattern SAFE_BRANCH_NAME = java.util.regex.Pattern.compile("[A-Za-z0-9._/-]+");
+
+	/**
+	 * A PR's {@code headRefName} (proposal 1's PR-first picker) or the remote-branch fallback
+	 * picker (proposal 13) is less trusted than a user-typed local dev branch name — reject
+	 * anything that could be interpreted as a git flag (leading {@code -}) or contains characters
+	 * outside a normal branch name before it ever reaches {@code git.run}'s argv.
+	 */
+	private static void validateBranchName(String branch) {
+		if (branch == null || branch.isBlank() || branch.startsWith("-") || !SAFE_BRANCH_NAME.matcher(branch).matches()) {
+			throw new GitException("invalid branch name: " + branch);
+		}
+	}
+
 	/** Paths from `git status --porcelain`; empty = clean. */
 	public List<String> dirtyFiles(Path worktree) {
 		if (!Files.isDirectory(worktree)) {
@@ -95,6 +129,28 @@ public class GitWorktreeService {
 	public List<String> localBranches(Path repo) {
 		var result = git.runOrThrow(repo, "for-each-ref", "refs/heads", "--format=%(refname:short)");
 		return result.stdout().isBlank() ? List.of() : result.stdout().lines().toList();
+	}
+
+	/**
+	 * Remote-tracking branches under {@code refs/remotes/origin}, prefix-stripped and deduped
+	 * against {@code localBranches} — the review create-dialog's branch-fallback picker (proposal
+	 * 13) sends this on top of the usual local list, since a branch under review usually exists
+	 * only on the remote. {@code origin/HEAD} is excluded (a symbolic ref, not a real branch).
+	 */
+	public List<String> remoteBranches(Path repo) {
+		var result = git.run(repo, "for-each-ref", "refs/remotes/origin", "--format=%(refname:short)");
+		if (!result.ok() || result.stdout().isBlank()) {
+			return List.of();
+		}
+		List<String> local = localBranches(repo);
+		return result.stdout().lines()
+				// git shortens the symbolic refs/remotes/origin/HEAD to the bare "origin" (not
+				// "origin/HEAD") — requiring the "origin/" prefix here excludes that alias line
+				// rather than needing a separate HEAD-name check
+				.filter(ref -> ref.startsWith("origin/"))
+				.map(ref -> ref.substring("origin/".length()))
+				.filter(name -> !name.isBlank() && !local.contains(name))
+				.toList();
 	}
 
 	public String defaultBranch(Path repo) {

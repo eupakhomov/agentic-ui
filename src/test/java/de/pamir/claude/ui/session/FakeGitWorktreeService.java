@@ -17,9 +17,19 @@ final class FakeGitWorktreeService extends GitWorktreeService {
 	private List<String> dirty = List.of();
 	private Path repoRootOfResult;
 	private List<GitWorktreeService.ServiceInfo> knownServices = List.of();
+	private String lastReviewWorktreeBranch;
+	private boolean createWorktreeCalled;
 
 	FakeGitWorktreeService() {
 		super(null);
+	}
+
+	String lastReviewWorktreeBranch() {
+		return lastReviewWorktreeBranch;
+	}
+
+	boolean createWorktreeCalled() {
+		return createWorktreeCalled;
 	}
 
 	void setDirtyFiles(List<String> dirty) {
@@ -56,7 +66,12 @@ final class FakeGitWorktreeService extends GitWorktreeService {
 
 	@Override
 	public void createWorktree(Path repo, Path worktreePath, String branch, String baseBranch) {
-		// no-op — no real git worktree add
+		createWorktreeCalled = true; // no-op otherwise — no real git worktree add
+	}
+
+	@Override
+	public void createReviewWorktree(Path repo, Path worktreePath, String branch) {
+		lastReviewWorktreeBranch = branch; // no-op otherwise — no real git worktree add
 	}
 
 	@Override

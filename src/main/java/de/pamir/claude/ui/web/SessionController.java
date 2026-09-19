@@ -37,12 +37,18 @@ public class SessionController {
 
 	public record CreateSessionRequest(String name, String branch, String baseBranch, String repoPath,
 									   String servicePath, UUID templateId, JsonNode overrides,
-									   Map<String, String> kickoffValues, Boolean syncBaseBranch, UUID continuedFromId) {
+									   Map<String, String> kickoffValues, Boolean syncBaseBranch, UUID continuedFromId,
+									   /** 'development' (default, when null) or 'review' — docs/plan/phase-15-review-sessions.md */
+									   String sessionType,
+									   /** PR to attach when a review session was created PR-first (proposal 1) */
+									   String prUrl,
+									   /** Cosmetic only — not persisted; carried for API completeness (proposal 12) */
+									   String prTitle) {
 	}
 
 	public record SessionSummary(UUID id, String name, String provider, String repoPath, String servicePath,
 								 String branch, String model, String permissionMode, String state, String kind,
-								 BigDecimal costToDate, Instant updatedAt, long lastSeq) {
+								 String sessionType, BigDecimal costToDate, Instant updatedAt, long lastSeq) {
 	}
 
 	private final SessionService service;
@@ -70,7 +76,9 @@ public class SessionController {
 				request.baseBranch(), request.repoPath(), request.templateId(), request.overrides(),
 				request.kickoffValues(), Boolean.TRUE.equals(request.syncBaseBranch()))
 				.withContinuedFrom(request.continuedFromId())
-				.withServicePath(request.servicePath());
+				.withServicePath(request.servicePath())
+				.withSessionType(request.sessionType())
+				.withPrUrl(request.prUrl());
 		return service.create(options);
 	}
 
@@ -89,8 +97,8 @@ public class SessionController {
 				.map(s -> {
 					EventJournal.SessionStats st = stats.getOrDefault(s.id(), NO_EVENTS);
 					return new SessionSummary(s.id(), s.name(), s.provider(), s.repoPath(), s.servicePath(), s.branch(),
-							s.model(), s.permissionMode(), s.state().name(), s.kind(), st.costToDate(), s.updatedAt(),
-							st.lastSeq());
+							s.model(), s.permissionMode(), s.state().name(), s.kind(), s.sessionType(), st.costToDate(),
+							s.updatedAt(), st.lastSeq());
 				})
 				.toList();
 	}

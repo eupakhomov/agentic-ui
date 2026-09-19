@@ -91,6 +91,7 @@ export default function SessionWidget({
         repoPath: v.repoPath ?? d.session.repoPath,
         servicePath: v.servicePath ?? d.session.servicePath,
         branch: v.branch ?? d.session.branch,
+        sessionType: v.sessionType ?? d.session.sessionType,
         // right after a reload, before any turn has produced a fresh context_usage event
         contextTokens: v.contextTokens ?? d.session.contextTokens,
         contextWindow: v.contextWindow ?? d.session.contextWindow,
@@ -275,6 +276,9 @@ export default function SessionWidget({
               </span>
             )}
             {entity?.kind !== 'system' && <span className="chip" title="branch">{entity?.branch}</span>}
+            {entity?.sessionType === 'review' && (
+              <span className="chip" title="review session — commit/push disabled">review</span>
+            )}
             {(view.model ?? entity?.model) && (
               <span
                 className={`chip${canCycleModel ? ' clickable' : ''}`}
@@ -433,6 +437,7 @@ export default function SessionWidget({
         {showGit && (
           <GitPanel
             sessionId={sessionId}
+            sessionType={entity?.sessionType ?? 'development'}
             onClose={() => setShowGit(false)}
             prUrl={entity?.prUrl ?? null}
             prCheckStatus={entity?.prCheckStatus ?? null}
@@ -495,6 +500,7 @@ export default function SessionWidget({
       {closing && (
         <CloseDialog
           sessionId={sessionId}
+          sessionType={entity?.sessionType ?? 'development'}
           onClosed={onClosed}
           onCancel={() => setClosing(false)}
         />
@@ -502,6 +508,7 @@ export default function SessionWidget({
       {duplicating && (
         <DuplicateDialog
           sessionId={sessionId}
+          sessionType={entity?.sessionType ?? 'development'}
           defaultBranch={entity?.branch ?? ''}
           onDuplicated={(id) => { setDuplicating(false); onDuplicated(id); }}
           onCancel={() => setDuplicating(false)}

@@ -101,6 +101,11 @@ final class FakeSessionRepository extends SessionRepository {
 	}
 
 	@Override
+	public void attachPr(UUID id, String prUrl, String headSha) {
+		byId.computeIfPresent(id, (k, e) -> e.toBuilder().prUrl(prUrl).prHeadSha(headSha).prCheckStatus("PENDING").build());
+	}
+
+	@Override
 	public void enqueue(UUID sessionId, String text) {
 		queues.computeIfAbsent(sessionId, k -> new CopyOnWriteArrayList<>())
 				.add(new QueuedMessage(posSeq.incrementAndGet(), text));

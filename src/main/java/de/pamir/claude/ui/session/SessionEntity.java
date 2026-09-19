@@ -50,6 +50,10 @@ public record SessionEntity(
 		SessionState state,
 		/** 'user' (default) or 'system' — backend-initiated tasks (ticket import, ...), hidden by default in the UI */
 		String kind,
+		/** 'development' (default) or 'review' — see docs/plan/phase-15-review-sessions.md. A review
+		 * session's worktree is a detached checkout of the reviewed branch's tip; commit/push/PR are
+		 * blocked at the REST layer ({@link de.pamir.claude.ui.web.GitSessionController}). */
+		String sessionType,
 		/** Canonical ticket identifier (e.g. "ENG-123") if this session was created via ticket import; null otherwise */
 		String ticketRef,
 		/** Source session this one carried a handoff summary/digest from (see docs/plan/phase-7-ux-and-orchestration.md 7.3); null otherwise */
@@ -125,7 +129,7 @@ public record SessionEntity(
 				.mcpConfig(mcpConfig).envVars(envVars).skillSources(skillSources).agentSources(agentSources)
 				.instructions(instructions).thinking(thinking).effort(effort).maxTurns(maxTurns)
 				.fallbackModel(fallbackModel).costBudgetUsd(costBudgetUsd).kickoffPrompt(kickoffPrompt)
-				.state(state).kind(kind).ticketRef(ticketRef).continuedFromId(continuedFromId)
+				.state(state).kind(kind).sessionType(sessionType).ticketRef(ticketRef).continuedFromId(continuedFromId)
 				.parentSessionId(parentSessionId).prUrl(prUrl).prHeadSha(prHeadSha).prCheckStatus(prCheckStatus)
 				.prCheckedAt(prCheckedAt).reflectionEnabled(reflectionEnabled).reflectedSeq(reflectedSeq)
 				.codeIntel(codeIntel).contextTokens(contextTokens).contextWindow(contextWindow)
@@ -174,6 +178,7 @@ public record SessionEntity(
 		private String kickoffPrompt;
 		private SessionState state = SessionState.CREATING;
 		private String kind = "user";
+		private String sessionType = "development";
 		private String ticketRef;
 		private UUID continuedFromId;
 		private UUID parentSessionId;
@@ -222,6 +227,7 @@ public record SessionEntity(
 		public Builder kickoffPrompt(String v) { this.kickoffPrompt = v; return this; }
 		public Builder state(SessionState v) { this.state = v; return this; }
 		public Builder kind(String v) { this.kind = v; return this; }
+		public Builder sessionType(String v) { this.sessionType = v; return this; }
 		public Builder ticketRef(String v) { this.ticketRef = v; return this; }
 		public Builder continuedFromId(UUID v) { this.continuedFromId = v; return this; }
 		public Builder parentSessionId(UUID v) { this.parentSessionId = v; return this; }
@@ -241,9 +247,9 @@ public record SessionEntity(
 			return new SessionEntity(id, name, provider, providerConfig, repoPath, servicePath, ecosystemPath, contextDirs,
 					branch, baseBranch, worktreePath, providerSessionId, capabilities, model, permissionMode,
 					allowedTools, disallowedTools, mcpConfig, envVars, skillSources, agentSources, instructions,
-					thinking, effort, maxTurns, fallbackModel, costBudgetUsd, kickoffPrompt, state, kind, ticketRef,
-					continuedFromId, parentSessionId, prUrl, prHeadSha, prCheckStatus, prCheckedAt, reflectionEnabled,
-					reflectedSeq, codeIntel, contextTokens, contextWindow, createdAt, updatedAt);
+					thinking, effort, maxTurns, fallbackModel, costBudgetUsd, kickoffPrompt, state, kind, sessionType,
+					ticketRef, continuedFromId, parentSessionId, prUrl, prHeadSha, prCheckStatus, prCheckedAt,
+					reflectionEnabled, reflectedSeq, codeIntel, contextTokens, contextWindow, createdAt, updatedAt);
 		}
 	}
 }

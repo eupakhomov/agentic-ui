@@ -102,6 +102,7 @@ public class SessionConfigFactory {
 		String fallbackModel = nullableText(config, "fallbackModel");
 		List<String> contextDirs = stringList(config, "contextDirs");
 		String codeIntel = resolveCodeIntel(config, s);
+		String sessionType = resolveSessionType(options, config);
 		ProviderCapabilities caps = catalog.get(provider);
 		// Unsupported controls are rejected at creation time, not silently downgraded (DoD from
 		// docs/plan/phase-5.13-codex-provider.md, generalized in
@@ -181,7 +182,8 @@ public class SessionConfigFactory {
 				.effort(nullableText(config, "effort")).maxTurns(maxTurns).fallbackModel(fallbackModel)
 				.costBudgetUsd(config.hasNonNull("costBudgetUsd") ? new BigDecimal(config.get("costBudgetUsd").asText()) : null)
 				.kickoffPrompt(fillPlaceholders(nullableText(config, "kickoffPrompt"), options.kickoffValues()))
-				.state(SessionState.CREATING).kind("user").ticketRef(nullableText(config, "ticketRef"))
+				.state(SessionState.CREATING).kind("user").sessionType(sessionType)
+				.ticketRef(nullableText(config, "ticketRef"))
 				.continuedFromId(options.continuedFromId()).parentSessionId(options.parentSessionId())
 				.reflectionEnabled(config.path("reflectionEnabled").asBoolean(s.memoryReflectionDefault()))
 				.codeIntel(codeIntel)
@@ -215,6 +217,27 @@ public class SessionConfigFactory {
 			throw new IllegalArgumentException(label + " is not configured (Settings → MCP servers)");
 		}
 		return tool;
+	}
+
+	private static final java.util.Set<String> SESSION_TYPES = java.util.Set.of("development", "review");
+
+	/**
+	 * {@code sessionType} is identity, not tunable config (docs/plan/phase-15-review-sessions.md
+	 * proposal 7) — like name/branch/repo it's a top-level {@link SessionService.CreateOptions}
+	 * field, not something callers put in the {@code overrides} JSON blob, so it's never copied by
+	 * {@link #configOverridesFrom}. {@code options.sessionType()} (always sent explicitly by both
+	 * dialogs) wins over a template's own {@code sessionType} config key, so a template picked on
+	 * top of an explicit dialog toggle can't silently flip it; with neither set, defaults to {@code
+	 * development} — byte-identical to every session created before this phase.
+	 */
+	private static String resolveSessionType(SessionService.CreateOptions options, ObjectNode config) {
+		String sessionType = options.sessionType() != null && !options.sessionType().isBlank()
+				? options.sessionType()
+				: text(config, "sessionType", "development");
+		if (!SESSION_TYPES.contains(sessionType)) {
+			throw new IllegalArgumentException("unknown sessionType: " + sessionType);
+		}
+		return sessionType;
 	}
 
 	private record ServiceResolution(String repoPath, String servicePath) {
@@ -540,11 +563,32 @@ public class SessionConfigFactory {
 		};
 	}
 
-	/** The extra system-prompt text a spawn should append (memory + orchestration + code-intel blocks), or null if all are empty. */
+	/**
+	 * Proposal 8's review-role block: tells the agent its job is to read/analyze the reviewed
+	 * branch against its base and submit findings through {@code submit_pr_review}, never to
+	 * modify/commit/push it (that's also enforced structurally — detached checkout — and at the
+	 * REST layer, but the agent needs to be told not to even try). Null for a development session.
+	 */
+	private String reviewSystemPromptBlock(SessionEntity session) {
+		if (!"review".equals(session.sessionType())) {
+			return null;
+		}
+		String prPart = session.prUrl() != null && !session.prUrl().isBlank()
+				? ", for PR " + session.prUrl()
+				: " — no PR is attached yet";
+		return "You are a code-review session. Your task is to review the branch `" + session.branch()
+				+ "` against `" + session.baseBranch() + "`" + prPart + ". Read and analyze; run builds or tests "
+				+ "if useful. Do NOT modify the reviewed code, do not commit, push, or create pull requests — "
+				+ "commit/push are disabled for this session. Use the review skills and agents available to you. "
+				+ "When your review is complete, submit it with the `submit_pr_review` tool (summary + inline "
+				+ "file/line comments); pass this as `sessionId`: " + session.id();
+	}
+
+	/** The extra system-prompt text a spawn should append (memory + orchestration + code-intel + review blocks), or null if all are empty. */
 	String extraSystemPrompt(SessionEntity session) {
 		String joined = Stream
 				.of(memorySystemPromptBlock(session), orchestrationSystemPromptBlock(session),
-						codeIntelSystemPromptBlock(session))
+						codeIntelSystemPromptBlock(session), reviewSystemPromptBlock(session))
 				.filter(Objects::nonNull)
 				.collect(Collectors.joining("\n\n"));
 		return joined.isBlank() ? null : joined;

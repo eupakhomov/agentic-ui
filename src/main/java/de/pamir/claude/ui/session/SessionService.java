@@ -98,23 +98,25 @@ public class SessionService {
 	 */
 	public record CreateOptions(String name, String branch, String baseBranch, String repoPath, UUID templateId,
 								JsonNode overrides, Map<String, String> kickoffValues, boolean syncBaseBranch,
-								UUID continuedFromId, UUID parentSessionId, String servicePath) {
+								UUID continuedFromId, UUID parentSessionId, String servicePath, String sessionType,
+								String prUrl) {
 
 		public CreateOptions(String name, String branch, String baseBranch, String repoPath, UUID templateId,
 							  JsonNode overrides, Map<String, String> kickoffValues, boolean syncBaseBranch) {
-			this(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues, syncBaseBranch, null, null, null);
+			this(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues, syncBaseBranch, null, null,
+					null, null, null);
 		}
 
 		/** With an explicit continuation provenance link (7.3's "continue from" picker). */
 		public CreateOptions withContinuedFrom(UUID continuedFromId) {
 			return new CreateOptions(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues,
-					syncBaseBranch, continuedFromId, parentSessionId, servicePath);
+					syncBaseBranch, continuedFromId, parentSessionId, servicePath, sessionType, prUrl);
 		}
 
 		/** With an explicit parent link (7.4's spawn_child_session tool). */
 		public CreateOptions withParent(UUID parentSessionId) {
 			return new CreateOptions(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues,
-					syncBaseBranch, continuedFromId, parentSessionId, servicePath);
+					syncBaseBranch, continuedFromId, parentSessionId, servicePath, sessionType, prUrl);
 		}
 
 		/**
@@ -124,7 +126,28 @@ public class SessionService {
 		 */
 		public CreateOptions withServicePath(String servicePath) {
 			return new CreateOptions(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues,
-					syncBaseBranch, continuedFromId, parentSessionId, servicePath);
+					syncBaseBranch, continuedFromId, parentSessionId, servicePath, sessionType, prUrl);
+		}
+
+		/**
+		 * Explicit session type from the create request (docs/plan/phase-15-review-sessions.md
+		 * decision 6/7) — wins over a template's own {@code sessionType} config key in {@link
+		 * SessionConfigFactory#prepare}; null resolves from the merged config, defaulting to
+		 * {@code development}.
+		 */
+		public CreateOptions withSessionType(String sessionType) {
+			return new CreateOptions(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues,
+					syncBaseBranch, continuedFromId, parentSessionId, servicePath, sessionType, prUrl);
+		}
+
+		/**
+		 * PR to attach at creation (proposal 1: PR-first review target picking) — {@code branch}/
+		 * {@code baseBranch} are still derived by the caller (dialog) from the picked PR's head/base;
+		 * this is only the URL to record once the review worktree exists.
+		 */
+		public CreateOptions withPrUrl(String prUrl) {
+			return new CreateOptions(name, branch, baseBranch, repoPath, templateId, overrides, kickoffValues,
+					syncBaseBranch, continuedFromId, parentSessionId, servicePath, sessionType, prUrl);
 		}
 	}
 
@@ -144,7 +167,18 @@ public class SessionService {
 			if (options.syncBaseBranch()) {
 				worktrees.syncBaseBranch(Path.of(entity.repoPath()), options.baseBranch());
 			}
-			worktrees.createWorktree(Path.of(entity.repoPath()), worktree, options.branch(), options.baseBranch());
+			if ("review".equals(entity.sessionType())) {
+				// proposal 5: a detached checkout of the reviewed branch's tip — sidesteps "already
+				// checked out elsewhere" (the likely reviewer scenario: a live dev session owns the
+				// branch) and makes "the branch ref is never moved" structural, not just promised.
+				worktrees.createReviewWorktree(Path.of(entity.repoPath()), worktree, options.branch());
+				if (options.prUrl() != null && !options.prUrl().isBlank()) {
+					String headSha = git.runOrThrow(worktree, "rev-parse", "HEAD").stdout();
+					sessions.attachPr(id, options.prUrl(), headSha);
+				}
+			} else {
+				worktrees.createWorktree(Path.of(entity.repoPath()), worktree, options.branch(), options.baseBranch());
+			}
 			// decision A (docs/plan/phase-11-monorepo.md Step 0): assets materialize at the service
 			// cwd, which equals the worktree root for a polyrepo session (servicePath == repoPath) —
 			// byte-identical to before this phase for every existing session.
@@ -310,6 +344,11 @@ public class SessionService {
 			List<String> dirty = worktrees.dirtyFiles(worktree);
 			if (!dirty.isEmpty() && (dirtyMode == null || dirtyMode.equals("fail"))) {
 				throw new DirtyWorktreeException(dirty);
+			}
+			if ("commit".equals(dirtyMode) && "review".equals(session.sessionType())) {
+				// proposal 10: a review session never commits — the reviewed branch ref is structurally
+				// immovable (detached checkout), stash/discard stay available for scratch notes
+				throw new IllegalStateException("review sessions cannot commit — use stash or discard");
 			}
 			transition(id, SessionState.CLOSING);
 			sidecars.terminate(id);
@@ -601,8 +640,11 @@ public class SessionService {
 		}
 		ObjectNode overrides = configFactory.configOverridesFrom(source);
 		String sessionName = name != null && !name.isBlank() ? name : branch;
+		// sessionType is identity, not tunable config (proposal 7) — carried explicitly here rather
+		// than through configOverridesFrom, same as name/branch/repo; a duplicate of a review session
+		// reviews the same branch/PR again
 		return create(new CreateOptions(sessionName, branch, source.baseBranch(), source.repoPath(), null, overrides,
-				null, syncBaseBranch));
+				null, syncBaseBranch).withSessionType(source.sessionType()).withPrUrl(source.prUrl()));
 	}
 
 	/**

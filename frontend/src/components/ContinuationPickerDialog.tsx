@@ -78,6 +78,7 @@ export default function ContinuationPickerDialog({
                   <span className="continuation-name">{s.name}</span>
                   <span className="chip">{s.provider}</span>
                   <span className="chip" title={s.servicePath}>{s.servicePath.split('/').pop()}</span>
+                  {s.sessionType === 'review' && <span className="chip" title="review session">review</span>}
                   <span className="chip">{s.state}</span>
                   <span className="chip">${s.costToDate.toFixed(3)}</span>
                   <span className="continuation-date">{formatDate(s.updatedAt)}</span>

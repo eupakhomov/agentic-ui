@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Capabilities, Envelope, PermissionMode, QueuedMessage, SessionState } from '../protocol';
+import type { Capabilities, Envelope, PermissionMode, QueuedMessage, SessionState, SessionType } from '../protocol';
 import type { WsStatus } from '../api/ws';
 
 // ---------------------------------------------------------------------------
@@ -38,6 +38,8 @@ export interface SessionView {
   /** The service identity — what the chip shows (phase 11); equals repoPath for a polyrepo session */
   servicePath: string | null;
   branch: string | null;
+  /** 'development' (default) or 'review' — the Exposé card's review chip (phase 15) */
+  sessionType: SessionType | null;
   // --- context usage (phase 12 track C) ---
   contextTokens: number | null;
   contextWindow: number | null;
@@ -76,6 +78,7 @@ const emptyView = (): SessionView => ({
   repoPath: null,
   servicePath: null,
   branch: null,
+  sessionType: null,
   contextTokens: null,
   contextWindow: null,
   autoCompactAt: null,

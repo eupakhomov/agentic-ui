@@ -3,7 +3,7 @@ import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 const ROWS: [string, string][] = [
   ['?', 'this cheatsheet'],
   ['n', 'new session'],
-  ['q', 'quick session (ticket + service only)'],
+  ['q', 'quick session (service + branch + prompt)'],
   ['j / k  (also ] / [)', 'focus next / previous widget'],
   ['1 – 9', 'focus widget N (grid order)'],
   ['Enter / i', 'focus the composer'],

@@ -456,6 +456,31 @@ class SessionStateMachineTest {
 		assertThat(publishedEvents).hasAtLeastOneElementOfType(ServiceDiscoveryRequested.class);
 	}
 
+	/** docs/plan/phase-15-review-sessions.md proposal 10: a review session never commits, even to close. */
+	@Test
+	void closeRefusesCommitDirtyModeOnAReviewSession() {
+		SessionEntity s = session(SessionState.IDLE).toBuilder().sessionType("review").build();
+		sessions.seed(s);
+		worktrees.setDirtyFiles(List.of("scratch-notes.txt"));
+
+		assertThatThrownBy(() -> sessionService.close(s.id(), "commit", null))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("review sessions cannot commit");
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.IDLE);
+	}
+
+	/** stash/discard stay available for a dirty review worktree (scratch notes, build artifacts). */
+	@Test
+	void closeStillAllowsStashOnADirtyReviewSession() {
+		SessionEntity s = session(SessionState.IDLE).toBuilder().sessionType("review").build();
+		sessions.seed(s);
+		worktrees.setDirtyFiles(List.of("scratch-notes.txt"));
+
+		sessionService.close(s.id(), "stash", null);
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.CLOSED);
+	}
+
 	@Test
 	void closeTerminatesASystemSessionAndSkipsTheDirtyCheck() {
 		SessionEntity s = SessionEntity.builder()
@@ -548,6 +573,76 @@ class SessionStateMachineTest {
 				.contains(".claude-ui.pid");
 		// the pid line is never prefixed — the pid file always lives at the worktree root
 		assertThat(exclude).doesNotContain("packages/foo/.claude-ui.pid");
+	}
+
+	// ------------------------------------------------------------------ create (sessionType, phase 15)
+
+	/**
+	 * A real {@link SessionService#create} call needs a real {@link ProviderCatalog} (the default
+	 * {@code sessionService} from {@link #setUp} is built with a null one, since none of the other
+	 * tests in this class drive {@code create()} against it directly — see the servicePath test
+	 * above, which builds its own for the same reason) and a {@link GitCommandRunner} fake so
+	 * {@code excludeProvisionedAssets} can write its info/exclude line without a real git worktree.
+	 */
+	private SessionService reviewCapableSessionService() {
+		ProviderCatalog catalog = ProviderCatalog.fixedForTest(Map.of("claude", fullCapabilities()));
+		SessionConfigFactory configFactory = new SessionConfigFactory(
+				new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills", "/memory", 4,
+						"authtoken", "", "", "logs", 30, 65536, 1048576, Map.of()),
+				fakeSettings(false, false), null, mapper, null, 8080, catalog, worktrees, null, null);
+		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
+		SystemSessionService systemSessionService = new SystemSessionService(
+				null, fakeSettings(false, false), sessions, configFactory, journalPublisher, mapper, null);
+		GitCommandRunner fakeGit = new GitCommandRunner() {
+			@Override
+			public GitResult run(Path workingDir, String... args) {
+				return new GitResult(0, ".git/info/exclude", "");
+			}
+		};
+		AppProperties props = new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills",
+				"/memory", 4, "authtoken", "", "", "logs", 30, 65536, 1048576, Map.of());
+		return new SessionService(props, fakeSettings(false, false), sessions, worktrees, fakeGit,
+				new AssetProvisioningService(null, null, mapper), sidecars, journal, journalPublisher, mapper,
+				publishedEvents::add, configFactory, systemSessionService, null, catalog, null);
+	}
+
+	@Test
+	void createOnAReviewSessionUsesTheDetachedReviewWorktreeNotOrdinaryCreateWorktree() {
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"review: feat-x", "feat-x", "main", System.getProperty("user.dir"), null,
+				mapper.createObjectNode(), Map.of(), false).withSessionType("review");
+
+		SessionEntity created = reviewCapableSessionService().create(options);
+
+		assertThat(created.sessionType()).isEqualTo("review");
+		assertThat(worktrees.lastReviewWorktreeBranch()).isEqualTo("feat-x");
+		assertThat(worktrees.createWorktreeCalled()).isFalse();
+	}
+
+	@Test
+	void createOnADevelopmentSessionIsByteIdenticalUsingOrdinaryCreateWorktree() {
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "feat-x", "main", System.getProperty("user.dir"), null,
+				mapper.createObjectNode(), Map.of(), false);
+
+		SessionEntity created = reviewCapableSessionService().create(options);
+
+		assertThat(created.sessionType()).isEqualTo("development");
+		assertThat(worktrees.createWorktreeCalled()).isTrue();
+		assertThat(worktrees.lastReviewWorktreeBranch()).isNull();
+	}
+
+	@Test
+	void createOnAReviewSessionAttachesThePrWhenOneWasPickedAtCreation() {
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"review: feat-x", "feat-x", "main", System.getProperty("user.dir"), null,
+				mapper.createObjectNode(), Map.of(), false)
+				.withSessionType("review").withPrUrl("https://github.com/acme/widget/pull/7");
+		SessionService service = reviewCapableSessionService();
+
+		SessionEntity created = service.create(options);
+
+		assertThat(created.prUrl()).isEqualTo("https://github.com/acme/widget/pull/7");
 	}
 
 	// ------------------------------------------------------------------ onSidecarExit

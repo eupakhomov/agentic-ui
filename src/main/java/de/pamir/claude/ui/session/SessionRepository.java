@@ -37,17 +37,17 @@ public class SessionRepository {
 							ecosystem_path, context_dirs, branch, base_branch, worktree_path, model, permission_mode,
 							allowed_tools, disallowed_tools, mcp_config, env_vars, skill_sources, agent_sources,
 							instructions, thinking, effort, max_turns, fallback_model, cost_budget_usd,
-							kickoff_prompt, state, kind, ticket_ref, continued_from_id, parent_session_id,
+							kickoff_prompt, state, kind, session_type, ticket_ref, continued_from_id, parent_session_id,
 							reflection_enabled, code_intel)
 						VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb,
-							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(s.id(), s.name(), s.provider(), json(s.providerConfig()), s.repoPath(), s.rawServicePath(),
 						s.ecosystemPath(), json(s.contextDirs()), s.branch(), s.baseBranch(), s.worktreePath(),
 						s.model(), s.permissionMode(), json(s.allowedTools()), json(s.disallowedTools()),
 						json(s.mcpConfig()), json(s.envVars()), json(s.skillSources()), json(s.agentSources()),
 						s.instructions(), s.thinking(), s.effort(), s.maxTurns(), s.fallbackModel(), s.costBudgetUsd(),
-						s.kickoffPrompt(), s.state().name(), s.kind(), s.ticketRef(), s.continuedFromId(),
+						s.kickoffPrompt(), s.state().name(), s.kind(), s.sessionType(), s.ticketRef(), s.continuedFromId(),
 						s.parentSessionId(), s.reflectionEnabled(), s.codeIntel())
 				.update();
 	}
@@ -276,6 +276,7 @@ public class SessionRepository {
 				rs.getString("kickoff_prompt"),
 				SessionState.valueOf(rs.getString("state")),
 				rs.getString("kind"),
+				rs.getString("session_type"),
 				rs.getString("ticket_ref"),
 				rs.getObject("continued_from_id", UUID.class),
 				rs.getObject("parent_session_id", UUID.class),

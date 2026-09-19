@@ -97,9 +97,18 @@ public class GitSessionController {
 		return Map.of("url", url);
 	}
 
-	/** Writes are refused while the agent may be mid-tool-execution. */
+	/**
+	 * Writes are refused while the agent may be mid-tool-execution, and outright for a review
+	 * session (docs/plan/phase-15-review-sessions.md proposal 10) — commit/push/PR would move or
+	 * publish from the reviewed branch's detached checkout, which this session's whole point is to
+	 * never do. Read paths (status/diff/log) call this with {@code forWrite = false} and are
+	 * unaffected.
+	 */
 	private Path worktree(UUID id, boolean forWrite) {
 		SessionEntity session = sessions.get(id);
+		if (forWrite && "review".equals(session.sessionType())) {
+			throw new IllegalStateException("session is a review session; commit/push/PR are disabled");
+		}
 		if (forWrite && (session.state() == SessionState.RUNNING || session.state() == SessionState.WAITING_INPUT)) {
 			throw new IllegalStateException("session is " + session.state()
 					+ "; wait for the turn to finish before committing or pushing");

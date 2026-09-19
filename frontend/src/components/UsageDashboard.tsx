@@ -221,6 +221,9 @@ export default function UsageDashboard({ onClose }: { onClose: () => void }) {
       {closingId && (
         <CloseDialog
           sessionId={closingId}
+          // StaleSession doesn't carry sessionType (out of scope for this maintenance dialog) —
+          // the backend still refuses commit-close on a review session regardless of this hint
+          sessionType="development"
           onClosed={() => {
             setStale((list) => list?.filter((s) => s.id !== closingId) ?? null);
             setClosingId(null);

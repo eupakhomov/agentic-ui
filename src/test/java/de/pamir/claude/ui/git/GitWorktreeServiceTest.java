@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * pickDefaultBranch's main/master preference — see docs/plan (Quick Session picking a stray
@@ -220,6 +221,93 @@ class GitWorktreeServiceTest {
 
 		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, true, mono, mono.resolve("packages/foo"))).isTrue();
 		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, true, mono, mono.resolve("packages/unknown"))).isFalse();
+	}
+
+	// --- remoteBranches (proposal 13) ---
+
+	@Test
+	void remoteBranchesStripsOriginPrefixAndDedupesAgainstLocal(@TempDir Path tmp) throws IOException {
+		Path origin = tmp.resolve("origin");
+		initRepo(origin);
+		commit(origin, "init");
+		git.runOrThrow(origin, "branch", "remote-only");
+		Path repo = tmp.resolve("repo");
+		git.runOrThrow(tmp, "clone", "-q", origin.toString(), repo.toString());
+
+		assertThat(worktrees.remoteBranches(repo)).containsExactly("remote-only");
+		assertThat(worktrees.localBranches(repo)).doesNotContain("remote-only");
+	}
+
+	@Test
+	void remoteBranchesIsEmptyWithNoRemoteConfigured(@TempDir Path tmp) throws IOException {
+		Path repo = tmp.resolve("repo");
+		initRepo(repo);
+		commit(repo, "init");
+
+		assertThat(worktrees.remoteBranches(repo)).isEmpty();
+	}
+
+	// --- createReviewWorktree (docs/plan/phase-15-review-sessions.md proposal 5) ---
+
+	@Test
+	void createReviewWorktreeChecksOutTheLocalBranchTipWhenThereIsNoRemote(@TempDir Path tmp) throws IOException {
+		Path repo = tmp.resolve("repo");
+		initRepo(repo);
+		Files.writeString(repo.resolve("a.txt"), "a");
+		commit(repo, "init");
+		git.runOrThrow(repo, "branch", "feature");
+		Path worktree = tmp.resolve("wt");
+
+		worktrees.createReviewWorktree(repo, worktree, "feature");
+
+		assertThat(git.runOrThrow(repo, "rev-parse", "feature").stdout())
+				.isEqualTo(git.runOrThrow(worktree, "rev-parse", "HEAD").stdout());
+		// detached: symbolic-ref fails on a detached HEAD
+		assertThat(git.run(worktree, "symbolic-ref", "-q", "HEAD").ok()).isFalse();
+	}
+
+	@Test
+	void createReviewWorktreeSucceedsOnABranchAlreadyCheckedOutInAnotherWorktree(@TempDir Path tmp) throws IOException {
+		Path repo = tmp.resolve("repo");
+		initRepo(repo);
+		commit(repo, "init");
+		git.runOrThrow(repo, "branch", "feature");
+		Path liveDevWorktree = tmp.resolve("dev-wt");
+		git.runOrThrow(repo, "worktree", "add", liveDevWorktree.toString(), "feature");
+		Path reviewWorktree = tmp.resolve("review-wt");
+
+		worktrees.createReviewWorktree(repo, reviewWorktree, "feature");
+
+		assertThat(git.run(reviewWorktree, "symbolic-ref", "-q", "HEAD").ok()).isFalse();
+	}
+
+	@Test
+	void createReviewWorktreeFetchesFromOriginWhenARemoteExists(@TempDir Path tmp) throws IOException {
+		Path origin = tmp.resolve("origin");
+		initRepo(origin);
+		commit(origin, "init");
+		git.runOrThrow(origin, "branch", "feature");
+		Path repo = tmp.resolve("repo");
+		git.runOrThrow(tmp, "clone", "-q", origin.toString(), repo.toString());
+		git.runOrThrow(repo, "config", "user.email", "test@test.local");
+		git.runOrThrow(repo, "config", "user.name", "Test");
+		// advance the remote's branch after the clone so the local ref lags behind origin/feature
+		git.runOrThrow(origin, "checkout", "-q", "feature");
+		Files.writeString(origin.resolve("b.txt"), "b");
+		commit(origin, "advance");
+		Path worktree = tmp.resolve("wt");
+
+		worktrees.createReviewWorktree(repo, worktree, "feature");
+
+		assertThat(git.runOrThrow(worktree, "rev-parse", "HEAD").stdout())
+				.isEqualTo(git.runOrThrow(origin, "rev-parse", "feature").stdout());
+	}
+
+	@Test
+	void createReviewWorktreeRejectsABranchNameThatLooksLikeAFlag() {
+		assertThatThrownBy(() -> worktrees.createReviewWorktree(Path.of("/repo"), Path.of("/wt"), "--upload-pack=evil"))
+				.isInstanceOf(GitException.class)
+				.hasMessageContaining("invalid branch name");
 	}
 
 	@Test
