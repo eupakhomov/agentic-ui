@@ -90,6 +90,8 @@ function sandboxModeFor(mode: CodexPermissionMode): string {
 
 interface PendingApproval {
   availableDecisions: unknown;
+  /** 'decision' = the item requestApproval methods ({decision}); 'elicitation' = mcpServer/elicitation/request ({action}) */
+  kind: 'decision' | 'elicitation';
 }
 
 export async function runSession(config: SidecarConfig): Promise<never> {
@@ -143,7 +145,9 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   function denyAllPendingApprovals(reason: string): void {
     if (pendingApprovals.size > 0) log(`denying ${pendingApprovals.size} pending approval(s): ${reason}`);
     for (const [requestId, entry] of pendingApprovals) {
-      rpc.respond(Number(requestId), { decision: denyDecision(entry.availableDecisions) });
+      rpc.respond(Number(requestId), entry.kind === 'elicitation'
+        ? { action: 'decline', content: null }
+        : { decision: denyDecision(entry.availableDecisions) });
     }
     pendingApprovals.clear();
   }
@@ -341,7 +345,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   function handleServerRequest(method: string, id: number, params: unknown): void {
     const p = (params ?? {}) as Record<string, unknown>;
     if (method === 'item/commandExecution/requestApproval') {
-      pendingApprovals.set(String(id), { availableDecisions: p['availableDecisions'] });
+      pendingApprovals.set(String(id), { availableDecisions: p['availableDecisions'], kind: 'decision' });
       writeEvent({
         type: 'permission_request',
         requestId: String(id),
@@ -353,13 +357,38 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     }
     if (method === 'item/fileChange/requestApproval') {
       const cached = itemsCache.get(String(p['itemId']));
-      pendingApprovals.set(String(id), { availableDecisions: p['availableDecisions'] });
+      pendingApprovals.set(String(id), { availableDecisions: p['availableDecisions'], kind: 'decision' });
       writeEvent({
         type: 'permission_request',
         requestId: String(id),
         toolName: 'Edit',
         input: { changes: cached?.['changes'] ?? [], ...(p['reason'] ? { reason: p['reason'] } : {}) },
         suggestions: Array.isArray(p['availableDecisions']) ? (p['availableDecisions'] as unknown[]) : [],
+      });
+      return;
+    }
+    if (method === 'mcpServer/elicitation/request') {
+      // Codex ≥0.151 surfaces MCP-server elicitations here — including its OWN approval
+      // prompt for thread-scoped MCP tool calls (meta codex_approval_kind = 'mcp_tool_call',
+      // a Form with an empty requestedSchema). Response shape is
+      // McpServerElicitationRequestResponse: { action: accept|decline|cancel, content } —
+      // NOT the { decision } shape of item/*/requestApproval (confirmed live: replying
+      // { decision } fails deserialization with "missing field `action`").
+      const meta = (p['_meta'] ?? {}) as Record<string, unknown>;
+      const server = typeof p['serverName'] === 'string' ? (p['serverName'] as string) : 'mcp';
+      const tool = typeof meta['tool_name'] === 'string' ? (meta['tool_name'] as string) : undefined;
+      const params = meta['tool_params'];
+      pendingApprovals.set(String(id), { availableDecisions: undefined, kind: 'elicitation' });
+      writeEvent({
+        type: 'permission_request',
+        requestId: String(id),
+        // same mcp__<server>__<tool> naming as mapItem's mcpToolCall, so the dashboard's
+        // permission card renders it like the Claude provider's prompt for the same tool
+        toolName: tool ? `mcp__${server}__${tool}` : `mcp__${server}`,
+        input: params && typeof params === 'object'
+          ? (params as Record<string, unknown>)
+          : { ...(typeof p['message'] === 'string' ? { message: p['message'] } : {}) },
+        suggestions: [],
       });
       return;
     }
@@ -374,6 +403,12 @@ export async function runSession(config: SidecarConfig): Promise<never> {
       return;
     }
     pendingApprovals.delete(cmd.requestId);
+    if (entry.kind === 'elicitation') {
+      rpc.respond(Number(cmd.requestId), cmd.behavior === 'allow'
+        ? { action: 'accept', content: {} }
+        : { action: 'decline', content: null });
+      return;
+    }
     const decision = cmd.behavior === 'allow' ? allowDecision() : denyDecision(entry.availableDecisions);
     rpc.respond(Number(cmd.requestId), { decision });
   }

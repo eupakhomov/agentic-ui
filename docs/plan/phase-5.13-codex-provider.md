@@ -193,6 +193,25 @@ Live-tested both deny paths and they are **not equivalent**:
   branch. Revisit once Task 2/3 are wired and this can be felt end-to-end rather than
   reasoned about from four spike runs.
 
+### MCP tool-call approvals arrive as elicitations, not item approvals (2026-09-20)
+
+Found live in phase 15's manual pass (Codex review session calling `submit_pr_review`):
+codex-cli 0.151.0 does **not** send an `item/*/requestApproval` request for a
+thread-scoped MCP tool call that needs user approval. It surfaces its own approval
+prompt as `mcpServer/elicitation/request` — params carry `serverName`, a human
+`message` ("Allow X to …?"), an empty `requestedSchema`, and `_meta` with
+`codex_approval_kind: "mcp_tool_call"` plus `tool_params` (the tool call's input) —
+and the response must be `McpServerElicitationRequestResponse` `{ action:
+"accept"|"decline"|"cancel", content }`, **not** `{ decision }` (replying `{ decision }`
+fails server-side deserialization: "missing field `action`"). Before this was bridged,
+the adapter's unhandled-request fallback auto-declined these, so every MCP tool
+needing approval on Codex failed with "user rejected MCP tool call" without any
+permission card ever reaching the dashboard. `session.ts` now maps them to
+`permission_request` (toolName `mcp__<server>__<tool>` when `_meta.tool_name` is
+present, else `mcp__<server>`; input = `_meta.tool_params` so the dashboard card
+renders the same shape as Claude's prompt for the same tool) and answers
+`{action: "accept", content: {}}` / `{action: "decline", content: null}`.
+
 ## Follow-up: skills, MCP, agents, permission modes (2026-08-30)
 
 The original MVP shipped with `skills: false`, `agents: false`, `mcp: false`, and 2
