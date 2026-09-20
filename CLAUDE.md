@@ -20,7 +20,7 @@ else (config prefix, package, DB name, file names) uses the new name only.
 │  ├─ plan/                # Phase plans; README.md holds the AUTHORITATIVE decision log
 │  ├─ PROTOCOL.md          # Sidecar/WS message contracts
 │  ├─ ARCHITECTURE.md      # As-built architecture + backlog implementation sketches
-│  └─ DEPLOY.md            # Deploying on another machine (macOS) — prereqs, run, update
+│  └─ DEPLOY.md            # Deploying on macOS — prereqs, run, update, optional integrations
 └─ CLAUDE.md               # this file
 ```
 

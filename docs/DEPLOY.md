@@ -1,330 +1,289 @@
-# Deploying agentic-ui on another machine (macOS)
+# Deploying agentic-ui on macOS
 
-How to get the dashboard running on a Mac laptop — the primary deployment target.
-Everything is platform-neutral by design; unlike the WSL dev box there are no
-localhost-relay tricks: loopback binding just works, and LAN access is a plain
-`0.0.0.0` bind plus the token.
+How to get the dashboard running on a Mac: install the prerequisites, clone, configure
+a few paths, build, run. Optionally reach it from other devices on your LAN and set up
+the integrations in §8.
 
 ## 1. Prerequisites
 
-| What | Version | Install (macOS) | Why |
+| What | Version | Install | Why |
 |---|---|---|---|
 | JDK | 25 | `brew install --cask temurin` (or SDKMAN: `sdk install java 25-tem`) | backend targets Java 25 |
-| Maven | 3.9+ | `brew install maven` (or SDKMAN: `sdk install maven`) | build; the bundled `./mvnw` is a fallback, see §5 |
-| Node.js | ≥ 22 LTS | `brew install node` | **runtime** for the sidecar (`node sidecar/dist/index.js`); the Maven build downloads its own copy for the frontend, but the running backend spawns `node` from PATH |
+| Maven | 3.9+ | `brew install maven` (or SDKMAN: `sdk install maven`) | build |
+| Node.js | ≥ 22 LTS | `brew install node` | **runtime** for the session sidecars — the backend spawns `node` from `PATH` |
 | Docker Desktop | any recent | docker.com | Postgres via `docker compose` (alternative: native `postgresql@17` + pgvector, then point the datasource at it) |
 | git | ≥ 2.40 | ships with Xcode CLT | worktrees, all git ops |
-| Claude Code CLI | latest | `curl -fsSL https://claude.ai/install.sh \| bash` (or `npm i -g @anthropic-ai/claude-code`) | **log in once with `claude`** — sidecars authenticate via `~/.claude`, and auto-titling shells out to `claude -p` |
-| Codex CLI | latest | follow Codex CLI's own install instructions | optional — only for `provider: codex` sessions; `codex login` once, interactively (`sidecar-codex` uses the invoking user's `~/.codex` credentials, same posture as the Claude Code CLI row above) |
-| gh CLI | latest | `brew install gh`, then `gh auth login` | optional — PR creation from the Git panel, background PR-check polling, review sessions (PR picker + `submit_pr_review`), and GitHub-repo imports in the skill library |
+| Claude Code CLI | latest | `curl -fsSL https://claude.ai/install.sh \| bash` (or `npm i -g @anthropic-ai/claude-code`) | **run `claude` once and log in** — sessions authenticate via `~/.claude` |
+| Codex CLI | latest | follow Codex CLI's own install instructions, then `codex login` once | optional — only for `provider: codex` sessions |
+| gh CLI | latest | `brew install gh`, then `gh auth login` | optional — PR creation from the Git panel, PR-check polling, review sessions, GitHub imports in the skill library |
 
-Verify before building:
+Verify:
 
 ```bash
 java --version        # 25.x
+mvn --version         # Java 25 listed
 node --version        # v22+
 docker compose version
-claude --version      # and `claude` opens logged-in (run once interactively)
+claude --version      # and `claude` opens logged-in
 ```
 
 ## 2. Get the code
 
-The repo currently lives only on the dev machine. Either:
-
-- **Recommended**: create a private GitHub repo once, push from the dev box
-  (`git remote add origin git@github.com:<you>/agentic-ui.git && git push -u origin main`),
-  then on the Mac: `git clone git@github.com:<you>/agentic-ui.git && cd agentic-ui`.
-  (Also lets agentic-ui's own PR button work on itself.)
-- Or copy the directory (rsync/AirDrop) — make sure `.git` comes along; skip
-  `target/`, `*/node_modules/`, `*/dist/`, `logs/`.
-
-## 3. Configure for the Mac
-
-Most settings are env vars (see CLAUDE.md "Limits & caps" for the full table).
-The ones that must change from the WSL defaults are paths:
-
 ```bash
-# ~/.zshrc (or a run script)
-export AGENTIC_UI_REPO="$HOME/projects/<default-repo>"  # default service (per-session selectable anyway)
-export AGENTIC_UI_WORKTREE_ROOT="$HOME/agentic-worktrees"
-export AGENTIC_UI_SKILLS_ROOT="$HOME/agentic-skills"     # optional; create + drop SKILL.md dirs in
-export AGENTIC_UI_MEMORY_ROOT="$HOME/agentic-memory"     # optional; the long-term-memory vault
+git clone https://github.com/eupakhomov/agentic-ui.git
+cd agentic-ui
 ```
 
-`AGENTIC_UI_SKILLS_ROOT`/`AGENTIC_UI_MEMORY_ROOT` are only *defaults* — both are also
-persisted, UI-editable settings (`library.skills-root`, `memory.root` in the Settings
-dialog → "Skill library"/"Memory"), so the env var only matters for a fresh DB's first
-boot.
+## 3. Configure
 
-A session on a monorepo package still gets a worktree of the *whole* monorepo under
-`AGENTIC_UI_WORKTREE_ROOT` (a full checkout, not just the one package) — `git worktree add`
-shares the object store with the original checkout, so the extra disk cost per session is
-only the working tree, not a second copy of history.
+Add these to `~/.zshrc` (then open a new terminal):
 
-Alternatively keep a gitignored `application-local.yaml` next to the jar and run
-with `--spring.config.additional-location=file:./application-local.yaml`.
+```bash
+# REQUIRED — the repo shown as the default service when creating a session.
+# The built-in default points at a path that doesn't exist on your machine.
+# Any git checkout works; you can pick a different repo per session in the UI.
+export AGENTIC_UI_REPO="$HOME/projects/<some-repo>"
 
-The ecosystem root (parent folder of your services, used for read-only session
-context + the service picker) is not an env var — set it once in the Settings
-dialog → "Sessions" after first login; it's persisted in the database.
+# Optional — defaults shown; the folders are created on demand.
+export AGENTIC_UI_WORKTREE_ROOT="$HOME/agentic-worktrees"   # one git worktree per session
+export AGENTIC_UI_SKILLS_ROOT="$HOME/agentic-skills"        # managed skill library
+export AGENTIC_UI_MEMORY_ROOT="$HOME/agentic-memory"        # long-term memory vault (Markdown)
+
+# Optional — a fixed dashboard token. Unset = a new random token on every start.
+export AGENTIC_UI_TOKEN="<pick-a-long-random-string>"
+```
+
+`AGENTIC_UI_SKILLS_ROOT` and `AGENTIC_UI_MEMORY_ROOT` only seed the first boot — after
+that both are editable in the Settings dialog ("Skill library" / "Memory").
+
+The **ecosystem root** (the parent folder of your repos, used for the service picker and
+read-only cross-repo context) is not an env var — set it in Settings → "Sessions" after
+first login (§7).
+
+The full list of env vars is in CLAUDE.md "Limits & caps"; none of the others need
+changing for a default install.
 
 ## 4. Database
 
 ```bash
-docker compose up -d          # pgvector/pg17, DB/user/pass agentic_ui, port 127.0.0.1:5432
+docker compose up -d          # pgvector/pg17; DB/user/password agentic_ui, port 127.0.0.1:5432
 ```
 
-Data persists in the `agentic-ui_pgdata` Docker volume. Non-default DB password:
-set `AGENTIC_UI_DB_PASSWORD` for both compose and the backend.
+Data persists in the `agentic-ui_pgdata` Docker volume. To use a non-default DB
+password, set `AGENTIC_UI_DB_PASSWORD` in `~/.zshrc` — both compose and the backend
+read it.
 
-## 5. Build
+## 5. Build the sidecars
 
-Use the system `mvn` (JDK 25 + Maven on `PATH`, see §1). The bundled `./mvnw` works
-too, but it sometimes loses its executable bit across git checkouts (`git ls-files -s
-mvnw` shows `100644`, not `100755`) — if it fails with "permission denied", `chmod +x
-mvnw` or just use `mvn`:
+The session engines are separate Node packages, built once (and again after every
+`git pull`). `sidecar-codex/` is only used by `provider: codex` sessions, but it's cheap
+to build, so build both:
 
 ```bash
-mvn package -DskipTests        # or: ./mvnw package -DskipTests
+(cd sidecar && npm install && npm run build)
+(cd sidecar-codex && npm install && npm run build)
 ```
 
-First build is slow: it downloads a Node distro into `target/` and npm-installs the
-frontend (native APFS is far faster than the WSL/DrvFS dev box — expect ~2–3 min,
-not 10+). Then build both sidecars once — `sidecar-codex/` is only needed if you plan
-to use `provider: codex` sessions, but it's cheap (a handful of dependencies) so
-building it unconditionally is simplest:
-
-```bash
-cd sidecar && npm install && npm run build && cd ..
-cd sidecar-codex && npm install && npm run build && cd ..
-```
-
-Rebuilds that don't touch the frontend: `mvn package -DskipTests -Dskip.installnodenpm -Dskip.npm`.
+The backend jar itself is built by the run script in the next step.
 
 ## 6. Run
 
 ```bash
-TOKEN="${AGENTIC_UI_TOKEN:-$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)}"
-echo "$TOKEN" > /tmp/agentic-ui.token
-AGENTIC_UI_TOKEN="$TOKEN" nohup java -jar target/agentic.ui-0.0.1-SNAPSHOT.jar \
-  --server.address=0.0.0.0 > /tmp/agentic-ui.out 2>&1 &
-echo $! > /tmp/agentic-ui.pid
-echo "http://localhost:8080  token: $TOKEN"
+./restart.sh --full
 ```
 
-- **Stable token across restarts**: pre-export `AGENTIC_UI_TOKEN` (e.g. in a launchd
-  plist's `EnvironmentVariables`, or the run script's own shell) and the block above
-  reuses it instead of rolling a new random one — same behavior `restart.sh` follows
-  on the dev box. Leave it unset for the old rotate-every-start behavior.
-- **Local-only use**: drop `--server.address=0.0.0.0` and `AGENTIC_UI_TOKEN` — the
-  startup guard allows tokenless operation on `127.0.0.1` only.
-- **LAN use (phone/tablet/second laptop)**: keep the `0.0.0.0` bind + token; open
-  `http://<mac-hostname>.local:8080` from the other device and enter the token.
-  macOS will ask once to allow `java` to accept incoming connections — allow it.
-  For anything beyond a trusted home LAN, put real TLS in front (e.g. Tailscale,
-  or a Caddy reverse proxy with `server.address=127.0.0.1`).
-- Stop: `kill "$(cat /tmp/agentic-ui.pid)"` (graceful; shuts sidecars down).
-  Structured logs: `logs/agentic-ui.log`, `logs/error.log`, `logs/sidecar/<id>.log`.
+This starts Postgres if needed, builds the jar (frontend included — the first build
+takes a few minutes while it downloads Node and runs `npm install`), starts the backend
+in the background, waits until it's healthy, and prints the URL and token:
+
+```
+UI:    http://localhost:8080
+Token: <token>
+```
+
+Day to day:
+
+| | |
+|---|---|
+| `./start.sh` | restart without rebuilding |
+| `./restart.sh` | rebuild backend only (fast), restart |
+| `./restart.sh --full` | rebuild backend + frontend, restart — use after `git pull` |
+| `kill "$(cat /tmp/agentic-ui.pid)"` | stop (graceful; shuts sessions down) |
+| `cat /tmp/agentic-ui.token` | show the current token |
+
+Logs: `/tmp/agentic-ui.log` (raw stdout), `logs/agentic-ui.log` (application),
+`logs/error.log`, `logs/sidecar/<session-id>.log` (one per session).
+
+If `./mvnw` complains "permission denied", ignore it — the scripts use the system `mvn`
+on macOS; `./mvnw` sometimes loses its executable bit in git checkouts.
+
+**Token**: with `AGENTIC_UI_TOKEN` exported (§3) the same token is reused on every
+restart, so the browser stays logged in. Unset, a fresh one is generated each start.
+
+**LAN access** (phone, tablet, another laptop): the scripts already bind all interfaces,
+so open `http://<mac-name>.local:8080` from the other device and enter the token. macOS
+will ask once whether `java` may accept incoming connections — allow it. For anything
+beyond a trusted home network put TLS in front (e.g. Tailscale, or a Caddy reverse proxy
+in front of a loopback-only backend).
+
+**Local-only, no token**: run the jar directly instead of via the scripts —
+`java -jar target/agentic.ui-*.jar` binds `127.0.0.1` and allows tokenless login
+there (and only there).
 
 ### Start at login (optional)
 
-Wrap the run block in a script and add it as a `launchd` agent
-(`~/Library/LaunchAgents/de.pamir.agentic-ui.plist` with `RunAtLoad` + the env vars in
-`EnvironmentVariables`), or simply add the script to Login Items. Make sure Docker
-Desktop is also set to start at login so Postgres is up first (the backend fails fast
-without it — just restarts cleanly once the DB is there).
+Create a `launchd` agent (`~/Library/LaunchAgents/de.pamir.agentic-ui.plist`) whose
+program is `<repo>/start.sh`, with `RunAtLoad` and your env vars from §3 in
+`EnvironmentVariables` — or simply add `start.sh` to Login Items. Set Docker Desktop to
+start at login too, so Postgres is up first (the backend fails fast without it and
+starts cleanly once the DB is there).
 
 ## 7. First use checklist
 
-1. Open the URL, enter the token (stored in the browser afterwards).
-2. Click the notification-bell topbar button to enable desktop notifications
-   (finished / needs input / crashed).
-3. Open the **Settings** dialog (gear icon, or `,`) and set what applies: "Sessions"
-   → ecosystem root (parent folder of your services — enables the service picker +
-   read-only cross-service context; "Monorepo detection" is off by default, so every
-   repo underneath is one service even if it has a workspace manifest — turn it on if
-   a folder underneath really is a monorepo, and its packages get auto-detected and
-   listed individually — the "Sessions" globs field is only a fallback for packages
-   without one); "Linear integration" → ticket import (§8 below);
-   "PR checks" → background CI polling for open PRs (on by default); "Skill library"
-   → managed skills/agents roots + optional vectorized search; "Memory" → the
-   long-term-memory vault + reflection defaults (§8a covers the shared Voyage key
-   both "Skill library" and "Memory" vectorization need). None of these need a
-   restart — see CLAUDE.md "Persisted settings" for the full list.
-4. **+ New Session** → pick a service (auto-discovered from the ecosystem root set
-   above), branch, model, permissions — go. Or press **`q`** for the quick-session
-   shortcut (service + ticket only; everything else is copied from your most
-   recently created session) once Linear ticket import is configured.
-5. The git-panel button per widget (`g`): status/diff/commit/push/PR. PR button needs
-   `gh auth login` done once.
+1. Open the URL, enter the token (remembered by the browser afterwards).
+2. Click the bell in the top bar to enable desktop notifications (finished / needs
+   input / crashed).
+3. Open **Settings** (gear icon, or `,`). None of these need a restart:
+   - **Sessions** → *Ecosystem root*: the parent folder of your repos. Enables the
+     service picker in the create dialog and read-only cross-repo context. Leave
+     *Monorepo detection* off unless a folder underneath really is a monorepo.
+   - **Linear integration** → ticket import (§8).
+   - **PR checks** → background CI polling for open PRs (on by default; needs `gh`).
+   - **Skill library** → skills/agents roots, optional semantic search (§8a).
+   - **Memory** → long-term-memory vault, reflection defaults, optional semantic
+     search (§8a).
+   - **MCP servers** → code-intelligence tools (§8b–§8d).
+4. **+ New Session** → pick a service (from the ecosystem root), branch, model,
+   permissions — go. `q` opens the quick-session shortcut (service + ticket only,
+   everything else copied from your last session) once Linear import is set up.
+5. Each session widget has a git panel (`g`): status / diff / commit / push / PR. The
+   PR button needs `gh auth login`.
 
 ## 8. Optional: Linear ticket import
 
-Lets the "New Session" dialog fetch a Linear ticket and prefill the branch name +
-initial prompt (via a cheap Haiku call on a hidden system session — see CLAUDE.md /
-`docs/plan/phase-5-extensions.md` 5.15). Pick one of two auth modes:
+Lets the "New Session" dialog fetch a Linear ticket and prefill the branch name and
+initial prompt. Pick one auth mode:
 
-**Personal API key** (simplest — works unless your Linear account is SSO-only):
+**Personal API key** — simplest; works unless your Linear account is SSO-only:
 
 ```bash
 export AGENTIC_UI_LINEAR_API_KEY="lin_api_..."   # Linear → Settings → Security & Access
 ```
 
-**SSO-gated Linear account (e.g. Google identity)** — the API key path won't work if
-your org requires SSO login, so authorize once interactively instead:
+**SSO-gated Linear account** (e.g. Google identity) — the API key path won't work, so
+authorize once interactively:
 
-1. On the machine running this backend, run interactively (a real terminal, not
-   through the app): `claude mcp add --transport http linear https://mcp.linear.app/mcp`
-2. Complete the browser OAuth flow through your org's SSO login screen.
-3. In the dashboard: **Settings → Linear integration**, toggle "use the ambient
-   `claude` CLI's cached OAuth credential" on (leave `AGENTIC_UI_LINEAR_API_KEY` unset —
-   an explicit key always takes priority over OAuth if both are set). This is a
-   persisted setting (`app_setting` table, `GET`/`PATCH /api/settings`) — no restart
-   needed, it takes effect on the next ticket import.
-4. Try an import from the create-session dialog — the backend reuses the `claude`
-   CLI's own cached OAuth credential for `mcp.linear.app` (same `~/.claude` identity
-   sidecars already authenticate with), no token stored in agentic-ui itself.
+1. On the Mac running the backend, in a real terminal:
+   `claude mcp add --transport http linear https://mcp.linear.app/mcp`
+   (the `--scope` flag doesn't matter — only the OAuth consent it records is used).
+2. Complete the browser OAuth flow through your org's SSO login.
+3. In the dashboard: **Settings → Linear integration**, turn on "use the ambient
+   `claude` CLI's cached OAuth credential". Leave `AGENTIC_UI_LINEAR_API_KEY` unset —
+   an explicit key always wins over OAuth.
+4. Try an import from the create-session dialog. No Linear token is stored in
+   agentic-ui; it reuses the `claude` CLI's cached credential.
 
-**The `--scope` flag in step 1 doesn't matter and can be left at its default.**
-agentic-ui never inherits your `claude mcp add`/`~/.claude` MCP server *declarations*
-at any scope — every sidecar process (including the system session) is spawned with
-`settingSources: ['project']` (`sidecar/src/session.ts`), which deliberately excludes
-user- and local-scope settings/MCP config. Step 1 exists **only** to get the
-interactive OAuth consent recorded once; agentic-ui builds and passes its own
-`--mcp-config` for the Linear server independently once the OAuth toggle is enabled
-in Settings, and that's what actually attaches Linear's tools to the system session — the OAuth
-*token cache* for `mcp.linear.app` is what's being reused, not the server declaration.
-
-If step 4 still reports "needs auth", the CLI's OAuth cache is scoped more narrowly
-than assumed (e.g. per-project rather than per-user) — the fallback is a first-party
-OAuth flow built into agentic-ui itself (not yet built; see `docs/plan/phase-5-extensions.md` 5.15).
-
-**Branch-naming guidance** (optional, either auth mode): the same Settings panel has a
-free-text field appended to the Haiku prompt used to generate a ticket's `branchName`/
-`prompt`, e.g. "keep the ticket number uppercase" or "format as
-feat(TICKET)-description / fix(TICKET)-description".
+**Branch-naming guidance** (either mode): the same Settings panel has a free-text field
+that steers generated branch names, e.g. "keep the ticket number uppercase" or "format
+as feat(TICKET)-description / fix(TICKET)-description".
 
 ## 8a. Optional: semantic search (Voyage embeddings)
 
-One key unlocks dense/semantic search across three otherwise-independent features —
-the skill & agent library, long-term memory, and ecosystem service discovery — each of
-which still works sparse-only (Postgres full-text + trigram) without it:
+One key adds semantic (embedding-based) search to the skill library, long-term memory,
+and service discovery. Without it all three still work with Postgres full-text search:
 
 ```bash
 export AGENTIC_UI_VOYAGE_API_KEY="pa-..."   # Voyage AI dashboard → API keys
 ```
 
-- **Skill library**: turn on the "vectorize" toggle in Settings → "Skill library"
-  (default off) — imported skills/agents get embedded (`voyage-3.5-lite`) and the
-  library dialog's search switches from a plain name/description filter to real
-  semantic (dense-only) search.
-- **Memory**: no separate toggle — if the key is set, memory's hybrid search (dense +
-  sparse + trigram, fused with Reciprocal Rank Fusion) automatically gains its dense
-  arm; unset, it silently falls back to sparse+trigram only.
-- **Service discovery**: same as memory — the `find_service` MCP tool and the
-  dashboard's service search use the dense arm when the key is set, sparse-only
-  otherwise.
-
-Nothing else changes if this is left unset — every feature above degrades gracefully.
+- **Skill library**: also turn on "vectorize" in Settings → "Skill library" (off by
+  default).
+- **Memory** and **service discovery**: no toggle — semantic search is used
+  automatically once the key is set.
 
 ## 8b. Optional: Serena (symbolic code tools)
 
-Adds `find_symbol`/references/etc. as an MCP server, opt-in per session (docs/plan/
-phase-12-linear-cache-serena-context.md Track B). Two prerequisites, both optional —
-without them the feature simply doesn't appear:
+Gives sessions `find_symbol`/references/etc. via an MCP server, opt-in per session.
+Prerequisites:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh   # installs uv; macOS or Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh          # uv
 git clone https://github.com/oraios/serena.git ~/serena   # or wherever you keep checkouts
 ```
 
 Then in Settings → "MCP servers": set **Serena root** to the checkout path (saving
-validates it's a real Serena checkout and that `uv --version` runs) and, only if `uv`
-isn't already on the backend's `PATH`, **uv path** to its full path. Once configured, the
-**Code intelligence** selector in the same section offers `Serena` (an install with a
-Serena root and no explicit selection reads `Serena` already), and the create dialog's
-"Code intelligence (Serena — …)" checkbox appears (default off — each enabled session
-runs its own Python process plus a language server, so it's not something to turn on for
-every session by default).
+validates it and checks that `uv --version` runs) and, only if `uv` isn't on the
+backend's `PATH`, set **uv path** to its full path. Pick `Serena` in the **Code
+intelligence** selector. The create dialog now shows a "Code intelligence" checkbox —
+off by default, since each enabled session runs its own Python process plus a language
+server.
 
 ## 8c. Optional: graphify (knowledge-graph code tools)
 
-Another code-intelligence tool (docs/plan/phase-13-graphify.md): a per-session,
-AST-only knowledge graph of the session's code, queried through a stdio MCP server
-(`query_graph`, `get_neighbors`, `shortest_path`, …). One tool per install — the
-**Code intelligence** selector picks Serena, graphify or CodeGraph (§8d below), never
-more than one at a time. Prerequisites: `uv` as above, plus a checkout at the reviewed
-commit:
+A per-session knowledge graph of the session's code, queried via MCP tools
+(`query_graph`, `get_neighbors`, `shortest_path`, …). The **Code intelligence** selector
+allows one tool per install — Serena, graphify or CodeGraph, never more than one.
+Prerequisites: `uv` (as in §8b) plus a checkout at the reviewed commit:
 
 ```bash
 git clone https://github.com/Graphify-Labs/graphify.git ~/graphify
-git -C ~/graphify checkout c7ec108        # v0.9.62 — the commit the security review covered
+git -C ~/graphify checkout c7ec108        # v0.9.62
 ```
 
 Then in Settings → "MCP servers": set **Graphify root** to the checkout path and pick
-`Graphify` in the selector. **The first save of the root is also the first env sync**
-(`uv run --no-dev --extra mcp --extra sql graphify --version` — ~110 wheels on a cold
-cache, a few seconds warm; the input pulses meanwhile and the save has a 180 s budget).
-If it times out, run that exact command once by hand (the error text spells it out) and
-save again. Do *not* run graphify's own `graphify install`, `hook install` or the
-`/graphify` skill anywhere on the box — they rewrite `~/.claude/settings.json` and git
-hooks and `pip install` from PyPI inside agent sessions; this app drives only the `update`
-CLI and the MCP server from the checkout, code-only, with everything written to
-`~/agentic-worktrees/.graphify/<sessionId>/` (never inside a worktree). Moving the checkout
-to a newer commit means re-reviewing it first.
+`Graphify` in the selector. The first save also installs graphify's Python environment
+(~110 packages on a cold cache; the field pulses meanwhile). If that times out, run the
+command the error message shows once by hand, then save again.
+
+Do **not** run graphify's own `graphify install`, `hook install` or the `/graphify`
+skill on this Mac — they rewrite `~/.claude/settings.json` and git hooks. agentic-ui
+only uses the checkout's CLI and MCP server; graphs live under
+`<worktree-root>/.graphify/<session-id>/`, never inside a worktree.
 
 ## 8d. Optional: CodeGraph (code graph, self-refreshing)
 
-The third code-intelligence tool (docs/plan/phase-14-codegraph.md): a per-session SQLite
-knowledge graph (symbols, calls, imports, inheritance), served through a stdio MCP server
-whose one tool, `codegraph_explore`, answers a question with verbatim line-numbered
-source, call paths and a blast-radius summary. Unlike graphify, it needs no refresh
-pipeline from this app — codegraph runs its own file watcher and keeps the index current
-on its own. Prerequisites: Node ≥ 22.5 (< 25, already on `PATH` for the providers), plus
-a checkout at the reviewed commit, built once (no `uv` involved — it runs on the
-backend's own `node`):
+A per-session code graph (symbols, calls, imports, inheritance) with one MCP tool,
+`codegraph_explore`, that answers a question with line-numbered source, call paths and
+a blast-radius summary. It keeps its own index current (file watcher), so nothing to
+refresh. Prerequisites: Node ≥ 22.5 (already installed, §1 — no `uv`) plus a checkout
+at the reviewed commit, built once:
 
 ```bash
 git clone https://github.com/colbymchenry/codegraph.git ~/codegraph
-git -C ~/codegraph checkout 1f0cbbd      # v1.6.0 — the commit the security review covered
+git -C ~/codegraph checkout 1f0cbbd      # v1.6.0
 cd ~/codegraph && npm ci --ignore-scripts && npx tsc && npm run copy-assets
 ```
 
 Then in Settings → "MCP servers": set **CodeGraph root** to the checkout path (saving
-probes `node <root>/dist/bin/codegraph.js version`, ~30 s budget — no env sync, nothing
-is installed) and pick `CodeGraph` in the selector. A session created with the flag on
-gets its index built **synchronously** while it's PROVISIONING (a few seconds for a
-typical repo; the session still starts, unindexed, with a warning if it fails or takes
-longer than 5 minutes). Do *not* run codegraph's own `codegraph install`, `upgrade`,
-`codegraph ui`, or its git hooks anywhere on the box — they rewrite `~/.claude/
-settings.json`/`~/.claude.json`/`~/.claude/CLAUDE.md` and replace the binary; this app
-drives only `init`, `serve --mcp` and `version` from the checkout, with telemetry, the
-update check and codegraph's own shared daemon switched off on every process it spawns.
-Unlike graphify and Serena, the index (`.codegraph/`) lives *inside* the session's
-worktree (forced by the tool) — it's git-excluded the same way `.serena/` is, and
-disappears with the worktree on close; nothing to clean up by hand. Moving the checkout
-to a newer commit means re-reviewing it first.
+runs a version probe; nothing is installed) and pick `CodeGraph` in the selector. A
+session created with the checkbox on gets its index built while it's provisioning
+(a few seconds for a typical repo; the session still starts, with a warning, if that
+fails).
+
+Do **not** run codegraph's own `codegraph install`, `upgrade`, `codegraph ui` or its
+git hooks on this Mac — they rewrite `~/.claude/settings.json`, `~/.claude.json` and
+`~/.claude/CLAUDE.md`. agentic-ui only runs `init`, `serve --mcp` and `version` from the
+checkout, with telemetry and update checks off. The index (`.codegraph/`) lives inside
+the session's worktree, git-excluded, and disappears with it.
 
 ## 9. Updating
 
 ```bash
-kill "$(cat /tmp/agentic-ui.pid)"       # a running JVM blocks jar repackaging
 git pull
 (cd sidecar && npm install && npm run build)
 (cd sidecar-codex && npm install && npm run build)
-mvn package -DskipTests                # or: ./mvnw package -DskipTests
-# start again (section 6); Flyway migrates the DB automatically on boot
+./restart.sh --full        # stops the running backend, rebuilds, starts; DB migrates on boot
 ```
 
 ## 10. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| Startup: "refusing to bind … without an auth token" | You bound non-loopback without `AGENTIC_UI_TOKEN` — set it (this is the security model, not a bug) |
-| Session stuck in STARTING, then CRASHED | `node` not on the backend's PATH, or `claude` never logged in — check `logs/sidecar/<id>.log` |
-| Create fails 409 "already used by worktree" | That branch is checked out by another (possibly orphaned) worktree — see `GET /api/maintenance/orphans`, clean via `POST …/clean` |
+| Startup: "refusing to bind … without an auth token" | The backend was started on a non-loopback address without `AGENTIC_UI_TOKEN`. Use `./start.sh`/`./restart.sh` (they always pass a token) or export `AGENTIC_UI_TOKEN` (§3) |
+| Session stuck in STARTING, then CRASHED | `node` not on the backend's `PATH`, sidecar not built (§5), or `claude` never logged in — check `logs/sidecar/<id>.log` |
+| Same, only for `provider: codex` sessions | `sidecar-codex` not built (§5), or `codex login` never done — check `logs/sidecar/<id>.log` |
+| Create fails 409 "already used by worktree" | That branch is checked out by another (possibly orphaned) session worktree — see `GET /api/maintenance/orphans`, clean via `POST …/clean` |
 | Health DOWN / boot fails on datasource | Postgres not up yet — `docker compose up -d`, wait for healthy |
-| PR button → 409 | `gh` missing or not authenticated, or repo has no GitHub remote — message says which |
+| PR button → 409 | `gh` missing or not authenticated, or repo has no GitHub remote — the message says which |
 | Widgets empty after update | Hard-refresh the browser (cached JS) |
-| Ticket import: "needs auth" / "cannot run the OAuth flow" | OAuth mode only (Settings → "Linear integration" toggle, not `AGENTIC_UI_LINEAR_API_KEY`): the interactive `claude mcp add` setup (section 8) wasn't done on this host, or its cached credential isn't visible to headless sessions — check `logs/sidecar/<system-session-id>.log` |
-| Session stuck in STARTING, then CRASHED, only for `provider: codex` sessions | `sidecar-codex/dist/index.js` missing (build step in section 5/9 skipped), or `codex` never logged in — check `logs/sidecar/<id>.log` |
+| Ticket import: "needs auth" / "cannot run the OAuth flow" | OAuth mode only: the `claude mcp add` step in §8 wasn't done on this Mac — check `logs/sidecar/<system-session-id>.log` |
