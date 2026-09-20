@@ -24,14 +24,15 @@ Follow the [Quick start](README.md#quick-start) in the README. For iterating:
 
 ```bash
 docker compose up -d                                          # Postgres
-./mvnw -Dskip.installnodenpm -Dskip.npm -DexcludedGroups=integration test   # fast backend unit tests, no DB
+mvn -Dskip.installnodenpm -Dskip.npm -DexcludedGroups=integration test   # fast backend unit tests, no DB
 cd sidecar && npm test          # Claude sidecar
 cd sidecar-codex && npm test    # Codex sidecar
 cd frontend && npm run dev      # Vite dev server on :5173, proxies to :8080
 ```
 
-`./mvnw clean verify` runs everything including the DB-backed integration tests
-(requires the compose Postgres).
+`mvn clean verify` runs everything including the DB-backed integration tests
+(requires the compose Postgres). No Maven installed? The bundled `./mvnw` accepts the
+same arguments (CI uses it).
 
 ## Pull requests
 

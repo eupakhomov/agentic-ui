@@ -10,12 +10,13 @@ localhost-relay tricks: loopback binding just works, and LAN access is a plain
 | What | Version | Install (macOS) | Why |
 |---|---|---|---|
 | JDK | 25 | `brew install --cask temurin` (or SDKMAN: `sdk install java 25-tem`) | backend targets Java 25 |
+| Maven | 3.9+ | `brew install maven` (or SDKMAN: `sdk install maven`) | build; the bundled `./mvnw` is a fallback, see §5 |
 | Node.js | ≥ 22 LTS | `brew install node` | **runtime** for the sidecar (`node sidecar/dist/index.js`); the Maven build downloads its own copy for the frontend, but the running backend spawns `node` from PATH |
 | Docker Desktop | any recent | docker.com | Postgres via `docker compose` (alternative: native `postgresql@17` + pgvector, then point the datasource at it) |
 | git | ≥ 2.40 | ships with Xcode CLT | worktrees, all git ops |
 | Claude Code CLI | latest | `curl -fsSL https://claude.ai/install.sh \| bash` (or `npm i -g @anthropic-ai/claude-code`) | **log in once with `claude`** — sidecars authenticate via `~/.claude`, and auto-titling shells out to `claude -p` |
 | Codex CLI | latest | follow Codex CLI's own install instructions | optional — only for `provider: codex` sessions; `codex login` once, interactively (`sidecar-codex` uses the invoking user's `~/.codex` credentials, same posture as the Claude Code CLI row above) |
-| gh CLI | latest | `brew install gh`, then `gh auth login` | optional — only for the widget "Open PR" button |
+| gh CLI | latest | `brew install gh`, then `gh auth login` | optional — PR creation from the Git panel, background PR-check polling, review sessions (PR picker + `submit_pr_review`), and GitHub-repo imports in the skill library |
 
 Verify before building:
 
@@ -78,10 +79,10 @@ set `AGENTIC_UI_DB_PASSWORD` for both compose and the backend.
 
 ## 5. Build
 
-`mvnw` sometimes loses its executable bit across git checkouts (`git ls-files -s mvnw`
-shows `100644`, not `100755`) — if `./mvnw` fails with "permission denied", either
-`chmod +x mvnw` or, if JDK 25 + Maven are already on `PATH` (e.g. via sdkman/brew), just
-use the system `mvn`:
+Use the system `mvn` (JDK 25 + Maven on `PATH`, see §1). The bundled `./mvnw` works
+too, but it sometimes loses its executable bit across git checkouts (`git ls-files -s
+mvnw` shows `100644`, not `100755`) — if it fails with "permission denied", `chmod +x
+mvnw` or just use `mvn`:
 
 ```bash
 mvn package -DskipTests        # or: ./mvnw package -DskipTests
