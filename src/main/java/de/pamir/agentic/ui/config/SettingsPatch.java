@@ -39,6 +39,7 @@ public record SettingsPatch(
 		String mcpSerenaRoot,
 		String mcpUvPath,
 		String mcpGraphifyRoot,
+		String mcpCodegraphRoot,
 		String codeIntel) {
 
 	public static Builder builder() {
@@ -76,6 +77,7 @@ public record SettingsPatch(
 		private String mcpSerenaRoot;
 		private String mcpUvPath;
 		private String mcpGraphifyRoot;
+		private String mcpCodegraphRoot;
 		private String codeIntel;
 
 		public Builder linearOAuthEnabled(Boolean v) {
@@ -223,6 +225,11 @@ public record SettingsPatch(
 			return this;
 		}
 
+		public Builder mcpCodegraphRoot(String v) {
+			this.mcpCodegraphRoot = v;
+			return this;
+		}
+
 		public Builder codeIntel(String v) {
 			this.codeIntel = v;
 			return this;
@@ -236,7 +243,7 @@ public record SettingsPatch(
 					memoryRoot, memoryEnabled, memoryReflectionDefault, memoryReflectionModel,
 					memorySyncIntervalMinutes, memoryRetentionDays, memoryReflectionApprovalRequired,
 					serviceDiscoveryEnabled, serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent,
-					mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot, codeIntel);
+					mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot, mcpCodegraphRoot, codeIntel);
 		}
 	}
 }

@@ -295,7 +295,12 @@ approval round-trip. Full mapping tables and rationale:
   counts (carried over on a no-change refresh), `durationMs` is the run that produced a
   READY/FAILED, `message` the failure reason. Journaled (so the widget chip replays after
   a reconnect/restart); a FAILED build never fails the session — the next completed turn
-  triggers a retry. See docs/plan/phase-13-graphify.md Step 3.
+  triggers a retry. See docs/plan/phase-13-graphify.md Step 3. Also emitted by
+  `CodegraphService` for a `codeIntel: "codegraph"` session — same shape, but **once**
+  (BUILDING at the start of `codegraph init`, READY/FAILED at its end, during
+  PROVISIONING, not a background loop): the tool's own file watcher keeps the index
+  current after that with no further journaling. See docs/plan/phase-14-codegraph.md
+  Step 2.
   `pr_review_submitted {event, commentCount, prUrl}` — journaled when a review session's
   `submit_pr_review` MCP tool call succeeds: `event` is `COMMENT|REQUEST_CHANGES|APPROVE`,
   `commentCount` the number of inline comments posted. See

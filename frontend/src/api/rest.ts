@@ -106,7 +106,7 @@ export const api = {
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
     | 'memoryReflectionApprovalRequired' | 'serviceDiscoveryEnabled' | 'serviceDiscoveryStalenessDays'
     | 'serviceDiscoveryModel' | 'contextWarnPercent' | 'mcpSerenaRoot' | 'mcpUvPath' | 'mcpGraphifyRoot'
-    | 'codeIntel'>>) =>
+    | 'mcpCodegraphRoot' | 'codeIntel'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
   listProviders: () => request<ProviderView[]>('GET', '/api/providers'),
   libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>

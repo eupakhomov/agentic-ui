@@ -569,7 +569,9 @@ export default function CreateSessionDialog({
                   <input type="checkbox" checked={codeIntelEnabled} onChange={(e) => setCodeIntelEnabled(e.target.checked)} />
                   {settings.codeIntel === 'serena'
                     ? 'Serena — symbolic code tools (find_symbol, references, …) via a per-session MCP server'
-                    : 'Graphify — knowledge-graph tools (query_graph, get_neighbors, …) over a per-session code graph built in the background'}
+                    : settings.codeIntel === 'graphify'
+                    ? 'Graphify — knowledge-graph tools (query_graph, get_neighbors, …) over a per-session code graph built in the background'
+                    : 'CodeGraph — code graph with verbatim source, call paths and blast radius, indexed at session start and kept fresh by its own watcher'}
                 </label>
               </>
             )}

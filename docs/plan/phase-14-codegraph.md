@@ -1,8 +1,12 @@
 # Phase 14 — CodeGraph MCP (third code-intelligence tool, one-of with Serena/graphify)
 
-Status: **proposed (2026-09-16)** — decisions 1 and 2 confirmed with the user before this doc
-was written; the rest are proposals to confirm before the step that needs them. Verified
-against the code as of phase 13 (commit `731cb31`) and against the codegraph checkout at
+Status: **landed (2026-09-20, Steps 1–3)** — decisions 1 and 2 confirmed with the user
+2026-09-16 before this doc was written; proposals 3–10 confirmed as written, on contact with
+the code, the same session Steps 1–3 were implemented. What changed on contact with the code
+is in the decision log (`README.md`'s 2026-09-20 "Phase 14 landed" row) — in short: decision
+2's index-call placement resolved to immediately before `writeMcpConfig`, and a display-label
+bug ("Codegraph" vs. the brand's "CodeGraph") was caught by a test and fixed. Verified against
+the code as of phase 13 (commit `731cb31`) and against the codegraph checkout at
 `/mnt/d/projects/codegraph` (v1.6.0, commit `1f0cbbd`, 2026-09-15); every edit site named
 below was checked to exist as described, and every codegraph behaviour relied on was run
 live (Step 0).

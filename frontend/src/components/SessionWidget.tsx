@@ -529,6 +529,11 @@ function codeIntelChipClass(status: CodeIntelStatus | null): string {
 function codeIntelChipTitle(tool: string, status: CodeIntelStatus | null): string {
   if (!status) return `${tool} MCP server attached`;
   if (status.status === 'BUILDING') return `${tool}: building the code graph…`;
+  if (tool === 'codegraph') {
+    if (status.status === 'FAILED') return `codegraph: index build failed — ${status.message ?? 'unknown error'} (use Read/Grep for the rest of the session)`;
+    const counts = status.nodes != null && status.edges != null ? `${status.nodes} nodes / ${status.edges} edges, ` : '';
+    return `codegraph: index ${counts}built ${agoText(status.at)} — kept fresh by codegraph's watcher`;
+  }
   if (status.status === 'FAILED') return `${tool}: graph build failed — ${status.message ?? 'unknown error'} (retried after the next turn)`;
   const counts = status.nodes != null && status.edges != null ? `${status.nodes} nodes / ${status.edges} edges, ` : '';
   return `${tool}: graph ${counts}built ${agoText(status.at)}`;

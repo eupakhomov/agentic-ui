@@ -4,6 +4,7 @@ import de.pamir.agentic.ui.config.AppProperties;
 import de.pamir.agentic.ui.config.Settings;
 import de.pamir.agentic.ui.config.SettingsService;
 import de.pamir.agentic.ui.git.GitWorktreeService;
+import de.pamir.agentic.ui.integration.CodegraphService;
 import de.pamir.agentic.ui.integration.GraphifyService;
 import de.pamir.agentic.ui.integration.SerenaService;
 import de.pamir.agentic.ui.memory.MemoryEpisodeRepository;
@@ -48,11 +49,13 @@ public class SessionConfigFactory {
 	private final GitWorktreeService worktrees;
 	private final SerenaService serena;
 	private final GraphifyService graphify;
+	private final CodegraphService codegraph;
 
 	public SessionConfigFactory(AppProperties props, SettingsService settings, TemplateRepository templates,
 								 ObjectMapper mapper, MemoryEpisodeRepository episodes,
 								 @Value("${server.port:8080}") int serverPort, ProviderCatalog catalog,
-								 GitWorktreeService worktrees, SerenaService serena, GraphifyService graphify) {
+								 GitWorktreeService worktrees, SerenaService serena, GraphifyService graphify,
+								 CodegraphService codegraph) {
 		this.props = props;
 		this.settings = settings;
 		this.templates = templates;
@@ -63,6 +66,7 @@ public class SessionConfigFactory {
 		this.worktrees = worktrees;
 		this.serena = serena;
 		this.graphify = graphify;
+		this.codegraph = codegraph;
 	}
 
 	/** The resolved entity (still transient — not yet inserted) plus any non-fatal warnings to journal. */
@@ -210,13 +214,25 @@ public class SessionConfigFactory {
 		boolean configured = switch (tool) {
 			case SettingsService.CODE_INTEL_SERENA -> serena.configured();
 			case SettingsService.CODE_INTEL_GRAPHIFY -> graphify.configured();
+			case SettingsService.CODE_INTEL_CODEGRAPH -> codegraph.configured();
 			default -> false;
 		};
 		if (!configured) {
-			String label = Character.toUpperCase(tool.charAt(0)) + tool.substring(1);
-			throw new IllegalArgumentException(label + " is not configured (Settings → MCP servers)");
+			throw new IllegalArgumentException(codeIntelLabel(tool) + " is not configured (Settings → MCP servers)");
 		}
 		return tool;
+	}
+
+	/**
+	 * The tool's display name for an error message — a plain capitalize-first-letter would read
+	 * "Codegraph" for {@code codegraph} (the brand name has an internal capital, like the Settings
+	 * selector's own "CodeGraph" label and {@link CodegraphService#validate}'s error text).
+	 */
+	private static String codeIntelLabel(String tool) {
+		if (SettingsService.CODE_INTEL_CODEGRAPH.equals(tool)) {
+			return "CodeGraph";
+		}
+		return Character.toUpperCase(tool.charAt(0)) + tool.substring(1);
 	}
 
 	private static final java.util.Set<String> SESSION_TYPES = java.util.Set.of("development", "review");
@@ -391,12 +407,13 @@ public class SessionConfigFactory {
 	}
 
 	/**
-	 * Layers the session's code-intelligence MCP server — {@code serena} or {@code graphify} per
-	 * the resolved {@code codeIntel}, nothing for null — with the same merge rule as Linear/memory
-	 * (the session's own entry under that key wins). Serena: docs/plan/phase-12-linear-cache-
-	 * serena-context.md Track B decision 2, {@code --context} from the provider's own declared
-	 * capability ({@link ProviderCapabilities#serenaContext()}), never a hardcoded provider name.
-	 * Graphify: docs/plan/phase-13-graphify.md Step 2.
+	 * Layers the session's code-intelligence MCP server — {@code serena}, {@code graphify} or
+	 * {@code codegraph} per the resolved {@code codeIntel}, nothing for null — with the same merge
+	 * rule as Linear/memory (the session's own entry under that key wins). Serena: docs/plan/
+	 * phase-12-linear-cache-serena-context.md Track B decision 2, {@code --context} from the
+	 * provider's own declared capability ({@link ProviderCapabilities#serenaContext()}), never a
+	 * hardcoded provider name. Graphify: docs/plan/phase-13-graphify.md Step 2. CodeGraph:
+	 * docs/plan/phase-14-codegraph.md Step 2.
 	 */
 	JsonNode withDefaultCodeIntelMcp(JsonNode configured, String provider, String codeIntel, String cwdPath,
 									   UUID sessionId) {
@@ -408,6 +425,8 @@ public class SessionConfigFactory {
 					withDefaultServer(configured, "serena", serenaMcpServer(provider, cwdPath));
 			case SettingsService.CODE_INTEL_GRAPHIFY ->
 					withDefaultServer(configured, "graphify", graphifyMcpServer(sessionId));
+			case SettingsService.CODE_INTEL_CODEGRAPH ->
+					withDefaultServer(configured, "codegraph", codegraphMcpServer(cwdPath));
 			default -> configured;
 		};
 	}
@@ -445,6 +464,30 @@ public class SessionConfigFactory {
 		args.add("run").add("--directory").add(serena.root()).add("serena").add("start-mcp-server")
 				.add("--context").add(context).add("--project").add(cwdPath)
 				.add("--open-web-dashboard").add("false");
+		return servers;
+	}
+
+	/**
+	 * The codegraph MCP server block (docs/plan/phase-14-codegraph.md Step 2): {@code node
+	 * <root>/dist/bin/codegraph.js serve --mcp --path <cwdPath>} with the posture env (decision 5,
+	 * set explicitly here rather than relying on the sidecar's own environment). The index (Step 2's
+	 * {@link CodegraphService#index}) runs synchronously before this entry is written, so the graph
+	 * already exists by the time the MCP server starts — unlike graphify's out-of-order tolerance,
+	 * there's no "not found yet" race to design around here.
+	 */
+	private ObjectNode codegraphMcpServer(String cwdPath) {
+		if (!codegraph.configured()) {
+			return null;
+		}
+		List<String> base = codegraph.baseCommand();
+		ObjectNode servers = mapper.createObjectNode();
+		ObjectNode entry = servers.putObject("codegraph");
+		entry.put("command", base.getFirst());
+		ArrayNode args = entry.putArray("args");
+		base.subList(1, base.size()).forEach(args::add);
+		args.add("serve").add("--mcp").add("--path").add(cwdPath);
+		ObjectNode env = entry.putObject("env");
+		codegraph.postureEnv().forEach(env::put);
 		return servers;
 	}
 
@@ -548,9 +591,10 @@ public class SessionConfigFactory {
 	}
 
 	/**
-	 * Serena → its own Claude-Code-only override (above); graphify → our provider-neutral block
-	 * for every provider (docs/plan/phase-13-graphify.md decision 10 — the sidecars merge it into
-	 * the system prompt/instructions alike); no tool → nothing.
+	 * Serena → its own Claude-Code-only override (above); graphify/codegraph → our provider-neutral
+	 * block for every provider (docs/plan/phase-13-graphify.md decision 10 / phase-14-codegraph.md
+	 * decision 7 — the sidecars merge it into the system prompt/instructions alike); no tool →
+	 * nothing.
 	 */
 	private String codeIntelSystemPromptBlock(SessionEntity session) {
 		if (session.codeIntel() == null) {
@@ -559,6 +603,7 @@ public class SessionConfigFactory {
 		return switch (session.codeIntel()) {
 			case SettingsService.CODE_INTEL_SERENA -> serenaSystemPromptBlock(session);
 			case SettingsService.CODE_INTEL_GRAPHIFY -> GraphifyService.SYSTEM_PROMPT_BLOCK;
+			case SettingsService.CODE_INTEL_CODEGRAPH -> CodegraphService.SYSTEM_PROMPT_BLOCK;
 			default -> null;
 		};
 	}

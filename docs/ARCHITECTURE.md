@@ -333,20 +333,22 @@ Two small standalone features, no design doc of their own:
   the original sketch: `GET /api/usage/stale-sessions` surfaces PARKED/CRASHED/FAILED
   sessions whose worktree has sat untouched for 3+ days, for manual cleanup.
 
-## 3g. Code intelligence: Serena / graphify one-of (Phases 12B, 13)
+## 3g. Code intelligence: Serena / graphify / CodeGraph one-of (Phases 12B, 13, 14)
 
-Two MCP-served "stop grepping, ask the tool" integrations, deliberately **one per
-install** (`mcp.code-intel ∈ {none, serena, graphify}`, Settings → "MCP servers";
-docs/plan/phase-13-graphify.md decision 1): each spawns a process per session and wants a
-competing "use me first" system-prompt nudge. Sessions carry one flag (`codeIntelEnabled`,
-with phase 12's `serenaEnabled` still accepted as an alias) that
-`SessionConfigFactory.prepare` resolves to the selected tool and records as
-`session.code_intel` (`'serena'`/`'graphify'`/NULL, V17) — recorded per session because the
-MCP entry is baked into `mcp_config` at creation, so flipping the selector later never
-changes what a live session's chip says. `withDefaultCodeIntelMcp` layers the matching
-server with the same merge rule as Linear/memory (the session's own key wins);
-`codeIntelSystemPromptBlock` appends Serena's Claude-Code-only override or graphify's
-provider-neutral block (`GraphifyService.SYSTEM_PROMPT_BLOCK`, both providers).
+Three MCP-served "stop grepping, ask the tool" integrations, deliberately **one per
+install** (`mcp.code-intel ∈ {none, serena, graphify, codegraph}`, Settings → "MCP
+servers"; docs/plan/phase-13-graphify.md decision 1, phase-14-codegraph.md decision 10):
+each spawns a process per session and wants a competing "use me first" system-prompt
+nudge. Sessions carry one flag (`codeIntelEnabled`, with phase 12's `serenaEnabled` still
+accepted as an alias) that `SessionConfigFactory.prepare` resolves to the selected tool
+and records as `session.code_intel` (`'serena'`/`'graphify'`/`'codegraph'`/NULL, V17) —
+recorded per session because the MCP entry is baked into `mcp_config` at creation, so
+flipping the selector later never changes what a live session's chip says.
+`withDefaultCodeIntelMcp` layers the matching server with the same merge rule as
+Linear/memory (the session's own key wins); `codeIntelSystemPromptBlock` appends Serena's
+Claude-Code-only override, or graphify's/CodeGraph's provider-neutral block
+(`GraphifyService.SYSTEM_PROMPT_BLOCK` / `CodegraphService.SYSTEM_PROMPT_BLOCK`, both
+providers).
 
 - **Serena** (phase 12 Track B): a *live* language-server view — `SerenaService` holds the
   root/uv-path settings + validation; the entry is `uv run --directory <root> serena
@@ -375,6 +377,26 @@ provider-neutral block (`GraphifyService.SYSTEM_PROMPT_BLOCK`, both providers).
   review (never graphify's skill/`install`/hooks/semantic backend): decision 14 in the
   phase doc. Measured: this repo builds in ~11 s from empty and ~7 s on refresh with the
   worktree on ext4 (the ~80 s spike figure was a DrvFS artefact).
+- **CodeGraph** (phase 14): a *pre-built, self-refreshing* graph — `CodegraphService`
+  follows `SerenaService`'s shape (no build-state machine; a synchronous call, not
+  graphify's executor) since codegraph needs no refresh pipeline of its own. `index()`
+  runs `node <root>/dist/bin/codegraph.js init <cwdPath> --yes` **synchronously inside
+  `SessionService.create()`**, right before `writeMcpConfig` (so the `codegraph` MCP
+  entry it writes never points at an unindexed directory), 5 min hard cap, journals
+  `code_intel_status` BUILDING/READY/FAILED like graphify (counts parsed from init's `N
+  nodes, M edges` output) but only once — never fails session creation, a FAILED chip
+  just means "use Read/Grep, the index is unavailable". `ensureIndexed()` (resume/wake)
+  re-runs `index()` only when `<cwdPath>/.codegraph/codegraph.db` is missing; otherwise
+  it trusts the tool's own file watcher and startup catch-up sync to have kept the graph
+  current — no `refreshAfterTurn` equivalent exists. `.codegraph/` is forced **inside**
+  the worktree by the tool itself (unlike graphify's `GRAPHIFY_OUT`), so it needs an
+  `info/exclude` line the same way `.serena/` does; nothing to clean up on close, the
+  worktree removal takes it with it (no `MaintenanceController` orphan sweep, unlike
+  graphify's). Posture from the pre-phase security review: only `init`, `serve --mcp`
+  and `version` are ever run, from a reviewed local checkout on the backend's own
+  `node` (no `uv`), with telemetry/update-check/the shared daemon off on every process
+  (`CodegraphService.postureEnv()`); never codegraph's own installer, upgrade, prompt
+  hook or git hooks. Full design: docs/plan/phase-14-codegraph.md.
 
 ## 3h. Review sessions (Phase 15)
 

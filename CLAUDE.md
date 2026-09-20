@@ -382,22 +382,26 @@ effect on the next use with no backend restart.
   left off) is unchanged.
 - **MCP servers / code intelligence** (Settings dialog → "MCP servers"; feature docs:
   `docs/plan/phase-12-linear-cache-serena-context.md` Track B for Serena,
-  `docs/plan/phase-13-graphify.md` for graphify, `docs/ARCHITECTURE.md` §3g for both) —
-  a **Code intelligence** selector `mcp.code-intel ∈ {none, serena, graphify}` (one tool
-  per install, never both: each spawns a process per session and wants a competing "use
-  me first" prompt; unset reads `serena` when a Serena root exists, else `none`), plus
-  `mcp.serena-root` / `mcp.graphify-root` (paths to local checkouts; empty = that tool
-  unavailable) and `mcp.uv-path` (default `uv`, shared by both). Saving validates a root
-  (directory, `pyproject.toml` names `serena-agent` / `graphifyy`, the uv probe runs —
-  for graphify the probe is `uv run --directory <root> --no-dev --extra mcp --extra sql
-  graphify --version`, which is also the first env sync, 180 s budget) and refuses
-  selecting a tool without its root or blanking the selected tool's root ("select none
-  first"); failures are 400s with the reason. Sessions/templates opt in with one flag,
+  `docs/plan/phase-13-graphify.md` for graphify, `docs/plan/phase-14-codegraph.md` for
+  CodeGraph, `docs/ARCHITECTURE.md` §3g for all three) — a **Code intelligence** selector
+  `mcp.code-intel ∈ {none, serena, graphify, codegraph}` (one tool per install, never more
+  than one: each spawns a process per session and wants a competing "use me first" prompt;
+  unset reads `serena` when a Serena root exists, else `none`), plus `mcp.serena-root` /
+  `mcp.graphify-root` / `mcp.codegraph-root` (paths to local checkouts; empty = that tool
+  unavailable) and `mcp.uv-path` (default `uv`, shared by Serena/graphify — CodeGraph runs
+  on the backend's own `node`, no `uv` involved). Saving validates a root (directory,
+  `pyproject.toml` names `serena-agent` / `graphifyy` for the uv-based tools, `package.json`
+  names `@colbymchenry/codegraph` plus a built `dist/bin/codegraph.js` for CodeGraph; a
+  version probe runs for each — for graphify `uv run --directory <root> --no-dev --extra mcp
+  --extra sql graphify --version`, which is also the first env sync, 180 s budget; for
+  CodeGraph `node <root>/dist/bin/codegraph.js version`, 30 s budget, installs nothing) and
+  refuses selecting a tool without its root or blanking the selected tool's root ("select
+  none first"); failures are 400s with the reason. Sessions/templates opt in with one flag,
   **`codeIntelEnabled`** (default off; phase 12's `serenaEnabled` is accepted as a legacy
   alias), resolved at creation to the selected tool and stored as `session.code_intel`
-  (`'serena'`/`'graphify'`/NULL — baked per session, so flipping the selector later doesn't
-  change a live session; the widget chip reads the tool name). The create dialog's
-  checkbox names the selected tool and is hidden when `none`; the flag with `none`
+  (`'serena'`/`'graphify'`/`'codegraph'`/NULL — baked per session, so flipping the selector
+  later doesn't change a live session; the widget chip reads the tool name). The create
+  dialog's checkbox names the selected tool and is hidden when `none`; the flag with `none`
   selected is a 400, never a silent downgrade.
   - *Serena* (symbolic code tools): a `serena` stdio entry layered into `mcpConfig`
     (unless the session already declares one — same rule as Linear/memory) pointing at
@@ -420,6 +424,30 @@ effect on the next use with no backend restart.
     `update` CLI (AST-only — no semantic pass, no API key, nothing leaves the machine) and
     the MCP server are used, from a reviewed local checkout via `uv run … --no-dev`; never
     graphify's `/graphify` skill, `graphify install`, git hooks or `graph.html`.
+  - *CodeGraph* (`codegraph_explore` — a natural-language/symbol question → verbatim
+    line-numbered source, call paths including dynamic dispatch, and a blast-radius
+    summary): indexed **synchronously during PROVISIONING**, right after asset provisioning
+    and before the MCP config is written (`CodegraphService.index`, `codegraph init
+    <cwdPath> --yes`; a few seconds for a repo this size, hard cap 5 min — the session still
+    starts, unindexed, with a warning + `--red` chip on failure/timeout, never fails
+    creation). A `codegraph` stdio entry (`node <root>/dist/bin/codegraph.js serve --mcp
+    --path <cwdPath>`) plus our own provider-neutral prompt block. **No refresh pipeline of
+    our own** — unlike graphify, codegraph runs its own file watcher and a startup catch-up
+    sync, so the index stays current on its own; `resume`/wake only re-run the index
+    (`ensureIndexed`) when `<cwdPath>/.codegraph/codegraph.db` is missing (a prior
+    failure/timeout, or a fresh backend). `.codegraph/` lands **inside** the worktree
+    (forced by the tool, unlike graphify's out-of-tree dir) so it needs the same
+    `info/exclude` treatment as `.serena/` — `SessionService.excludeProvisionedAssets`
+    lists it unconditionally; nothing to clean up on close, the worktree removal takes it
+    with it. Status reuses the `code_intel_status` journal event, emitted once (BUILDING at
+    the start of `init`, READY/FAILED at its end). Posture from the pre-phase security
+    review: only `init`, `serve --mcp` and `version` are ever run, from a reviewed local
+    checkout on the backend's own `node`, with telemetry/update-check/the shared daemon off
+    on every process (`CODEGRAPH_TELEMETRY=0`, `DO_NOT_TRACK=1`,
+    `CODEGRAPH_NO_UPDATE_CHECK=1`, `CODEGRAPH_NO_DAEMON=1`); never codegraph's own
+    installer, upgrade, prompt hook, git hooks or `codegraph ui`. Checkout build:
+    `npm ci --ignore-scripts && npx tsc && npm run copy-assets` (no lifecycle scripts, no
+    kernel/UI workspace build); re-review before moving to a newer commit.
 - **Context warning threshold** (Settings dialog → "Sessions", `session.context-warn-
   percent`, default 70, floor 30, ceiling 95) — one number, same meaning for every
   session. Every session carries `contextTokens`/`contextWindow` (latest known,

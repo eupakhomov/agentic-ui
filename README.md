@@ -71,8 +71,10 @@ auth, your own machine's `claude`/`codex`/`gh` credentials.
 - Linear integration: import a ticket into a ready-to-go session (branch name +
   kickoff prompt generated), and Linear MCP tools available inside sessions
 - Code intelligence (one-of per install): [Serena](https://github.com/oraios/serena)
-  symbolic tools or [graphify](https://github.com/Graphify-Labs/graphify)
-  knowledge-graph tools, layered into sessions via MCP
+  symbolic tools, [graphify](https://github.com/Graphify-Labs/graphify) knowledge-graph
+  tools, or [CodeGraph](https://github.com/colbymchenry/codegraph) — verbatim source,
+  call paths and blast radius from a self-refreshing per-session index — layered into
+  sessions via MCP
 - Ecosystem awareness: point the tool at a folder of services and sessions get
   read-only context of sibling repos; monorepo detection optional
 - Orchestration: a session can spawn child sessions (fan-out) via an MCP tool
@@ -138,7 +140,8 @@ links go to the phase doc with the rationale and decisions:
 | Semantic search (memory + library) | `AGENTIC_UI_VOYAGE_API_KEY` env var; unset = sparse-only search, everything else works — [DEPLOY §8a](docs/DEPLOY.md#8a-optional-semantic-search-voyage-embeddings) | `docs/ARCHITECTURE.md` §3a/§3b |
 | Linear integration | `AGENTIC_UI_LINEAR_API_KEY` env var, or the OAuth toggle in Settings → Linear for SSO-gated accounts — [DEPLOY §8](docs/DEPLOY.md#8-optional-linear-ticket-import) | [`phase-12-linear-cache-serena-context.md`](docs/plan/phase-12-linear-cache-serena-context.md) |
 | Code intelligence: Serena | `uv` + a local Serena checkout; Settings → MCP servers → Serena root, pick `Serena` in the selector; tick **Code intelligence** per session — [DEPLOY §8b](docs/DEPLOY.md#8b-optional-serena-symbolic-code-tools) | [`phase-12-…`](docs/plan/phase-12-linear-cache-serena-context.md) track B |
-| Code intelligence: graphify | `uv` + a graphify checkout at the reviewed commit; Settings → MCP servers → Graphify root (first save syncs the env), pick `Graphify`; tick **Code intelligence** per session. One tool per install — the selector picks Serena *or* graphify — [DEPLOY §8c](docs/DEPLOY.md#8c-optional-graphify-knowledge-graph-code-tools) | [`phase-13-graphify.md`](docs/plan/phase-13-graphify.md) |
+| Code intelligence: graphify | `uv` + a graphify checkout at the reviewed commit; Settings → MCP servers → Graphify root (first save syncs the env), pick `Graphify`; tick **Code intelligence** per session. One tool per install — the selector picks Serena, graphify or CodeGraph, never more than one — [DEPLOY §8c](docs/DEPLOY.md#8c-optional-graphify-knowledge-graph-code-tools) | [`phase-13-graphify.md`](docs/plan/phase-13-graphify.md) |
+| Code intelligence: CodeGraph | Node (no `uv`) + a codegraph checkout at the reviewed commit, built once; Settings → MCP servers → CodeGraph root, pick `CodeGraph`; tick **Code intelligence** per session. Index builds synchronously at session start, then stays fresh on its own (no background refresh) — [DEPLOY §8d](docs/DEPLOY.md#8d-optional-codegraph-code-graph-self-refreshing) | [`phase-14-codegraph.md`](docs/plan/phase-14-codegraph.md) |
 | PR checks polling | on by default; Settings → PR checks (interval); uses ambient `gh` auth | `docs/ARCHITECTURE.md` |
 | Ecosystem / service discovery | Settings → Sessions → Ecosystem root; monorepo detection is a separate toggle | [`phase-8-service-discovery.md`](docs/plan/phase-8-service-discovery.md), [`phase-11-monorepo.md`](docs/plan/phase-11-monorepo.md) |
 | Orchestration (child sessions) | none — agents get a `spawn_child_session` tool | [`phase-7-ux-and-orchestration.md`](docs/plan/phase-7-ux-and-orchestration.md) |

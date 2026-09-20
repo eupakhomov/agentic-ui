@@ -98,7 +98,7 @@ export interface SessionEntity {
   /** Opt-in end-of-session memory retrospective (phase 5.3) */
   reflectionEnabled: boolean;
   /** which code-intelligence MCP server was attached at creation (phase 13 decision 5); null = none */
-  codeIntel: 'serena' | 'graphify' | null;
+  codeIntel: 'serena' | 'graphify' | 'codegraph' | null;
   /** Latest known context-window usage (phase 12 track C); null until the first turn */
   contextTokens: number | null;
   contextWindow: number | null;
@@ -223,12 +223,14 @@ export interface Settings {
   mcpUvPath: string;
   /** graphify checkout root; empty = graphify unavailable (phase 13) */
   mcpGraphifyRoot: string;
+  /** codegraph checkout root; empty = codegraph unavailable (phase 14) */
+  mcpCodegraphRoot: string;
   /** which code-intelligence tool sessions may opt into — one per install (phase 13 decision 1); always resolved */
   codeIntel: CodeIntel;
 }
 
-/** phase 13: the global one-of code-intelligence selector; `none` hides the create-dialog checkbox */
-export type CodeIntel = 'none' | 'serena' | 'graphify';
+/** phase 13/14: the global one-of code-intelligence selector; `none` hides the create-dialog checkbox */
+export type CodeIntel = 'none' | 'serena' | 'graphify' | 'codegraph';
 
 // --- layered memory (phase 5.3) ---
 

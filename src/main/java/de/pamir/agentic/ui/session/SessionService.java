@@ -6,6 +6,7 @@ import tools.jackson.databind.node.ObjectNode;
 import de.pamir.agentic.ui.config.AppProperties;
 import de.pamir.agentic.ui.config.SettingsService;
 import de.pamir.agentic.ui.git.GitCommandRunner;
+import de.pamir.agentic.ui.integration.CodegraphService;
 import de.pamir.agentic.ui.integration.GraphifyService;
 import de.pamir.agentic.ui.git.GitWorktreeService;
 import de.pamir.agentic.ui.discovery.ServiceDiscoveryRequested;
@@ -53,6 +54,8 @@ public class SessionService {
 	private final ProviderCatalog catalog;
 	/** Graph build lifecycle for {@code codeIntel == "graphify"} sessions (docs/plan/phase-13-graphify.md Step 3); null in unit tests. */
 	private final GraphifyService graphify;
+	/** Index-at-create for {@code codeIntel == "codegraph"} sessions (docs/plan/phase-14-codegraph.md Step 2); null in unit tests. */
+	private final CodegraphService codegraph;
 	private final Map<UUID, Object> locks = new ConcurrentHashMap<>();
 	/** Guards the enforceSessionLimit()+insert critical section — see {@link #enforceSessionLimitAndInsert}. */
 	private final Object sessionLimitLock = new Object();
@@ -67,7 +70,8 @@ public class SessionService {
 						  JournalPublisher journalPublisher, ObjectMapper mapper,
 						  ApplicationEventPublisher events,
 						  SessionConfigFactory configFactory, SystemSessionService systemSessionService,
-						  AutoTitleService autoTitleService, ProviderCatalog catalog, GraphifyService graphify) {
+						  AutoTitleService autoTitleService, ProviderCatalog catalog, GraphifyService graphify,
+						  CodegraphService codegraph) {
 		this.props = props;
 		this.settings = settings;
 		this.sessions = sessions;
@@ -84,6 +88,7 @@ public class SessionService {
 		this.autoTitleService = autoTitleService;
 		this.catalog = catalog;
 		this.graphify = graphify;
+		this.codegraph = codegraph;
 	}
 
 	// ------------------------------------------------------------------ creation
@@ -187,6 +192,13 @@ public class SessionService {
 			for (var warning : assets.provision(assetsRoot, entity.skillSources(), entity.agentSources())) {
 				record(id, "warning", mapper.createObjectNode().put("message", warning.message()));
 			}
+			// phase-14 decision 2: codegraph indexes synchronously, right here — before the MCP
+			// config (with its codegraph entry) is written, so the server never starts pointed at a
+			// directory that isn't indexed yet. Unlike graphify's fire-and-forget build below, this
+			// blocks; failure/timeout never throws (SessionEntity stays usable, chip goes --red).
+			if (codegraph != null) {
+				codegraph.index(entity);
+			}
 			writeMcpConfig(entity);
 			// decision 2: the graph builds in the background from here on — the session is usable
 			// immediately, its MCP server tolerates the graph appearing later (Step 0)
@@ -222,6 +234,9 @@ public class SessionService {
 			spawn(session, true);
 			if (graphify != null) {
 				graphify.ensureBuilt(session);
+			}
+			if (codegraph != null) {
+				codegraph.ensureIndexed(session);
 			}
 			return sessions.get(id);
 		}
@@ -670,16 +685,17 @@ public class SessionService {
 	 * The pid file always lives at the worktree root regardless (see {@link
 	 * de.pamir.agentic.ui.process.SidecarManager#pidFile}), so that line is never prefixed.
 	 *
-	 * <p>Also unconditionally lists {@code .serena/} (at the same {@code assetsRoot}-relative
-	 * prefix — Serena's {@code --project} is that same cwd) even for a session that never enables
-	 * Serena, matching this method's existing precedent of always listing tool-generated paths
-	 * regardless of whether this particular session uses them: harmless when the path never
-	 * exists. Confirmed live (docs/plan/phase-12-linear-cache-serena-context.md Track B manual
-	 * test) that Serena's own {@code .serena/.gitignore} (written inside that directory) does
-	 * NOT keep the directory itself out of {@code git status} — only entries *inside* it — so
-	 * this repo-level exclude line is required, not optional polish. Graphify (the other
-	 * {@code codeIntel} tool) needs no line: its graph lives outside the worktree entirely
-	 * (docs/plan/phase-13-graphify.md decision 6).
+	 * <p>Also unconditionally lists {@code .serena/} and {@code .codegraph/} (at the same {@code
+	 * assetsRoot}-relative prefix — both tools' project/index root is that same cwd) even for a
+	 * session that never enables either, matching this method's existing precedent of always
+	 * listing tool-generated paths regardless of whether this particular session uses them:
+	 * harmless when the path never exists. Confirmed live (docs/plan/phase-12-linear-cache-serena-
+	 * context.md Track B manual test) that Serena's own {@code .serena/.gitignore} (written inside
+	 * that directory) does NOT keep the directory itself out of {@code git status} — only entries
+	 * *inside* it — so this repo-level exclude line is required, not optional polish; codegraph's
+	 * own {@code .gitignore} inside {@code .codegraph/} has the same limitation (docs/plan/
+	 * phase-14-codegraph.md posture 4). Graphify (the third {@code codeIntel} tool) needs no line:
+	 * its graph lives outside the worktree entirely (docs/plan/phase-13-graphify.md decision 6).
 	 */
 	private void excludeProvisionedAssets(Path worktree, Path assetsRoot) {
 		try {
@@ -693,7 +709,8 @@ public class SessionService {
 				String rel = worktree.relativize(assetsRoot).toString();
 				String prefix = rel.isEmpty() ? "" : rel + "/";
 				Files.writeString(exclude,
-						"\n" + prefix + ".claude/skills/\n" + prefix + ".claude/agents/\n" + prefix + ".serena/\n.agentic-ui.pid\n",
+						"\n" + prefix + ".claude/skills/\n" + prefix + ".claude/agents/\n" + prefix + ".serena/\n"
+								+ prefix + ".codegraph/\n.agentic-ui.pid\n",
 						StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 			}
 		} catch (IOException e) {
@@ -758,6 +775,9 @@ public class SessionService {
 		}
 		if (graphify != null) {
 			graphify.ensureBuilt(session); // decision 11: READY iff the graph survived, else rebuild
+		}
+		if (codegraph != null) {
+			codegraph.ensureIndexed(session);
 		}
 	}
 }

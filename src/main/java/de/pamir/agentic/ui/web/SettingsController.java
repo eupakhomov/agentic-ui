@@ -5,6 +5,7 @@ import de.pamir.agentic.ui.config.AppProperties;
 import de.pamir.agentic.ui.config.Settings;
 import de.pamir.agentic.ui.config.SettingsPatch;
 import de.pamir.agentic.ui.config.SettingsService;
+import de.pamir.agentic.ui.integration.CodegraphService;
 import de.pamir.agentic.ui.integration.GraphifyService;
 import de.pamir.agentic.ui.integration.SerenaService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,13 +27,15 @@ public class SettingsController {
 	private final AppProperties props;
 	private final SerenaService serena;
 	private final GraphifyService graphify;
+	private final CodegraphService codegraph;
 
 	public SettingsController(SettingsService settings, AppProperties props, SerenaService serena,
-							  GraphifyService graphify) {
+							  GraphifyService graphify, CodegraphService codegraph) {
 		this.settings = settings;
 		this.props = props;
 		this.serena = serena;
 		this.graphify = graphify;
+		this.codegraph = codegraph;
 	}
 
 	@GetMapping
@@ -53,6 +56,9 @@ public class SettingsController {
 		if (patch.mcpGraphifyRoot() != null) {
 			graphify.validate(patch.mcpGraphifyRoot(), uvPath);
 		}
+		if (patch.mcpCodegraphRoot() != null) {
+			codegraph.validate(patch.mcpCodegraphRoot());
+		}
 		validateCodeIntel(patch, current);
 		settings.apply(patch);
 		return view();
@@ -67,10 +73,11 @@ public class SettingsController {
 	private void validateCodeIntel(SettingsPatch patch, Settings current) {
 		String serenaRoot = patch.mcpSerenaRoot() != null ? patch.mcpSerenaRoot() : current.mcpSerenaRoot();
 		String graphifyRoot = patch.mcpGraphifyRoot() != null ? patch.mcpGraphifyRoot() : current.mcpGraphifyRoot();
+		String codegraphRoot = patch.mcpCodegraphRoot() != null ? patch.mcpCodegraphRoot() : current.mcpCodegraphRoot();
 		String selector = patch.codeIntel() != null && !patch.codeIntel().isBlank()
 				? patch.codeIntel()
 				: settings.storedCodeIntel().orElseGet(() -> SettingsService.defaultCodeIntel(serenaRoot));
-		SettingsService.validateCodeIntel(selector, serenaRoot, graphifyRoot);
+		SettingsService.validateCodeIntel(selector, serenaRoot, graphifyRoot, codegraphRoot);
 	}
 
 	private SettingsView view() {

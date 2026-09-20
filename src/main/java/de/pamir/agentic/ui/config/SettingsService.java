@@ -79,11 +79,14 @@ public class SettingsService {
 	private static final String MCP_SERENA_ROOT_KEY = "mcp.serena-root";
 	private static final String MCP_UV_PATH_KEY = "mcp.uv-path";
 	private static final String MCP_GRAPHIFY_ROOT_KEY = "mcp.graphify-root";
+	private static final String MCP_CODEGRAPH_ROOT_KEY = "mcp.codegraph-root";
 	private static final String CODE_INTEL_KEY = "mcp.code-intel";
 	public static final String CODE_INTEL_NONE = "none";
 	public static final String CODE_INTEL_SERENA = "serena";
 	public static final String CODE_INTEL_GRAPHIFY = "graphify";
-	public static final Set<String> CODE_INTEL_VALUES = Set.of(CODE_INTEL_NONE, CODE_INTEL_SERENA, CODE_INTEL_GRAPHIFY);
+	public static final String CODE_INTEL_CODEGRAPH = "codegraph";
+	public static final Set<String> CODE_INTEL_VALUES =
+			Set.of(CODE_INTEL_NONE, CODE_INTEL_SERENA, CODE_INTEL_GRAPHIFY, CODE_INTEL_CODEGRAPH);
 
 	/** One row per {@link Settings}/{@link SettingsPatch} component — see the class doc. */
 	private record Field<T>(String key, Supplier<T> defaultValue, Function<String, T> parse,
@@ -167,6 +170,7 @@ public class SettingsService {
 	private final Field<String> mcpSerenaRoot = strField(MCP_SERENA_ROOT_KEY, () -> "", SettingsPatch::mcpSerenaRoot);
 	private final Field<String> mcpUvPath = strField(MCP_UV_PATH_KEY, () -> "uv", SettingsPatch::mcpUvPath);
 	private final Field<String> mcpGraphifyRoot = strField(MCP_GRAPHIFY_ROOT_KEY, () -> "", SettingsPatch::mcpGraphifyRoot);
+	private final Field<String> mcpCodegraphRoot = strField(MCP_CODEGRAPH_ROOT_KEY, () -> "", SettingsPatch::mcpCodegraphRoot);
 	/**
 	 * Stored raw: "" = unset. An unknown value normalizes to "" (unset) rather than failing — the
 	 * controller rejects it up front; this just keeps a hand-edited row from breaking {@link
@@ -198,7 +202,8 @@ public class SettingsService {
 				librarySyncIntervalMinutes, defaultProvider, systemProviderField, memoryRoot, memoryEnabled,
 				memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes, memoryRetentionDays,
 				memoryReflectionApprovalRequired, serviceDiscoveryEnabled, serviceDiscoveryStalenessDays,
-				serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot, codeIntelField);
+				serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot,
+				mcpCodegraphRoot, codeIntelField);
 	}
 
 	/** One snapshot of every setting in {@link #fields}, cached until the next {@link #apply}. */
@@ -239,6 +244,7 @@ public class SettingsService {
 				serenaRoot,
 				mcpUvPath.resolve(raw),
 				mcpGraphifyRoot.resolve(raw),
+				mcpCodegraphRoot.resolve(raw),
 				storedCodeIntel.isBlank() ? defaultCodeIntel(serenaRoot) : storedCodeIntel);
 		cache = built;
 		return built;
@@ -264,11 +270,12 @@ public class SettingsService {
 	 * passes post-patch values): a tool can't be selected without its root, and the selected tool's
 	 * root can't be blanked ("select none first"). Throws {@link IllegalArgumentException} (→ 400).
 	 */
-	public static void validateCodeIntel(String selector, String serenaRoot, String graphifyRoot) {
+	public static void validateCodeIntel(String selector, String serenaRoot, String graphifyRoot, String codegraphRoot) {
 		String tool = normalizeCodeIntel(selector).orElseThrow(() -> new IllegalArgumentException(
-				"Code intelligence must be one of none/serena/graphify, got: " + selector));
+				"Code intelligence must be one of none/serena/graphify/codegraph, got: " + selector));
 		boolean serenaBlank = serenaRoot == null || serenaRoot.isBlank();
 		boolean graphifyBlank = graphifyRoot == null || graphifyRoot.isBlank();
+		boolean codegraphBlank = codegraphRoot == null || codegraphRoot.isBlank();
 		if (CODE_INTEL_SERENA.equals(tool) && serenaBlank) {
 			throw new IllegalArgumentException(
 					"Serena is the selected code-intelligence tool and needs a Serena root — set one, or select none first");
@@ -276,6 +283,10 @@ public class SettingsService {
 		if (CODE_INTEL_GRAPHIFY.equals(tool) && graphifyBlank) {
 			throw new IllegalArgumentException(
 					"Graphify is the selected code-intelligence tool and needs a Graphify root — set one, or select none first");
+		}
+		if (CODE_INTEL_CODEGRAPH.equals(tool) && codegraphBlank) {
+			throw new IllegalArgumentException(
+					"CodeGraph is the selected code-intelligence tool and needs a CodeGraph root — set one, or select none first");
 		}
 	}
 

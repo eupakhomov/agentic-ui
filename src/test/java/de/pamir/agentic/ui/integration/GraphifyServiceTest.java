@@ -200,7 +200,7 @@ class GraphifyServiceTest {
 		@Override
 		public Settings current() {
 			return new Settings(false, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
-					false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", root, "none");
+					false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", root, "", "none");
 		}
 	}
 

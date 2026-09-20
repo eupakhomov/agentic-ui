@@ -227,28 +227,51 @@ class SettingsServiceTest {
 
 	@Test
 	void validateCodeIntelAcceptsNoneRegardlessOfRoots() {
-		SettingsService.validateCodeIntel("none", "", "");
-		SettingsService.validateCodeIntel("none", "/serena", "/graphify");
+		SettingsService.validateCodeIntel("none", "", "", "");
+		SettingsService.validateCodeIntel("none", "/serena", "/graphify", "/codegraph");
 	}
 
 	@Test
 	void validateCodeIntelRequiresTheSelectedToolsRoot() {
-		SettingsService.validateCodeIntel("serena", "/serena", "");
-		SettingsService.validateCodeIntel("graphify", "", "/graphify");
+		SettingsService.validateCodeIntel("serena", "/serena", "", "");
+		SettingsService.validateCodeIntel("graphify", "", "/graphify", "");
+		SettingsService.validateCodeIntel("codegraph", "", "", "/codegraph");
 
-		assertThatThrownBy(() -> SettingsService.validateCodeIntel("serena", "", "/graphify"))
+		assertThatThrownBy(() -> SettingsService.validateCodeIntel("serena", "", "/graphify", ""))
 				.isInstanceOf(IllegalArgumentException.class)
 				.hasMessageContaining("select none first");
-		assertThatThrownBy(() -> SettingsService.validateCodeIntel("graphify", "/serena", " "))
+		assertThatThrownBy(() -> SettingsService.validateCodeIntel("graphify", "/serena", " ", ""))
 				.isInstanceOf(IllegalArgumentException.class)
 				.hasMessageContaining("Graphify root");
+		assertThatThrownBy(() -> SettingsService.validateCodeIntel("codegraph", "/serena", "/graphify", ""))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("CodeGraph root");
 	}
 
 	@Test
 	void validateCodeIntelRejectsAnUnknownSelector() {
-		assertThatThrownBy(() -> SettingsService.validateCodeIntel("both", "/serena", "/graphify"))
+		assertThatThrownBy(() -> SettingsService.validateCodeIntel("both", "/serena", "/graphify", "/codegraph"))
 				.isInstanceOf(IllegalArgumentException.class)
-				.hasMessageContaining("none/serena/graphify");
+				.hasMessageContaining("none/serena/graphify/codegraph");
+	}
+
+	// --- phase 14: mcp.codegraph-root ---
+
+	@Test
+	void mcpCodegraphRootDefaultsToEmptyAndRoundTrips() {
+		SettingsService settings = newService();
+		assertThat(settings.current().mcpCodegraphRoot()).isEmpty();
+
+		settings.apply(SettingsPatch.builder().mcpCodegraphRoot("/mnt/d/projects/codegraph").build());
+		assertThat(settings.current().mcpCodegraphRoot()).isEqualTo("/mnt/d/projects/codegraph");
+	}
+
+	@Test
+	void codeIntelRoundTripsCodegraph() {
+		SettingsService settings = newService();
+		settings.apply(SettingsPatch.builder().mcpCodegraphRoot("/mnt/d/projects/codegraph").codeIntel("codegraph").build());
+		assertThat(settings.current().codeIntel()).isEqualTo("codegraph");
+		assertThat(settings.storedCodeIntel()).contains("codegraph");
 	}
 
 	@Test

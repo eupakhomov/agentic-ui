@@ -26,6 +26,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [mcpSerenaRootDraft, setMcpSerenaRootDraft] = useState('');
   const [mcpUvPathDraft, setMcpUvPathDraft] = useState('');
   const [mcpGraphifyRootDraft, setMcpGraphifyRootDraft] = useState('');
+  const [mcpCodegraphRootDraft, setMcpCodegraphRootDraft] = useState('');
   const [mcpSerenaError, setMcpSerenaError] = useState('');
   /** the graphify root save doubles as its first `uv` env sync (up to 180 s) — pulse the input meanwhile */
   const [mcpGraphifySaving, setMcpGraphifySaving] = useState(false);
@@ -49,6 +50,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setMcpSerenaRootDraft(s.mcpSerenaRoot);
       setMcpUvPathDraft(s.mcpUvPath);
       setMcpGraphifyRootDraft(s.mcpGraphifyRoot);
+      setMcpCodegraphRootDraft(s.mcpCodegraphRoot);
     }).catch(() => setSettings(null));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
@@ -182,6 +184,14 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       .then((s) => { setSettings(s); setMcpGraphifyRootDraft(s.mcpGraphifyRoot); })
       .catch((e: unknown) => setMcpSerenaError(e instanceof Error ? e.message : String(e)))
       .finally(() => setMcpGraphifySaving(false));
+  };
+
+  const saveMcpCodegraphRoot = () => {
+    if (!settings || mcpCodegraphRootDraft === settings.mcpCodegraphRoot) return;
+    setMcpSerenaError('');
+    void api.updateSettings({ mcpCodegraphRoot: mcpCodegraphRootDraft })
+      .then((s) => { setSettings(s); setMcpCodegraphRootDraft(s.mcpCodegraphRoot); })
+      .catch((e: unknown) => setMcpSerenaError(e instanceof Error ? e.message : String(e)));
   };
 
   const saveCodeIntel = (tool: CodeIntel) => {
@@ -413,6 +423,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 <option value="none">none</option>
                 <option value="serena" disabled={!settings.mcpSerenaRoot}>Serena (symbolic code tools)</option>
                 <option value="graphify" disabled={!settings.mcpGraphifyRoot}>Graphify (knowledge graph)</option>
+                <option value="codegraph" disabled={!settings.mcpCodegraphRoot}>CodeGraph (code graph, self-refreshing)</option>
               </select>
 
               <label>Serena root</label>
@@ -447,6 +458,17 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 onBlur={saveMcpUvPath}
                 placeholder="uv"
                 title="uv command/path, for hosts where it isn't on the backend's PATH"
+              />
+
+              <label>CodeGraph root</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1' }}
+                value={mcpCodegraphRootDraft}
+                onChange={(e) => setMcpCodegraphRootDraft(e.target.value)}
+                onBlur={saveMcpCodegraphRoot}
+                placeholder="path to a codegraph checkout; empty = CodeGraph unavailable"
+                title="CodeGraph MCP server checkout root, run on the backend's own node (no uv) — selectable above once set"
               />
               {mcpSerenaError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{mcpSerenaError}</div>}
             </div>

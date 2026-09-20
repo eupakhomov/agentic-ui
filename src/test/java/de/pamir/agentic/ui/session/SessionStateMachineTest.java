@@ -61,17 +61,17 @@ class SessionStateMachineTest {
 		journal = new FakeEventJournal(props);
 		worktrees = new FakeGitWorktreeService();
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
-		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, worktrees, null, null);
+		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, worktrees, null, null, null);
 		SystemSessionService systemSessionService =
 				new SystemSessionService(props, settings, sessions, configFactory, journalPublisher, mapper, null);
 		publishedEvents = new ArrayList<>();
 		sessionService = new SessionService(props, settings, sessions, worktrees, null, null, sidecars, journal,
-				journalPublisher, mapper, publishedEvents::add, configFactory, systemSessionService, null, null, null);
+				journalPublisher, mapper, publishedEvents::add, configFactory, systemSessionService, null, null, null, null);
 	}
 
 	private static SettingsService fakeSettings(boolean memoryEnabled, boolean serviceDiscoveryEnabled) {
 		Settings fixed = new Settings(false, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
-				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv", "", "none");
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv", "", "", "none");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -438,7 +438,7 @@ class SessionStateMachineTest {
 		SessionConfigFactory configFactory = new SessionConfigFactory(
 				new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills", "/memory", 4,
 						"authtoken", "", "", "logs", 30, 65536, 1048576, Map.of()),
-				fakeSettings(false, true), null, mapper, null, 8080, null, worktrees, null, null);
+				fakeSettings(false, true), null, mapper, null, 8080, null, worktrees, null, null, null);
 		SettingsService settings = fakeSettings(false, true);
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
 		SystemSessionService systemSessionService =
@@ -446,7 +446,7 @@ class SessionStateMachineTest {
 		AppProperties props = new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills",
 				"/memory", 4, "authtoken", "", "", "logs", 30, 65536, 1048576, Map.of());
 		SessionService withDiscovery = new SessionService(props, settings, sessions, worktrees, null, null, sidecars,
-				journal, journalPublisher, mapper, publishedEvents::add, configFactory, systemSessionService, null, null, null);
+				journal, journalPublisher, mapper, publishedEvents::add, configFactory, systemSessionService, null, null, null, null);
 		SessionEntity s = session(SessionState.IDLE).toBuilder().reflectionEnabled(true).build();
 		sessions.seed(s);
 
@@ -519,7 +519,7 @@ class SessionStateMachineTest {
 		worktrees.setKnownServices(List.of(new GitWorktreeService.ServiceInfo("packages/foo", servicePath, repo)));
 
 		Settings fixedSettings = new Settings(false, "", "/eco", "packages/*,services/*,apps/*,libs/*", true, true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "none");
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "", "none");
 		SettingsService settingsWithEcosystem = new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -530,7 +530,7 @@ class SessionStateMachineTest {
 				"/memory", 4, "authtoken", "", "", "logs", 30, 65536, 1048576, Map.of());
 		ProviderCatalog catalog = ProviderCatalog.fixedForTest(Map.of("claude", fullCapabilities()));
 		SessionConfigFactory configFactory =
-				new SessionConfigFactory(props, settingsWithEcosystem, null, mapper, null, 8080, catalog, worktrees, null, null);
+				new SessionConfigFactory(props, settingsWithEcosystem, null, mapper, null, 8080, catalog, worktrees, null, null, null);
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
 		SystemSessionService systemSessionService =
 				new SystemSessionService(props, settingsWithEcosystem, sessions, configFactory, journalPublisher, mapper, null);
@@ -551,7 +551,7 @@ class SessionStateMachineTest {
 		};
 		SessionService withServiceSubfolder = new SessionService(props, settingsWithEcosystem, sessions, worktrees,
 				fakeGit, fakeAssets, sidecars, journal, journalPublisher, mapper, publishedEvents::add, configFactory,
-				systemSessionService, null, catalog, null);
+				systemSessionService, null, catalog, null, null);
 
 		SessionService.CreateOptions options = new SessionService.CreateOptions(
 				"s", "branch", "main", null, null, mapper.createObjectNode(), Map.of(), false)
@@ -589,7 +589,7 @@ class SessionStateMachineTest {
 		SessionConfigFactory configFactory = new SessionConfigFactory(
 				new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills", "/memory", 4,
 						"authtoken", "", "", "logs", 30, 65536, 1048576, Map.of()),
-				fakeSettings(false, false), null, mapper, null, 8080, catalog, worktrees, null, null);
+				fakeSettings(false, false), null, mapper, null, 8080, catalog, worktrees, null, null, null);
 		JournalPublisher journalPublisher = new JournalPublisher(journal, new SessionEventBus());
 		SystemSessionService systemSessionService = new SystemSessionService(
 				null, fakeSettings(false, false), sessions, configFactory, journalPublisher, mapper, null);
@@ -603,7 +603,7 @@ class SessionStateMachineTest {
 				"/memory", 4, "authtoken", "", "", "logs", 30, 65536, 1048576, Map.of());
 		return new SessionService(props, fakeSettings(false, false), sessions, worktrees, fakeGit,
 				new AssetProvisioningService(null, null, mapper), sidecars, journal, journalPublisher, mapper,
-				publishedEvents::add, configFactory, systemSessionService, null, catalog, null);
+				publishedEvents::add, configFactory, systemSessionService, null, catalog, null, null);
 	}
 
 	@Test

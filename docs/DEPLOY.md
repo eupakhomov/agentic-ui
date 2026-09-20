@@ -249,11 +249,12 @@ every session by default).
 
 ## 8c. Optional: graphify (knowledge-graph code tools)
 
-The other code-intelligence tool (docs/plan/phase-13-graphify.md): a per-session,
+Another code-intelligence tool (docs/plan/phase-13-graphify.md): a per-session,
 AST-only knowledge graph of the session's code, queried through a stdio MCP server
 (`query_graph`, `get_neighbors`, `shortest_path`, …). One tool per install — the
-**Code intelligence** selector picks Serena *or* graphify, never both. Prerequisites:
-`uv` as above, plus a checkout at the reviewed commit:
+**Code intelligence** selector picks Serena, graphify or CodeGraph (§8d below), never
+more than one at a time. Prerequisites: `uv` as above, plus a checkout at the reviewed
+commit:
 
 ```bash
 git clone https://github.com/Graphify-Labs/graphify.git ~/graphify
@@ -270,6 +271,38 @@ save again. Do *not* run graphify's own `graphify install`, `hook install` or th
 hooks and `pip install` from PyPI inside agent sessions; this app drives only the `update`
 CLI and the MCP server from the checkout, code-only, with everything written to
 `~/agentic-worktrees/.graphify/<sessionId>/` (never inside a worktree). Moving the checkout
+to a newer commit means re-reviewing it first.
+
+## 8d. Optional: CodeGraph (code graph, self-refreshing)
+
+The third code-intelligence tool (docs/plan/phase-14-codegraph.md): a per-session SQLite
+knowledge graph (symbols, calls, imports, inheritance), served through a stdio MCP server
+whose one tool, `codegraph_explore`, answers a question with verbatim line-numbered
+source, call paths and a blast-radius summary. Unlike graphify, it needs no refresh
+pipeline from this app — codegraph runs its own file watcher and keeps the index current
+on its own. Prerequisites: Node ≥ 22.5 (< 25, already on `PATH` for the providers), plus
+a checkout at the reviewed commit, built once (no `uv` involved — it runs on the
+backend's own `node`):
+
+```bash
+git clone https://github.com/colbymchenry/codegraph.git ~/codegraph
+git -C ~/codegraph checkout 1f0cbbd      # v1.6.0 — the commit the security review covered
+cd ~/codegraph && npm ci --ignore-scripts && npx tsc && npm run copy-assets
+```
+
+Then in Settings → "MCP servers": set **CodeGraph root** to the checkout path (saving
+probes `node <root>/dist/bin/codegraph.js version`, ~30 s budget — no env sync, nothing
+is installed) and pick `CodeGraph` in the selector. A session created with the flag on
+gets its index built **synchronously** while it's PROVISIONING (a few seconds for a
+typical repo; the session still starts, unindexed, with a warning if it fails or takes
+longer than 5 minutes). Do *not* run codegraph's own `codegraph install`, `upgrade`,
+`codegraph ui`, or its git hooks anywhere on the box — they rewrite `~/.claude/
+settings.json`/`~/.claude.json`/`~/.claude/CLAUDE.md` and replace the binary; this app
+drives only `init`, `serve --mcp` and `version` from the checkout, with telemetry, the
+update check and codegraph's own shared daemon switched off on every process it spawns.
+Unlike graphify and Serena, the index (`.codegraph/`) lives *inside* the session's
+worktree (forced by the tool) — it's git-excluded the same way `.serena/` is, and
+disappears with the worktree on close; nothing to clean up by hand. Moving the checkout
 to a newer commit means re-reviewing it first.
 
 ## 9. Updating

@@ -45,7 +45,7 @@ class OrchestrationMcpToolsTest {
 
 	private static SettingsService fakeSettings(String ecosystemRoot) {
 		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "none");
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "", "none");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -79,7 +79,7 @@ class OrchestrationMcpToolsTest {
 		SettingsService settings = fakeSettings(mono.toString());
 		ObjectMapper mapper = new JsonMapper();
 		ProviderCatalog catalog = ProviderCatalog.fixedForTest(Map.of("claude", fullCapabilities()));
-		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, catalog, worktrees, null, null);
+		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, catalog, worktrees, null, null, null);
 
 		FakeSessionRepository sessions = new FakeSessionRepository();
 		FakeSidecarManager sidecars = new FakeSidecarManager();
@@ -94,7 +94,7 @@ class OrchestrationMcpToolsTest {
 		SystemSessionService systemSessionService =
 				new SystemSessionService(props, settings, sessions, configFactory, journalPublisher, mapper, null);
 		SessionService sessionService = new SessionService(props, settings, sessions, worktrees, git, noopAssets,
-				sidecars, journal, journalPublisher, mapper, e -> { }, configFactory, systemSessionService, null, catalog, null);
+				sidecars, journal, journalPublisher, mapper, e -> { }, configFactory, systemSessionService, null, catalog, null, null);
 		OrchestrationMcpTools tools = new OrchestrationMcpTools(settings, sessions, sessionService, worktrees, journal,
 				journalPublisher, mapper);
 
