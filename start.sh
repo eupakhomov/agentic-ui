@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Stop any running claude-ui backend and start it again from the existing jar,
+# Stop any running agentic-ui backend and start it again from the existing jar,
 # without rebuilding. Shorthand for `./restart.sh --skip-build`.
 
 set -euo pipefail

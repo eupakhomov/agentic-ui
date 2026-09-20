@@ -1,8 +1,8 @@
 // Appearance preferences: theme + font size. Frontend-only, localStorage-backed —
 // applied as data-* attributes on <html> so CSS (styles.css) does the actual work.
 
-const THEME_KEY = 'claude-ui.theme';
-const FONT_SIZE_KEY = 'claude-ui.fontSize';
+const THEME_KEY = 'agentic-ui.theme';
+const FONT_SIZE_KEY = 'agentic-ui.fontSize';
 
 export type Theme = 'light' | 'dark' | 'system';
 export type FontSize = 'small' | 'medium' | 'large';

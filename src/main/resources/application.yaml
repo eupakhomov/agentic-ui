@@ -1,14 +1,14 @@
 spring:
   application:
-    name: claude.ui
+    name: agentic.ui
   datasource:
-    url: jdbc:postgresql://localhost:5432/claude_ui
-    username: claude_ui
-    password: ${CLAUDE_UI_DB_PASSWORD:claude_ui}
+    url: jdbc:postgresql://localhost:5432/agentic_ui
+    username: agentic_ui
+    password: ${AGENTIC_UI_DB_PASSWORD:${CLAUDE_UI_DB_PASSWORD:agentic_ui}}
   ai:
     mcp:
       server:
-        name: claude-ui-memory
+        name: agentic-ui-memory
         version: 1.0.0
         protocol: STREAMABLE
         # mounted under /api/** so the existing bearer-token AuthTokenFilter gates it —
@@ -17,7 +17,7 @@ spring:
           mcp-endpoint: /api/mcp/memory
 
 server:
-  address: 127.0.0.1   # LAN use: set a real address AND claude-ui.auth-token (enforced at startup)
+  address: 127.0.0.1   # LAN use: set a real address AND agentic-ui.auth-token (enforced at startup)
   port: 8080
 
 management:
@@ -29,19 +29,22 @@ management:
     health:
       show-components: always
 
-claude-ui:
-  repo-path: ${CLAUDE_UI_REPO:/mnt/d/projects/claude-ui}
-  worktree-root: ${CLAUDE_UI_WORKTREE_ROOT:${HOME}/claude-worktrees}
-  skills-root: ${CLAUDE_UI_SKILLS_ROOT:${HOME}/claude-skills}
-  memory-root: ${CLAUDE_UI_MEMORY_ROOT:${HOME}/claude-memory}
-  max-sessions: ${CLAUDE_UI_MAX_SESSIONS:4}
-  idle-park-minutes: ${CLAUDE_UI_IDLE_PARK_MINUTES:30}
-  log-dir: ${CLAUDE_UI_LOG_DIR:logs}
-  journal-payload-cap-bytes: ${CLAUDE_UI_JOURNAL_PAYLOAD_CAP:65536}
-  ws-send-buffer-bytes: ${CLAUDE_UI_WS_BUFFER_LIMIT:1048576}
-  auth-token: ${CLAUDE_UI_TOKEN:}
-  linear-api-key: ${CLAUDE_UI_LINEAR_API_KEY:}
-  voyage-api-key: ${CLAUDE_UI_VOYAGE_API_KEY:}
+# Every env var below reads AGENTIC_UI_* first and falls back to the pre-rename
+# CLAUDE_UI_* name (the app was called claude-ui until 2026-09), so an existing shell
+# profile keeps working. New docs/scripts use only the AGENTIC_UI_* names.
+agentic-ui:
+  repo-path: ${AGENTIC_UI_REPO:${CLAUDE_UI_REPO:/mnt/d/projects/agentic-ui}}
+  worktree-root: ${AGENTIC_UI_WORKTREE_ROOT:${CLAUDE_UI_WORKTREE_ROOT:${HOME}/agentic-worktrees}}
+  skills-root: ${AGENTIC_UI_SKILLS_ROOT:${CLAUDE_UI_SKILLS_ROOT:${HOME}/agentic-skills}}
+  memory-root: ${AGENTIC_UI_MEMORY_ROOT:${CLAUDE_UI_MEMORY_ROOT:${HOME}/agentic-memory}}
+  max-sessions: ${AGENTIC_UI_MAX_SESSIONS:${CLAUDE_UI_MAX_SESSIONS:4}}
+  idle-park-minutes: ${AGENTIC_UI_IDLE_PARK_MINUTES:${CLAUDE_UI_IDLE_PARK_MINUTES:30}}
+  log-dir: ${AGENTIC_UI_LOG_DIR:${CLAUDE_UI_LOG_DIR:logs}}
+  journal-payload-cap-bytes: ${AGENTIC_UI_JOURNAL_PAYLOAD_CAP:${CLAUDE_UI_JOURNAL_PAYLOAD_CAP:65536}}
+  ws-send-buffer-bytes: ${AGENTIC_UI_WS_BUFFER_LIMIT:${CLAUDE_UI_WS_BUFFER_LIMIT:1048576}}
+  auth-token: ${AGENTIC_UI_TOKEN:${CLAUDE_UI_TOKEN:}}
+  linear-api-key: ${AGENTIC_UI_LINEAR_API_KEY:${CLAUDE_UI_LINEAR_API_KEY:}}
+  voyage-api-key: ${AGENTIC_UI_VOYAGE_API_KEY:${CLAUDE_UI_VOYAGE_API_KEY:}}
   providers:
     claude:
       command: ["node", "sidecar/dist/index.js"]

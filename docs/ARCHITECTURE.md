@@ -1,4 +1,4 @@
-# claude-ui — Architecture (as built)
+# agentic-ui — Architecture (as built)
 
 Status: Phases 0–4 complete plus git panel (5.1), PR creation (5.2), long-term memory &
 reflection (5.3), desktop notifications (5.14), model switching mid-session (5.5),
@@ -55,7 +55,7 @@ decision log in `docs/plan/README.md` remains the authority on *why*; this file 
   from `afterSeq=0`; reconnects resume losslessly from the last seen seq.
 - **The adapter contract is provider-neutral.** The backend/UI never reference
   Claude specifics; capabilities announced in `ready` gate which controls render.
-  A second provider = a new adapter binary + a `claude-ui.providers.<id>` entry.
+  A second provider = a new adapter binary + a `agentic-ui.providers.<id>` entry.
 - **Sessions outlive processes.** `providerSessionId` (persisted from `system_init`)
   makes sidecars disposable: crash → CRASHED + Resume; idle timeout → PARKED with
   transparent wake; backend restart → sweep marks CRASHED, PID files reap orphans.
@@ -80,7 +80,7 @@ skill library (see below); V9 (§3b) reuses it for long-term memory and adds `pg
 
 ## 3a. Skill & agent library (Phase 6)
 
-Curated library on top of per-session skill sources (`de.pamir.claude.ui.library`):
+Curated library on top of per-session skill sources (`de.pamir.agentic.ui.library`):
 
 - **Tables (V7)**: `asset_source` (dir/repo ref, sync flag + last-sync state) ·
   `library_asset` (kind, name/description, managed-copy `location`, `source_path`,
@@ -96,7 +96,7 @@ Curated library on top of per-session skill sources (`de.pamir.claude.ui.library
   create-dialog picker and provisioning read), never overwrites different content
   (`-2` suffix + warning), dedupes identical content, writes asset+tags, best-effort
   embeds (`VoyageEmbeddingClient` behind `EmbeddingClient`, key
-  `CLAUDE_UI_VOYAGE_API_KEY`, model voyage-3.5-lite).
+  `AGENTIC_UI_VOYAGE_API_KEY`, model voyage-3.5-lite).
 - **AI-fill** (`LibraryAiService`): batches ≤5 file contents per Haiku system-session
   turn (`SystemSessionService.runSystemTurn`, via `SystemTurnClient`), returns name/description/tags per path.
 - **Sync** (`LibrarySyncService`): 60s tick, interval as `last_synced_at` cutoff
@@ -130,7 +130,7 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   session close (async — a Spring `ReflectionRequested` event, not a direct
   `SessionService` dependency, avoids a circular bean; the manual "Reflect now"
   widget button calls it synchronously from `SessionController` instead) or manual
-  trigger. `TranscriptDigest.render()` (`de.pamir.claude.ui.journal` — provider-
+  trigger. `TranscriptDigest.render()` (`de.pamir.agentic.ui.journal` — provider-
   neutral, not memory-specific, so it also backs 5.9's transcript export via the
   sibling `renderMarkdown()`) renders the journal into a capped text digest;
   `SystemSessionService.runSystemTurn(prompt, model, lane, timeout)` gained a
@@ -160,7 +160,7 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   no new auth code. Every session's `mcpConfig.memory` entry is the same static
   `{type: "http", headers: {Authorization}}` block `SessionConfigFactory.
   memoryMcpServer()` builds (same shape as `linearMcpServer()`, same reused
-  `CLAUDE_UI_TOKEN` — not a new secret). Since MCP transport context doesn't
+  `AGENTIC_UI_TOKEN` — not a new secret). Since MCP transport context doesn't
   cleanly expose the inbound session identity to a WebMVC tool method, each tool
   takes an explicit `sessionId` argument instead (resolved server-side to that
   session's `repoPath` for the scope filter); the session learns its own id from
@@ -251,7 +251,7 @@ Full design + decisions: `docs/plan/phase-8-service-discovery.md`.
   a known service (`isKnownService` — the repo root itself, or one of
   `findServices`'s results) before touching it.
 - **The digest fed to the system turn is bounded and non-agentic**
-  (`ServiceDigest.render`, `de.pamir.claude.ui.discovery`): README/CLAUDE.md/AGENTS.md
+  (`ServiceDigest.render`, `de.pamir.agentic.ui.discovery`): README/CLAUDE.md/AGENTS.md
   (capped per file), a manifest name+description sniff (`package.json`/`pom.xml`), and
   a depth-2 directory listing that skips noise dirs (`node_modules`, `.git`, `target`,
   `dist`, `build`) — same "backend reads a small bounded set of files itself" posture
@@ -296,7 +296,7 @@ skipping the ticket-driven fields is the whole point of the shortcut.
 The proof of provider-agnosticism: `sidecar-codex/` speaks `codex app-server`'s
 JSON-RPC-over-stdio protocol (not `codex exec`, which is non-interactive and can't do
 the approval round-trip), translated to the same adapter protocol v1 `sidecar/` speaks —
-registered under `claude-ui.providers.codex`, with the dashboard needing zero code that
+registered under `agentic-ui.providers.codex`, with the dashboard needing zero code that
 branches on the provider name, only on announced capabilities. As of Phase 10's R1, the
 **backend** doesn't either: `SidecarManager.buildArgs`, `SessionConfigFactory.prepare`,
 and `SessionService.applyEstimatedCost` all branch on a `ProviderCapabilities` record
@@ -450,7 +450,7 @@ project settings. Guard: refuse if the repo tracks `settings.local.json`.
 
 ### 5.10 Turn checkpoints & rewind
 On `turn_complete`, if the worktree is dirty: `git add -A && git commit` onto a
-ref `refs/claude-ui/<session>/turn-<n>` (commit on the branch, then update-ref;
+ref `refs/agentic-ui/<session>/turn-<n>` (commit on the branch, then update-ref;
 or plain branch commits with a tag-like ref). "Rewind" = `git reset --hard <ref>`
 (refuse while RUNNING). The transcript's turn footers become rewind anchors
 (`checkpoint` event carries the ref). Interacts with close-dirty flow: checkpointed
@@ -465,7 +465,7 @@ diff-compare grid; a "fan out" checkbox in the create dialog + naming convention
 
 ## 5. Operational notes
 
-Limits/caps and env vars: see CLAUDE.md "Limits & caps". Logs: `logs/claude-ui.log`,
+Limits/caps and env vars: see CLAUDE.md "Limits & caps". Logs: `logs/agentic-ui.log`,
 `logs/error.log`, `logs/sidecar/<sessionId>.log`. Auth: bearer token everywhere
 (REST header, WS subprotocol), startup guard refuses tokenless non-loopback binds.
 Metrics: `claudeui.sessions.active|parked` via `/actuator/metrics` (token-gated).

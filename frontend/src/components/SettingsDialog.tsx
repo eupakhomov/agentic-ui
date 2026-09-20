@@ -483,7 +483,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 />
                 {settings.voyageConfigured
                   ? 'embed content on import & sync for semantic search (Voyage AI)'
-                  : 'requires CLAUDE_UI_VOYAGE_API_KEY (env var only)'}
+                  : 'requires AGENTIC_UI_VOYAGE_API_KEY (env var only)'}
               </label>
 
               <label>Source sync</label>
@@ -626,7 +626,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
               <label>API key</label>
               <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>
                 {settings.linearApiKeyConfigured
-                  ? 'configured via CLAUDE_UI_LINEAR_API_KEY'
+                  ? 'configured via AGENTIC_UI_LINEAR_API_KEY'
                   : 'not set (env var only — see docs/DEPLOY.md)'}
               </span>
 

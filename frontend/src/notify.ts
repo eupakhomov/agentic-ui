@@ -2,7 +2,7 @@
 
 import type { Envelope } from './protocol';
 
-const PREF_KEY = 'claude-ui.notifications';
+const PREF_KEY = 'agentic-ui.notifications';
 
 export function notificationsEnabled(): boolean {
   return localStorage.getItem(PREF_KEY) === 'on' && 'Notification' in window && Notification.permission === 'granted';
@@ -41,7 +41,7 @@ export function notify(title: string, body: string, opts?: { evenIfTabFocused?: 
 }
 
 let pendingCount = 0;
-const BASE_TITLE = 'claude-ui';
+const BASE_TITLE = 'agentic-ui';
 
 function bumpTitleBadge(): void {
   pendingCount++;

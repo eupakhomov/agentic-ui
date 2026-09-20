@@ -32,7 +32,7 @@ export interface SidecarConfig {
   codexBin?: string;
 }
 
-const TOOL_OUTPUT_LIMIT = Number(process.env['CLAUDE_UI_TOOL_OUTPUT_LIMIT'] ?? 16 * 1024);
+const TOOL_OUTPUT_LIMIT = Number(process.env['AGENTIC_UI_TOOL_OUTPUT_LIMIT'] ?? process.env['CLAUDE_UI_TOOL_OUTPUT_LIMIT'] ?? 16 * 1024);
 
 function truncate(s: string): string {
   return s.length > TOOL_OUTPUT_LIMIT ? s.slice(0, TOOL_OUTPUT_LIMIT) : s;
@@ -484,7 +484,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
 
   try {
     await rpc.call('initialize', {
-      clientInfo: { name: 'claude-ui-sidecar-codex', title: 'claude-ui', version: '0.1.0' },
+      clientInfo: { name: 'agentic-ui-sidecar-codex', title: 'agentic-ui', version: '0.1.0' },
       capabilities: null,
     });
 

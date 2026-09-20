@@ -1,0 +1,118 @@
+package de.pamir.agentic.ui.web;
+
+import de.pamir.agentic.ui.git.GitOpsService;
+import de.pamir.agentic.ui.session.GitAssistService;
+import de.pamir.agentic.ui.session.SessionEntity;
+import de.pamir.agentic.ui.session.SessionRepository;
+import de.pamir.agentic.ui.session.SessionState;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/** Git panel operations on a session's worktree. */
+@RestController
+@RequestMapping("/api/sessions/{id}/git")
+public class GitSessionController {
+
+	public record CommitRequest(String message) {
+	}
+
+	public record PrRequest(String title, String body) {
+	}
+
+	private final SessionRepository sessions;
+	private final GitOpsService gitOps;
+	private final GitAssistService assist;
+
+	public GitSessionController(SessionRepository sessions, GitOpsService gitOps, GitAssistService assist) {
+		this.sessions = sessions;
+		this.gitOps = gitOps;
+		this.assist = assist;
+	}
+
+	@GetMapping("/status")
+	public GitOpsService.GitStatus status(@PathVariable UUID id) {
+		return gitOps.status(worktree(id, false), sessions.get(id).baseBranch());
+	}
+
+	@GetMapping("/diff")
+	public Map<String, String> diff(@PathVariable UUID id) {
+		return Map.of("diff", gitOps.diff(worktree(id, false)));
+	}
+
+	@GetMapping("/log")
+	public List<GitOpsService.LogEntry> log(@PathVariable UUID id) {
+		return gitOps.log(worktree(id, false), 20);
+	}
+
+	@PostMapping("/commit")
+	public GitOpsService.GitStatus commit(@PathVariable UUID id, @RequestBody CommitRequest request) {
+		if (request.message() == null || request.message().isBlank()) {
+			throw new IllegalArgumentException("commit message is required");
+		}
+		Path worktree = worktree(id, true);
+		gitOps.commitAll(worktree, request.message().strip());
+		return gitOps.status(worktree, sessions.get(id).baseBranch());
+	}
+
+	@PostMapping("/commit-message/suggest")
+	public GitAssistService.CommitSuggestion suggestCommitMessage(@PathVariable UUID id) {
+		return assist.suggestCommitMessage(id);
+	}
+
+	@PostMapping("/pr/suggest")
+	public GitAssistService.PrSuggestion suggestPr(@PathVariable UUID id) {
+		return assist.suggestPr(id);
+	}
+
+	@PostMapping("/push")
+	public Map<String, String> push(@PathVariable UUID id) {
+		SessionEntity session = sessions.get(id);
+		String result = gitOps.push(worktree(id, true), session.branch());
+		if (session.prUrl() != null) {
+			// follow-up push to an already-open PR: drop any stale terminal result so the
+			// next poll tick re-checks the new commits rather than sitting on the old one
+			sessions.resetPrCheckPending(id);
+		}
+		return Map.of("result", result);
+	}
+
+	@PostMapping("/pr")
+	public Map<String, String> createPr(@PathVariable UUID id, @RequestBody PrRequest request) {
+		SessionEntity session = sessions.get(id);
+		String title = request.title() == null || request.title().isBlank() ? session.name() : request.title().strip();
+		String body = request.body() == null ? "" : request.body();
+		Path worktree = worktree(id, true);
+		String url = gitOps.createPullRequest(worktree, session.branch(), title, body);
+		String headSha = gitOps.headSha(worktree);
+		sessions.attachPr(id, url, headSha);
+		return Map.of("url", url);
+	}
+
+	/**
+	 * Writes are refused while the agent may be mid-tool-execution, and outright for a review
+	 * session (docs/plan/phase-15-review-sessions.md proposal 10) — commit/push/PR would move or
+	 * publish from the reviewed branch's detached checkout, which this session's whole point is to
+	 * never do. Read paths (status/diff/log) call this with {@code forWrite = false} and are
+	 * unaffected.
+	 */
+	private Path worktree(UUID id, boolean forWrite) {
+		SessionEntity session = sessions.get(id);
+		if (forWrite && "review".equals(session.sessionType())) {
+			throw new IllegalStateException("session is a review session; commit/push/PR are disabled");
+		}
+		if (forWrite && (session.state() == SessionState.RUNNING || session.state() == SessionState.WAITING_INPUT)) {
+			throw new IllegalStateException("session is " + session.state()
+					+ "; wait for the turn to finish before committing or pushing");
+		}
+		return Path.of(session.worktreePath());
+	}
+}

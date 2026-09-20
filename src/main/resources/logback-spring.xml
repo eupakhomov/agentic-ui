@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-	<property name="LOG_DIR" value="${CLAUDE_UI_LOG_DIR:-logs}"/>
+	<property name="LOG_DIR" value="${AGENTIC_UI_LOG_DIR:-${CLAUDE_UI_LOG_DIR:-logs}}"/>
 
 	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
 		<encoder>
@@ -10,9 +10,9 @@
 
 	<!-- everything at INFO+, rolled daily and by size -->
 	<appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-		<file>${LOG_DIR}/claude-ui.log</file>
+		<file>${LOG_DIR}/agentic-ui.log</file>
 		<rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-			<fileNamePattern>${LOG_DIR}/claude-ui.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+			<fileNamePattern>${LOG_DIR}/agentic-ui.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
 			<maxFileSize>10MB</maxFileSize>
 			<maxHistory>14</maxHistory>
 			<totalSizeCap>200MB</totalSizeCap>

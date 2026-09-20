@@ -1,11 +1,11 @@
 import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, PrInfo, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketList, TurnUsage } from '../protocol';
 
-let authToken: string | null = localStorage.getItem('claude-ui.token');
+let authToken: string | null = localStorage.getItem('agentic-ui.token');
 
 export function setToken(token: string | null): void {
   authToken = token;
-  if (token) localStorage.setItem('claude-ui.token', token);
-  else localStorage.removeItem('claude-ui.token');
+  if (token) localStorage.setItem('agentic-ui.token', token);
+  else localStorage.removeItem('agentic-ui.token');
 }
 
 export function token(): string | null {
@@ -33,13 +33,13 @@ async function requestText(path: string, method: string = 'GET'): Promise<string
 async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (authToken) headers['authorization'] = `Bearer ${authToken}`;
-  if (import.meta.env.DEV) console.debug('[claude-ui] api request', method, path, body ?? '');
+  if (import.meta.env.DEV) console.debug('[agentic-ui] api request', method, path, body ?? '');
   let res: Response;
   try {
     res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal });
   } catch (e) {
     // network failure, CORS, or abort — never an ApiError since there's no HTTP response to read
-    console.error('[claude-ui] api request failed (network/abort)', method, path, e);
+    console.error('[agentic-ui] api request failed (network/abort)', method, path, e);
     throw e;
   }
   const text = await res.text();
@@ -47,15 +47,15 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
   try {
     parsed = text ? (JSON.parse(text) as Record<string, unknown>) : null;
   } catch (e) {
-    console.error('[claude-ui] api response was not valid JSON', method, path, res.status, text.slice(0, 500));
+    console.error('[agentic-ui] api response was not valid JSON', method, path, res.status, text.slice(0, 500));
     throw e;
   }
   if (!res.ok) {
     const detail = parsed && typeof parsed['detail'] === 'string' ? (parsed['detail'] as string) : res.statusText;
-    console.error('[claude-ui] api error', method, path, res.status, detail, parsed);
+    console.error('[agentic-ui] api error', method, path, res.status, detail, parsed);
     throw new ApiError(res.status, detail, parsed);
   }
-  if (import.meta.env.DEV) console.debug('[claude-ui] api response', method, path, res.status);
+  if (import.meta.env.DEV) console.debug('[agentic-ui] api response', method, path, res.status);
   return parsed as T;
 }
 

@@ -259,8 +259,8 @@ approval round-trip. Full mapping tables and rationale:
 ## WebSocket contract (backend ↔ UI)
 
 - Endpoint: `ws://host:8080/ws/sessions/{sessionId}?afterSeq=<n>`.
-- Subprotocol carries auth: the client requests `["claude-ui.v1", "bearer.<token>"]`;
-  the server validates the bearer entry and echoes `claude-ui.v1`. With no token
+- Subprotocol carries auth: the client requests `["agentic-ui.v1", "bearer.<token>"]`;
+  the server validates the bearer entry and echoes `agentic-ui.v1`. With no token
   configured (loopback-only mode) the bearer entry may be omitted.
 - **Outbound**: every adapter event, wrapped in a journal envelope
   `{seq, ts, type, payload}` — `seq` is the per-session monotonic journal sequence.

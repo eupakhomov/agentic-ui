@@ -22,8 +22,8 @@ import {
   SkillLibrary, SystemSession, Templates, Usage,
 } from '../icons';
 
-const LAYOUT_KEY = 'claude-ui.layout';
-const MINIMIZED_KEY = 'claude-ui.minimized';
+const LAYOUT_KEY = 'agentic-ui.layout';
+const MINIMIZED_KEY = 'agentic-ui.minimized';
 const COLS = 12;
 
 function loadMinimized(): string[] {
@@ -62,7 +62,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [systemSessions, setSystemSessions] = useState<SessionSummary[]>(
     initialSessions.filter((s) => s.state !== 'CLOSED' && s.kind === 'system'),
   );
-  const [showSystem, setShowSystem] = useState(() => localStorage.getItem('claude-ui.showSystem') === '1');
+  const [showSystem, setShowSystem] = useState(() => localStorage.getItem('agentic-ui.showSystem') === '1');
   const [layout, setLayout] = useState<Layout[]>(loadLayout());
   const [showCreate, setShowCreate] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -278,7 +278,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   return (
     <>
       <div className="topbar">
-        <h1>claude-ui</h1>
+        <h1>agentic-ui</h1>
         <NotifyToggle />
         <button className="icon-btn" title="Refresh session list" onClick={() => void refresh()}><Refresh /></button>
         <button className="icon-btn" title="Templates (t)" onClick={() => setShowTemplates(true)}><Templates /></button>
@@ -292,7 +292,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
           }
           onClick={() => setShowSystem((v) => {
             const next = !v;
-            localStorage.setItem('claude-ui.showSystem', next ? '1' : '0');
+            localStorage.setItem('agentic-ui.showSystem', next ? '1' : '0');
             return next;
           })}
         >

@@ -116,9 +116,9 @@ env var; deep-dives live in the phase docs:
 | Review sessions | none — pick type **Review** in the create dialog | [`docs/plan/phase-15-review-sessions.md`](docs/plan/phase-15-review-sessions.md) |
 | Codex provider | `codex login` once; select provider `codex` per session/template | [`docs/plan/phase-5.13-codex-provider.md`](docs/plan/phase-5.13-codex-provider.md) |
 | Skill library | Settings → Skill library (roots, sync, optional vectorize) | [`docs/plan/phase-6-skill-library.md`](docs/plan/phase-6-skill-library.md) |
-| Long-term memory & reflection | Settings → Memory; vault root via `CLAUDE_UI_MEMORY_ROOT` | [`docs/plan/phase-5.3-memory-reflection.md`](docs/plan/phase-5.3-memory-reflection.md) |
-| Semantic search (memory + library) | `CLAUDE_UI_VOYAGE_API_KEY` env var; unset = sparse-only search, everything else works | `docs/ARCHITECTURE.md` §3a/§3b |
-| Linear integration | `CLAUDE_UI_LINEAR_API_KEY` env var, or the OAuth toggle in Settings → Linear | [`docs/plan/phase-12-linear-cache-serena-context.md`](docs/plan/phase-12-linear-cache-serena-context.md) |
+| Long-term memory & reflection | Settings → Memory; vault root via `AGENTIC_UI_MEMORY_ROOT` | [`docs/plan/phase-5.3-memory-reflection.md`](docs/plan/phase-5.3-memory-reflection.md) |
+| Semantic search (memory + library) | `AGENTIC_UI_VOYAGE_API_KEY` env var; unset = sparse-only search, everything else works | `docs/ARCHITECTURE.md` §3a/§3b |
+| Linear integration | `AGENTIC_UI_LINEAR_API_KEY` env var, or the OAuth toggle in Settings → Linear | [`docs/plan/phase-12-linear-cache-serena-context.md`](docs/plan/phase-12-linear-cache-serena-context.md) |
 | Code intelligence (Serena / graphify) | Settings → MCP servers: pick the tool, point at a local checkout; enable per session | [`docs/plan/phase-13-graphify.md`](docs/plan/phase-13-graphify.md), phase-12 track B |
 | PR checks polling | on by default; Settings → PR checks (interval); uses ambient `gh` auth | `docs/ARCHITECTURE.md` |
 | Ecosystem / service discovery | Settings → Sessions → Ecosystem root; monorepo detection is a separate toggle | [`docs/plan/phase-8-service-discovery.md`](docs/plan/phase-8-service-discovery.md), [`phase-11-monorepo.md`](docs/plan/phase-11-monorepo.md) |
@@ -130,14 +130,14 @@ The most common knobs (all env vars are read at backend startup):
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `CLAUDE_UI_TOKEN` | — | dashboard/API token (required for non-loopback binds; `restart.sh` generates one) |
-| `CLAUDE_UI_REPO` | this repo | default service repo (per-session selectable) |
-| `CLAUDE_UI_WORKTREE_ROOT` | `~/claude-worktrees` | where session worktrees live |
-| `CLAUDE_UI_MAX_SESSIONS` | `4` | concurrent live sidecars (parked sessions don't count) |
-| `CLAUDE_UI_IDLE_PARK_MINUTES` | `30` | idle minutes before a session parks |
-| `CLAUDE_UI_DB_PASSWORD` | `claude_ui` | Postgres password override |
-| `CLAUDE_UI_VOYAGE_API_KEY` | — | enables dense/semantic search (secret — env only) |
-| `CLAUDE_UI_LINEAR_API_KEY` | — | enables Linear import + MCP (secret — env only) |
+| `AGENTIC_UI_TOKEN` | — | dashboard/API token (required for non-loopback binds; `restart.sh` generates one) |
+| `AGENTIC_UI_REPO` | this repo | default service repo (per-session selectable) |
+| `AGENTIC_UI_WORKTREE_ROOT` | `~/agentic-worktrees` | where session worktrees live |
+| `AGENTIC_UI_MAX_SESSIONS` | `4` | concurrent live sidecars (parked sessions don't count) |
+| `AGENTIC_UI_IDLE_PARK_MINUTES` | `30` | idle minutes before a session parks |
+| `AGENTIC_UI_DB_PASSWORD` | `agentic_ui` | Postgres password override |
+| `AGENTIC_UI_VOYAGE_API_KEY` | — | enables dense/semantic search (secret — env only) |
+| `AGENTIC_UI_LINEAR_API_KEY` | — | enables Linear import + MCP (secret — env only) |
 
 The full list of limits, persisted settings, and operational notes is in
 [`CLAUDE.md`](CLAUDE.md) — which doubles as the contributor/agent handbook for this

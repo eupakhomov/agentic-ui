@@ -27,7 +27,7 @@ export class WsSession {
     this.onStatus('connecting');
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const url = `${scheme}://${location.host}/ws/sessions/${this.sessionId}?afterSeq=${this.lastSeq}`;
-    const protocols = ['claude-ui.v1'];
+    const protocols = ['agentic-ui.v1'];
     const t = token();
     if (t) protocols.push(`bearer.${t}`);
     const ws = new WebSocket(url, protocols);

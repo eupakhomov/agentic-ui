@@ -1,4 +1,4 @@
-# Deploying claude-ui on another machine (macOS)
+# Deploying agentic-ui on another machine (macOS)
 
 How to get the dashboard running on a Mac laptop — the primary deployment target.
 Everything is platform-neutral by design; unlike the WSL dev box there are no
@@ -31,9 +31,9 @@ claude --version      # and `claude` opens logged-in (run once interactively)
 The repo currently lives only on the dev machine. Either:
 
 - **Recommended**: create a private GitHub repo once, push from the dev box
-  (`git remote add origin git@github.com:<you>/claude-ui.git && git push -u origin main`),
-  then on the Mac: `git clone git@github.com:<you>/claude-ui.git && cd claude-ui`.
-  (Also lets claude-ui's own PR button work on itself.)
+  (`git remote add origin git@github.com:<you>/agentic-ui.git && git push -u origin main`),
+  then on the Mac: `git clone git@github.com:<you>/agentic-ui.git && cd agentic-ui`.
+  (Also lets agentic-ui's own PR button work on itself.)
 - Or copy the directory (rsync/AirDrop) — make sure `.git` comes along; skip
   `target/`, `*/node_modules/`, `*/dist/`, `logs/`.
 
@@ -44,19 +44,19 @@ The ones that must change from the WSL defaults are paths:
 
 ```bash
 # ~/.zshrc (or a run script)
-export CLAUDE_UI_REPO="$HOME/projects/<default-repo>"  # default service (per-session selectable anyway)
-export CLAUDE_UI_WORKTREE_ROOT="$HOME/claude-worktrees"
-export CLAUDE_UI_SKILLS_ROOT="$HOME/claude-skills"     # optional; create + drop SKILL.md dirs in
-export CLAUDE_UI_MEMORY_ROOT="$HOME/claude-memory"     # optional; the long-term-memory vault
+export AGENTIC_UI_REPO="$HOME/projects/<default-repo>"  # default service (per-session selectable anyway)
+export AGENTIC_UI_WORKTREE_ROOT="$HOME/agentic-worktrees"
+export AGENTIC_UI_SKILLS_ROOT="$HOME/agentic-skills"     # optional; create + drop SKILL.md dirs in
+export AGENTIC_UI_MEMORY_ROOT="$HOME/agentic-memory"     # optional; the long-term-memory vault
 ```
 
-`CLAUDE_UI_SKILLS_ROOT`/`CLAUDE_UI_MEMORY_ROOT` are only *defaults* — both are also
+`AGENTIC_UI_SKILLS_ROOT`/`AGENTIC_UI_MEMORY_ROOT` are only *defaults* — both are also
 persisted, UI-editable settings (`library.skills-root`, `memory.root` in the Settings
 dialog → "Skill library"/"Memory"), so the env var only matters for a fresh DB's first
 boot.
 
 A session on a monorepo package still gets a worktree of the *whole* monorepo under
-`CLAUDE_UI_WORKTREE_ROOT` (a full checkout, not just the one package) — `git worktree add`
+`AGENTIC_UI_WORKTREE_ROOT` (a full checkout, not just the one package) — `git worktree add`
 shares the object store with the original checkout, so the extra disk cost per session is
 only the working tree, not a second copy of history.
 
@@ -70,11 +70,11 @@ dialog → "Sessions" after first login; it's persisted in the database.
 ## 4. Database
 
 ```bash
-docker compose up -d          # pgvector/pg17, DB/user/pass claude_ui, port 127.0.0.1:5432
+docker compose up -d          # pgvector/pg17, DB/user/pass agentic_ui, port 127.0.0.1:5432
 ```
 
-Data persists in the `claude-ui_pgdata` Docker volume. Non-default DB password:
-set `CLAUDE_UI_DB_PASSWORD` for both compose and the backend.
+Data persists in the `agentic-ui_pgdata` Docker volume. Non-default DB password:
+set `AGENTIC_UI_DB_PASSWORD` for both compose and the backend.
 
 ## 5. Build
 
@@ -104,27 +104,27 @@ Rebuilds that don't touch the frontend: `mvn package -DskipTests -Dskip.installn
 
 ```bash
 TOKEN=$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)
-echo "$TOKEN" > /tmp/claude-ui.token
-CLAUDE_UI_TOKEN="$TOKEN" nohup java -jar target/claude.ui-0.0.1-SNAPSHOT.jar \
-  --server.address=0.0.0.0 > /tmp/claude-ui.out 2>&1 &
-echo $! > /tmp/claude-ui.pid
+echo "$TOKEN" > /tmp/agentic-ui.token
+AGENTIC_UI_TOKEN="$TOKEN" nohup java -jar target/agentic.ui-0.0.1-SNAPSHOT.jar \
+  --server.address=0.0.0.0 > /tmp/agentic-ui.out 2>&1 &
+echo $! > /tmp/agentic-ui.pid
 echo "http://localhost:8080  token: $TOKEN"
 ```
 
-- **Local-only use**: drop `--server.address=0.0.0.0` and `CLAUDE_UI_TOKEN` — the
+- **Local-only use**: drop `--server.address=0.0.0.0` and `AGENTIC_UI_TOKEN` — the
   startup guard allows tokenless operation on `127.0.0.1` only.
 - **LAN use (phone/tablet/second laptop)**: keep the `0.0.0.0` bind + token; open
   `http://<mac-hostname>.local:8080` from the other device and enter the token.
   macOS will ask once to allow `java` to accept incoming connections — allow it.
   For anything beyond a trusted home LAN, put real TLS in front (e.g. Tailscale,
   or a Caddy reverse proxy with `server.address=127.0.0.1`).
-- Stop: `kill "$(cat /tmp/claude-ui.pid)"` (graceful; shuts sidecars down).
-  Structured logs: `logs/claude-ui.log`, `logs/error.log`, `logs/sidecar/<id>.log`.
+- Stop: `kill "$(cat /tmp/agentic-ui.pid)"` (graceful; shuts sidecars down).
+  Structured logs: `logs/agentic-ui.log`, `logs/error.log`, `logs/sidecar/<id>.log`.
 
 ### Start at login (optional)
 
 Wrap the run block in a script and add it as a `launchd` agent
-(`~/Library/LaunchAgents/de.pamir.claude-ui.plist` with `RunAtLoad` + the env vars in
+(`~/Library/LaunchAgents/de.pamir.agentic-ui.plist` with `RunAtLoad` + the env vars in
 `EnvironmentVariables`), or simply add the script to Login Items. Make sure Docker
 Desktop is also set to start at login so Postgres is up first (the backend fails fast
 without it — just restarts cleanly once the DB is there).
@@ -162,7 +162,7 @@ initial prompt (via a cheap Haiku call on a hidden system session — see CLAUDE
 **Personal API key** (simplest — works unless your Linear account is SSO-only):
 
 ```bash
-export CLAUDE_UI_LINEAR_API_KEY="lin_api_..."   # Linear → Settings → Security & Access
+export AGENTIC_UI_LINEAR_API_KEY="lin_api_..."   # Linear → Settings → Security & Access
 ```
 
 **SSO-gated Linear account (e.g. Google identity)** — the API key path won't work if
@@ -172,27 +172,27 @@ your org requires SSO login, so authorize once interactively instead:
    through the app): `claude mcp add --transport http linear https://mcp.linear.app/mcp`
 2. Complete the browser OAuth flow through your org's SSO login screen.
 3. In the dashboard: **Settings → Linear integration**, toggle "use the ambient
-   `claude` CLI's cached OAuth credential" on (leave `CLAUDE_UI_LINEAR_API_KEY` unset —
+   `claude` CLI's cached OAuth credential" on (leave `AGENTIC_UI_LINEAR_API_KEY` unset —
    an explicit key always takes priority over OAuth if both are set). This is a
    persisted setting (`app_setting` table, `GET`/`PATCH /api/settings`) — no restart
    needed, it takes effect on the next ticket import.
 4. Try an import from the create-session dialog — the backend reuses the `claude`
    CLI's own cached OAuth credential for `mcp.linear.app` (same `~/.claude` identity
-   sidecars already authenticate with), no token stored in claude-ui itself.
+   sidecars already authenticate with), no token stored in agentic-ui itself.
 
 **The `--scope` flag in step 1 doesn't matter and can be left at its default.**
-claude-ui never inherits your `claude mcp add`/`~/.claude` MCP server *declarations*
+agentic-ui never inherits your `claude mcp add`/`~/.claude` MCP server *declarations*
 at any scope — every sidecar process (including the system session) is spawned with
 `settingSources: ['project']` (`sidecar/src/session.ts`), which deliberately excludes
 user- and local-scope settings/MCP config. Step 1 exists **only** to get the
-interactive OAuth consent recorded once; claude-ui builds and passes its own
+interactive OAuth consent recorded once; agentic-ui builds and passes its own
 `--mcp-config` for the Linear server independently once the OAuth toggle is enabled
 in Settings, and that's what actually attaches Linear's tools to the system session — the OAuth
 *token cache* for `mcp.linear.app` is what's being reused, not the server declaration.
 
 If step 4 still reports "needs auth", the CLI's OAuth cache is scoped more narrowly
 than assumed (e.g. per-project rather than per-user) — the fallback is a first-party
-OAuth flow built into claude-ui itself (not yet built; see `docs/plan/phase-5-extensions.md` 5.15).
+OAuth flow built into agentic-ui itself (not yet built; see `docs/plan/phase-5-extensions.md` 5.15).
 
 **Branch-naming guidance** (optional, either auth mode): the same Settings panel has a
 free-text field appended to the Haiku prompt used to generate a ticket's `branchName`/
@@ -206,7 +206,7 @@ the skill & agent library, long-term memory, and ecosystem service discovery —
 which still works sparse-only (Postgres full-text + trigram) without it:
 
 ```bash
-export CLAUDE_UI_VOYAGE_API_KEY="pa-..."   # Voyage AI dashboard → API keys
+export AGENTIC_UI_VOYAGE_API_KEY="pa-..."   # Voyage AI dashboard → API keys
 ```
 
 - **Skill library**: turn on the "vectorize" toggle in Settings → "Skill library"
@@ -264,13 +264,13 @@ save again. Do *not* run graphify's own `graphify install`, `hook install` or th
 `/graphify` skill anywhere on the box — they rewrite `~/.claude/settings.json` and git
 hooks and `pip install` from PyPI inside agent sessions; this app drives only the `update`
 CLI and the MCP server from the checkout, code-only, with everything written to
-`~/claude-worktrees/.graphify/<sessionId>/` (never inside a worktree). Moving the checkout
+`~/agentic-worktrees/.graphify/<sessionId>/` (never inside a worktree). Moving the checkout
 to a newer commit means re-reviewing it first.
 
 ## 9. Updating
 
 ```bash
-kill "$(cat /tmp/claude-ui.pid)"       # a running JVM blocks jar repackaging
+kill "$(cat /tmp/agentic-ui.pid)"       # a running JVM blocks jar repackaging
 git pull
 (cd sidecar && npm install && npm run build)
 (cd sidecar-codex && npm install && npm run build)
@@ -282,11 +282,11 @@ mvn package -DskipTests                # or: ./mvnw package -DskipTests
 
 | Symptom | Cause / fix |
 |---|---|
-| Startup: "refusing to bind … without an auth token" | You bound non-loopback without `CLAUDE_UI_TOKEN` — set it (this is the security model, not a bug) |
+| Startup: "refusing to bind … without an auth token" | You bound non-loopback without `AGENTIC_UI_TOKEN` — set it (this is the security model, not a bug) |
 | Session stuck in STARTING, then CRASHED | `node` not on the backend's PATH, or `claude` never logged in — check `logs/sidecar/<id>.log` |
 | Create fails 409 "already used by worktree" | That branch is checked out by another (possibly orphaned) worktree — see `GET /api/maintenance/orphans`, clean via `POST …/clean` |
 | Health DOWN / boot fails on datasource | Postgres not up yet — `docker compose up -d`, wait for healthy |
 | PR button → 409 | `gh` missing or not authenticated, or repo has no GitHub remote — message says which |
 | Widgets empty after update | Hard-refresh the browser (cached JS) |
-| Ticket import: "needs auth" / "cannot run the OAuth flow" | OAuth mode only (Settings → "Linear integration" toggle, not `CLAUDE_UI_LINEAR_API_KEY`): the interactive `claude mcp add` setup (section 8) wasn't done on this host, or its cached credential isn't visible to headless sessions — check `logs/sidecar/<system-session-id>.log` |
+| Ticket import: "needs auth" / "cannot run the OAuth flow" | OAuth mode only (Settings → "Linear integration" toggle, not `AGENTIC_UI_LINEAR_API_KEY`): the interactive `claude mcp add` setup (section 8) wasn't done on this host, or its cached credential isn't visible to headless sessions — check `logs/sidecar/<system-session-id>.log` |
 | Session stuck in STARTING, then CRASHED, only for `provider: codex` sessions | `sidecar-codex/dist/index.js` missing (build step in section 5/9 skipped), or `codex` never logged in — check `logs/sidecar/<id>.log` |

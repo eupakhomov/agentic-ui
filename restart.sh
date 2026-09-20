@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Stop any running claude-ui backend, build it, and start it again.
+# Stop any running agentic-ui backend, build it, and start it again.
 # Linux and macOS only. See CLAUDE.md "Run the project" / "Stop / kill" for background.
 #
 # Usage: ./restart.sh [--full] [--skip-build]
@@ -13,9 +13,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-PID_FILE=/tmp/claude-ui.pid
-TOKEN_FILE=/tmp/claude-ui.token
-LOG_FILE=/tmp/claude-ui.log
+PID_FILE=/tmp/agentic-ui.pid
+TOKEN_FILE=/tmp/agentic-ui.token
+LOG_FILE=/tmp/agentic-ui.log
 PORT=8080
 
 FULL_BUILD=0
@@ -110,7 +110,7 @@ build_jar() {
 
 start_app() {
   local jar
-  jar="$(ls target/claude.ui-*.jar 2>/dev/null | grep -v '\.original$' | head -1 || true)"
+  jar="$(ls target/agentic.ui-*.jar 2>/dev/null | grep -v '\.original$' | head -1 || true)"
   if [ -z "$jar" ]; then
     echo "No jar found in target/ — build failed, or was skipped (--skip-build) before any build ever ran." >&2
     exit 1
@@ -122,7 +122,7 @@ start_app() {
   log "Token: $token"
 
   log "Starting backend from $jar..."
-  CLAUDE_UI_TOKEN="$token" nohup java -jar "$jar" --server.address=0.0.0.0 > "$LOG_FILE" 2>&1 &
+  AGENTIC_UI_TOKEN="$token" nohup java -jar "$jar" --server.address=0.0.0.0 > "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
 
   log "Waiting for backend to become healthy..."

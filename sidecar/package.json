@@ -1,9 +1,9 @@
 {
-  "name": "claude-ui-sidecar",
+  "name": "agentic-ui-sidecar",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Provider adapter (Claude reference implementation) for claude-ui sessions. NDJSON over stdio.",
+  "description": "Provider adapter (Claude reference implementation) for agentic-ui sessions. NDJSON over stdio.",
   "scripts": {
     "build": "tsc && node ../scripts/gen-provider-capabilities.mjs . CLAUDE_CAPABILITIES",
     "drive": "npm run build && node dist/drive.js",

@@ -45,7 +45,7 @@ export default function CloseDialog({
         {dirtyFiles === null ? (
           <>
             <p style={{ color: 'var(--muted)' }}>
-              Ends the Claude session and removes the worktree. Uncommitted changes will be detected first.
+              Ends the agent session and removes the worktree. Uncommitted changes will be detected first.
             </p>
             {error && <div className="error-text">{error}</div>}
             <div className="actions">

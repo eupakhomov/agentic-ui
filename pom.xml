@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>de.pamir</groupId>
-	<artifactId>claude.ui</artifactId>
+	<artifactId>agentic.ui</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name/>
 	<description/>

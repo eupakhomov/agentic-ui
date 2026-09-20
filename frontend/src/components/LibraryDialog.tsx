@@ -142,7 +142,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
     const started = performance.now();
     api.libraryScan(sniffType(trimmed), trimmed)
       .then((result) => {
-        console.log('[claude-ui] library scan done', result.candidates.length, 'candidates in',
+        console.log('[agentic-ui] library scan done', result.candidates.length, 'candidates in',
           Math.round(performance.now() - started), 'ms');
         setScan(result);
         setImportPage(0);
@@ -202,7 +202,7 @@ export default function LibraryDialog({ onClose }: { onClose: () => void }) {
             patchDraft(meta.path, { name: meta.name, description: meta.description, tags: meta.tags.join(', ') });
           }
         }
-        console.log('[claude-ui] ai-fill done for', paths.length, 'in', Math.round(performance.now() - started), 'ms');
+        console.log('[agentic-ui] ai-fill done for', paths.length, 'in', Math.round(performance.now() - started), 'ms');
       } catch (e) {
         if (!controller.signal.aborted) setImportError(String((e as Error).message ?? e));
       } finally {

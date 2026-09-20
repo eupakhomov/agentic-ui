@@ -38,7 +38,7 @@ export default function App() {
     return (
       <div className="gate">
         <div className="modal">
-          <h2>claude-ui</h2>
+          <h2>agentic-ui</h2>
           <p style={{ color: 'var(--muted)' }}>
             {token() === null ? 'Enter the access token for this dashboard.' : ''}
           </p>

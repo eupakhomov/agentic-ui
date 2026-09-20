@@ -1,3 +1,6 @@
+// must stay the first import: renames legacy `claude-ui.*` localStorage keys before
+// api/rest.ts reads the auth token at module load (see storageMigration.ts)
+import './storageMigration';
 import { createRoot } from 'react-dom/client';
 import { LucideProvider } from 'lucide-react';
 import App from './App';

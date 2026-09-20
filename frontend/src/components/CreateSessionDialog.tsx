@@ -553,7 +553,7 @@ export default function CreateSessionDialog({
               value={ecosystemPath}
               onChange={(e) => setEcosystemPath(e.target.value)}
               placeholder="read-only context folder; empty = no wider context"
-              title="parent folder attached read-only so Claude can read sibling services; in a monorepo the session's own worktree is attached instead"
+              title="parent folder attached read-only so the agent can read sibling services; in a monorepo the session's own worktree is attached instead"
             />
 
             <label>Reflection</label>
