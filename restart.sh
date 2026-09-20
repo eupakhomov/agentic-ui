@@ -117,9 +117,14 @@ start_app() {
   fi
 
   local token
-  token="$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
+  if [ -n "${AGENTIC_UI_TOKEN:-}" ]; then
+    token="$AGENTIC_UI_TOKEN"
+    log "Token: $token (from AGENTIC_UI_TOKEN env — reused, not regenerated)"
+  else
+    token="$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
+    log "Token: $token"
+  fi
   echo "$token" > "$TOKEN_FILE"
-  log "Token: $token"
 
   log "Starting backend from $jar..."
   AGENTIC_UI_TOKEN="$token" nohup java -jar "$jar" --server.address=0.0.0.0 > "$LOG_FILE" 2>&1 &

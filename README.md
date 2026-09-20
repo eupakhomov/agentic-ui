@@ -130,7 +130,7 @@ The most common knobs (all env vars are read at backend startup):
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `AGENTIC_UI_TOKEN` | — | dashboard/API token (required for non-loopback binds; `restart.sh` generates one) |
+| `AGENTIC_UI_TOKEN` | — | dashboard/API token (required for non-loopback binds); `restart.sh` generates a random one each run if unset, or reuses a pre-exported value so it stays stable across restarts |
 | `AGENTIC_UI_REPO` | this repo | default service repo (per-session selectable) |
 | `AGENTIC_UI_WORKTREE_ROOT` | `~/agentic-worktrees` | where session worktrees live |
 | `AGENTIC_UI_MAX_SESSIONS` | `4` | concurrent live sidecars (parked sessions don't count) |

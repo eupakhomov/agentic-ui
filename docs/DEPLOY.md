@@ -103,7 +103,7 @@ Rebuilds that don't touch the frontend: `mvn package -DskipTests -Dskip.installn
 ## 6. Run
 
 ```bash
-TOKEN=$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)
+TOKEN="${AGENTIC_UI_TOKEN:-$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)}"
 echo "$TOKEN" > /tmp/agentic-ui.token
 AGENTIC_UI_TOKEN="$TOKEN" nohup java -jar target/agentic.ui-0.0.1-SNAPSHOT.jar \
   --server.address=0.0.0.0 > /tmp/agentic-ui.out 2>&1 &
@@ -111,6 +111,10 @@ echo $! > /tmp/agentic-ui.pid
 echo "http://localhost:8080  token: $TOKEN"
 ```
 
+- **Stable token across restarts**: pre-export `AGENTIC_UI_TOKEN` (e.g. in a launchd
+  plist's `EnvironmentVariables`, or the run script's own shell) and the block above
+  reuses it instead of rolling a new random one — same behavior `restart.sh` follows
+  on the dev box. Leave it unset for the old rotate-every-start behavior.
 - **Local-only use**: drop `--server.address=0.0.0.0` and `AGENTIC_UI_TOKEN` — the
   startup guard allows tokenless operation on `127.0.0.1` only.
 - **LAN use (phone/tablet/second laptop)**: keep the `0.0.0.0` bind + token; open
