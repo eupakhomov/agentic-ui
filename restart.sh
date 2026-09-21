@@ -131,12 +131,25 @@ start_app() {
   echo $! > "$PID_FILE"
 
   log "Waiting for backend to become healthy..."
-  for _ in $(seq 1 120); do
+  local pid
+  pid="$(cat "$PID_FILE")"
+  for i in $(seq 1 120); do
     if curl -sf "http://localhost:$PORT/actuator/health" >/dev/null 2>&1; then
       log ""
       log "UI:    http://localhost:$PORT"
       log "Token: $token"
       return
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "Backend process (pid $pid) died while starting up. Last 40 lines of $LOG_FILE:" >&2
+      echo "---" >&2
+      tail -n 40 "$LOG_FILE" >&2
+      echo "---" >&2
+      rm -f "$PID_FILE"
+      exit 1
+    fi
+    if [ $((i % 15)) -eq 0 ]; then
+      log "...still waiting (${i}s elapsed, pid $pid still running)"
     fi
     sleep 1
   done

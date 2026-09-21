@@ -72,7 +72,7 @@ tests are plain JUnit against pure logic (no `@SpringBootTest`); the one excepti
 can be excluded:
 
 ```bash
-./mvnw -Dskip.installnodenpm -Dskip.npm -DexcludedGroups=integration test
+mvn -Dskip.installnodenpm -Dskip.npm -DexcludedGroups=integration test
 ```
 
 CI (`.github/workflows/ci.yml`) runs exactly this, plus `npm test`+`tsc` for both
