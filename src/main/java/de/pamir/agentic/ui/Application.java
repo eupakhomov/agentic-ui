@@ -30,6 +30,18 @@ public class Application {
 					props.maxSessions(),
 					props.authToken() == null || props.authToken().isBlank() ? "<unset>" : "****",
 					props.providers() == null ? "{}" : props.providers().keySet());
+			// dist/ is gitignored and `mvn package` doesn't build the sidecars, so a fresh clone
+			// boots fine but every session would crash — say so at startup, not at first session.
+			if (props.providers() != null) {
+				props.providers().forEach((id, provider) -> provider.command().stream()
+						.filter(part -> part.endsWith(".js")).findFirst().ifPresent(script -> {
+							if (!java.nio.file.Files.isRegularFile(java.nio.file.Path.of(script))) {
+								log.warn("provider '{}': sidecar not built ({} missing) — run `npm install && npm run build` "
+										+ "in its package directory (docs/DEPLOY.md §5); sessions on it will fail",
+										id, java.nio.file.Path.of(script).toAbsolutePath().normalize());
+							}
+						}));
+			}
 			// Printed in full (not masked, unlike the summary line above) so the dashboard login
 			// token is discoverable from the log alone — no separate `cat /tmp/agentic-ui.token`
 			// step needed. Same exposure as that token file already sitting in plaintext on disk;

@@ -67,6 +67,15 @@ public class SidecarManager {
 					? Path.of(part).toAbsolutePath().normalize().toString()
 					: part);
 		}
+		// Fail with an actionable message instead of letting node die with MODULE_NOT_FOUND on a
+		// fresh clone (dist/ is gitignored, and `mvn package` doesn't build the sidecars).
+		command.stream().filter(part -> part.endsWith(".js")).findFirst().ifPresent(script -> {
+			if (!Files.isRegularFile(Path.of(script))) {
+				throw new IllegalStateException("provider '" + session.provider() + "': sidecar not built — "
+						+ script + " is missing; run `npm install && npm run build` in its package directory "
+						+ "(see docs/DEPLOY.md §5)");
+			}
+		});
 		command.addAll(buildArgs(session, mcpConfigFile, resume, extraSystemPrompt));
 
 		ProcessBuilder builder = new ProcessBuilder(command).directory(Path.of(session.worktreePath()).toFile());
