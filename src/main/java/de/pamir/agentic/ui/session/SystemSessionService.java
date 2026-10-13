@@ -242,13 +242,17 @@ public class SystemSessionService {
 		// (Codex rejects allowedTools outright — see SettingsService.systemProvider()'s javadoc.)
 		List<String> allowedTools = mcpConfig != null ? List.of("mcp__linear") : List.of();
 		String provider = settings.systemProvider();
+		// A turn must end with the answer itself. Left enabled, the model may delegate to a background
+		// subagent ("I've launched an agent… waiting") and end the turn with a status line, which
+		// SystemTurnClient then fails to parse as JSON. (Codex rejects disallowedTools outright.)
+		List<String> disallowedTools = "claude".equals(provider) ? List.of("Task", "Agent") : List.of();
 		String model = ModelCatalog.byTier(provider, "cheap").orElse(null);
 		SessionEntity entity = SessionEntity.builder()
 				.id(id).name("system").provider(provider)
 				.repoPath("(system)").contextDirs(List.of())
 				.branch("(system)").baseBranch("(system)").worktreePath(scratch.toString())
 				.model(model).permissionMode("default")
-				.allowedTools(allowedTools).disallowedTools(List.of()).mcpConfig(mcpConfig)
+				.allowedTools(allowedTools).disallowedTools(disallowedTools).mcpConfig(mcpConfig)
 				.skillSources(mapper.createArrayNode()).agentSources(mapper.createArrayNode())
 				.state(SessionState.CREATING).kind("system").reflectionEnabled(false)
 				.build();

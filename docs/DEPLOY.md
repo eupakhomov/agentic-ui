@@ -80,9 +80,12 @@ The session engines are separate Node packages, built once (and again after ever
 to build, so build both:
 
 ```bash
-(cd sidecar && npm install && npm run build)
-(cd sidecar-codex && npm install && npm run build)
+(cd sidecar && npm ci && npm run build)
+(cd sidecar-codex && npm ci && npm run build)
 ```
+
+`npm ci` installs exactly what the lockfile pins (and wipes `node_modules` first), so a
+stale or half-written install can't survive a `git pull`; plain `npm install` can.
 
 The backend jar itself is built by the run script in the next step.
 
@@ -270,8 +273,8 @@ the session's worktree, git-excluded, and disappears with it.
 
 ```bash
 git pull
-(cd sidecar && npm install && npm run build)
-(cd sidecar-codex && npm install && npm run build)
+(cd sidecar && npm ci && npm run build)
+(cd sidecar-codex && npm ci && npm run build)
 ./restart.sh --full        # stops the running backend, rebuilds, starts; DB migrates on boot
 ```
 
@@ -282,6 +285,7 @@ git pull
 | Startup: "refusing to bind … without an auth token" | The backend was started on a non-loopback address without `AGENTIC_UI_TOKEN`. Use `./start.sh`/`./restart.sh` (they always pass a token) or export `AGENTIC_UI_TOKEN` (§3) |
 | Session stuck in STARTING, then CRASHED | `node` not on the backend's `PATH`, sidecar not built (§5), or `claude` never logged in — check `logs/sidecar/<id>.log` |
 | Same, only for `provider: codex` sessions | `sidecar-codex` not built (§5), or `codex login` never done — check `logs/sidecar/<id>.log` |
+| Sidecar build fails with a `TS1010`/syntax error inside `node_modules/@types/...` | A truncated/corrupt `node_modules` (interrupted install, bad npm cache, synced folder) — `rm -rf node_modules && npm cache verify && npm ci` in that package |
 | Create fails 409 "already used by worktree" | That branch is checked out by another (possibly orphaned) session worktree — see `GET /api/maintenance/orphans`, clean via `POST …/clean` |
 | Health DOWN / boot fails on datasource | Postgres not up yet — `docker compose up -d`, wait for healthy |
 | PR button → 409 | `gh` missing or not authenticated, or repo has no GitHub remote — the message says which |
