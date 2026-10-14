@@ -122,6 +122,18 @@ export default function Transcript({
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   }, [items]);
 
+  // a resize keeps scrollTop but not the distance from the bottom — e.g. the phase-16 focus
+  // pane shrinking back into its grid slot — so re-stick if we were following the tail
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      if (stickToBottom.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div
       className="transcript"

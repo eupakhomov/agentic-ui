@@ -27,6 +27,11 @@ export {
   Settings as SettingsIcon,
   Plus as New,
   Zap as QuickSession,
+  // phase 16 layout controls — focus mode is a toggle (.active when on), so no separate
+  // grid glyph: one would sit next to Expose (LayoutGrid) and read the same at 16px
+  PanelLeft as SidebarToggle,
+  RectangleHorizontal as FocusMode,
+  BellDot as NeedsYou,
 
   // session widget header
   FolderTree as EcosystemContext,

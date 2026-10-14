@@ -311,3 +311,25 @@ describe('code_intel_status', () => {
     expect(v.transcript.at(-1)).toEqual({ kind: 'note', level: 'warn', text: 'graphify graph build failed: timed out after 15 min' });
   });
 });
+
+describe('phase 16 sidebar fields', () => {
+  it('stamps stateSince from the envelope ts, so a replayed transition keeps its original time', () => {
+    useStore.getState().apply(SID, { seq: 3, ts: '2026-10-01T10:00:00Z', type: 'state_changed', payload: { state: 'WAITING_INPUT' } });
+    expect(useStore.getState().views[SID]?.stateSince).toBe('2026-10-01T10:00:00Z');
+  });
+
+  it('falls back to now when an envelope carries no ts', () => {
+    const before = Date.now();
+    useStore.getState().apply(SID, env('state_changed', { state: 'RUNNING' }));
+    const since = new Date(useStore.getState().views[SID]!.stateSince!).getTime();
+    expect(since).toBeGreaterThanOrEqual(before);
+  });
+
+  it('pr_status_changed updates status and url, keeping the url when the payload omits it', () => {
+    useStore.getState().seed(SID, (v) => ({ ...v, prUrl: 'https://github.com/o/r/pull/1', prCheckStatus: 'PENDING' }));
+    useStore.getState().apply(SID, env('pr_status_changed', { status: 'FAILURE', previousStatus: 'PENDING' }));
+    const v = useStore.getState().views[SID]!;
+    expect(v.prCheckStatus).toBe('FAILURE');
+    expect(v.prUrl).toBe('https://github.com/o/r/pull/1');
+  });
+});
