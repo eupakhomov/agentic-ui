@@ -113,13 +113,15 @@ Prerequisites:
 git clone https://github.com/eupakhomov/agentic-ui.git
 cd agentic-ui
 docker compose up -d     # PostgreSQL (schema applied via Flyway on first start)
-./restart.sh --full      # build backend + frontend, start, print URL + access token
+./install.sh             # build sidecars, frontend and backend
+./start.sh               # start, print URL + access token
 ```
 
 Open the printed URL (default `http://localhost:8080`), paste the token, create a
 session. The first build downloads a Node distro and runs `npm install` — expect it to
-take a while once; later `./restart.sh` runs are fast (add `--full` again only when
-frontend sources changed). `./start.sh` restarts without rebuilding.
+take a while once; `./install.sh --backend-only` is the fast rebuild for backend-only
+changes. `./start.sh` (re)starts without rebuilding; `./update.sh` pulls the latest
+version and runs `./install.sh`.
 
 For a proper install on a Mac — starting at login, LAN access, updating, the optional
 integrations below with their exact install commands — follow
@@ -152,7 +154,7 @@ The most common knobs (all env vars are read at backend startup):
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `AGENTIC_UI_TOKEN` | — | dashboard/API token (required for non-loopback binds); `restart.sh` generates a random one each run if unset, or reuses a pre-exported value so it stays stable across restarts |
+| `AGENTIC_UI_TOKEN` | — | dashboard/API token (required for non-loopback binds); `start.sh` generates a random one each run if unset, or reuses a pre-exported value so it stays stable across restarts |
 | `AGENTIC_UI_REPO` | this repo | default service repo (per-session selectable) |
 | `AGENTIC_UI_WORKTREE_ROOT` | `~/agentic-worktrees` | where session worktrees live |
 | `AGENTIC_UI_MAX_SESSIONS` | `4` | concurrent live sidecars (parked sessions don't count) |

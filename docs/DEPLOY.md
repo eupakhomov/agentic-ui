@@ -73,31 +73,24 @@ Data persists in the `agentic-ui_pgdata` Docker volume. To use a non-default DB
 password, set `AGENTIC_UI_DB_PASSWORD` in `~/.zshrc` — both compose and the backend
 read it.
 
-## 5. Build the sidecars
+## 5. Build
 
-The session engines are separate Node packages, built once (and again after every
-`git pull`). `sidecar-codex/` is only used by `provider: codex` sessions, but it's cheap
-to build, so build both:
-
-```bash
-(cd sidecar && npm ci && npm run build)
-(cd sidecar-codex && npm ci && npm run build)
-```
-
-`npm ci` installs exactly what the lockfile pins (and wipes `node_modules` first), so a
-stale or half-written install can't survive a `git pull`; plain `npm install` can.
-
-The backend jar itself is built by the run script in the next step.
+`./install.sh` builds everything: both sidecars (`sidecar/`, and `sidecar-codex/`, which is
+only used by `provider: codex` sessions but is cheap to build), the frontend and the
+backend jar. It uses `npm ci`, which installs exactly what the lockfile pins (and wipes
+`node_modules` first), so a stale or half-written install can't survive an update. It is
+run in the next step.
 
 ## 6. Run
 
 ```bash
-./restart.sh --full
+./install.sh
+./start.sh
 ```
 
-This starts Postgres if needed, builds the jar (frontend included — the first build
-takes a few minutes while it downloads Node and runs `npm install`), starts the backend
-in the background, waits until it's healthy, and prints the URL and token:
+`install.sh` builds both sidecars and the jar (frontend included — the first build
+takes a few minutes while it downloads Node and runs `npm install`). `start.sh` starts
+Postgres if needed, starts the backend in the background, waits until it's healthy, and prints the URL and token:
 
 ```
 UI:    http://localhost:8080
@@ -108,9 +101,10 @@ Day to day:
 
 | | |
 |---|---|
-| `./start.sh` | restart without rebuilding |
-| `./restart.sh` | rebuild backend only (fast), restart |
-| `./restart.sh --full` | rebuild backend + frontend, restart — use after `git pull` |
+| `./start.sh` | stop the running backend if any, start it from the existing jar |
+| `./install.sh` | build sidecars, frontend and backend (stop the backend first) |
+| `./install.sh --backend-only` | rebuild the backend jar only (fast) |
+| `./update.sh` | `git pull --ff-only` + `./install.sh` |
 | `kill "$(cat /tmp/agentic-ui.pid)"` | stop (graceful; shuts sessions down) |
 | `cat /tmp/agentic-ui.token` | show the current token |
 
@@ -272,17 +266,16 @@ the session's worktree, git-excluded, and disappears with it.
 ## 9. Updating
 
 ```bash
-git pull
-(cd sidecar && npm ci && npm run build)
-(cd sidecar-codex && npm ci && npm run build)
-./restart.sh --full        # stops the running backend, rebuilds, starts; DB migrates on boot
+kill "$(cat /tmp/agentic-ui.pid)"   # a live JVM holds the jar; install.sh refuses to run over it
+./update.sh                         # git pull --ff-only, then install.sh (sidecars, frontend, backend)
+./start.sh                          # DB migrates on boot
 ```
 
 ## 10. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| Startup: "refusing to bind … without an auth token" | The backend was started on a non-loopback address without `AGENTIC_UI_TOKEN`. Use `./start.sh`/`./restart.sh` (they always pass a token) or export `AGENTIC_UI_TOKEN` (§3) |
+| Startup: "refusing to bind … without an auth token" | The backend was started on a non-loopback address without `AGENTIC_UI_TOKEN`. Use `./start.sh` (it always passes a token) or export `AGENTIC_UI_TOKEN` (§3) |
 | Session stuck in STARTING, then CRASHED | `node` not on the backend's `PATH`, sidecar not built (§5), or `claude` never logged in — check `logs/sidecar/<id>.log` |
 | Same, only for `provider: codex` sessions | `sidecar-codex` not built (§5), or `codex login` never done — check `logs/sidecar/<id>.log` |
 | Sidecar build fails with a `TS1010`/syntax error inside `node_modules/@types/...` | A truncated/corrupt `node_modules` (interrupted install, bad npm cache, synced folder) — `rm -rf node_modules && npm cache verify && npm ci` in that package |

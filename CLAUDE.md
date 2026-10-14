@@ -144,7 +144,7 @@ echo "UI: http://localhost:8080  token: $(cat /tmp/agentic-ui.token)"
   - `logs/sidecar/<sessionId>.log` — each session's sidecar stderr (timestamped)
 - Token again: `cat /tmp/agentic-ui.token`.
 - **Stable token across restarts**: export `AGENTIC_UI_TOKEN` (e.g. in `~/.bashrc`)
-  before running `restart.sh`/`start.sh` — they reuse it instead of generating a new
+  before running `start.sh` — it reuses it instead of generating a new
   random token each time, so the browser doesn't need re-pasting it after every
   restart. Leave it unset to keep the old rotate-every-start behavior.
 
@@ -320,7 +320,7 @@ the backend's environment):
 | `AGENTIC_UI_JOURNAL_PAYLOAD_CAP` | `65536` | Max bytes for one journal event payload; larger payloads stored as a truncated preview |
 | `AGENTIC_UI_WS_BUFFER_LIMIT` | `1048576` | Per-client WS outbound buffer; a slow consumer overflowing it is disconnected (reconnects + replays losslessly) |
 | `AGENTIC_UI_LOG_DIR` | `logs` | Log directory (backend rolling logs + per-session sidecar stderr) |
-| `AGENTIC_UI_TOKEN` | — | Dashboard/API auth token (required for non-loopback binds). Pre-export a fixed value to keep the same token across restarts — `restart.sh`/`start.sh` reuse it instead of generating a random one; leave unset to keep the old behavior (a fresh random token printed on every start) |
+| `AGENTIC_UI_TOKEN` | — | Dashboard/API auth token (required for non-loopback binds). Pre-export a fixed value to keep the same token across restarts — `start.sh` reuses it instead of generating a random one; leave unset to keep the old behavior (a fresh random token printed on every start) |
 | `AGENTIC_UI_REPO` | `/mnt/d/projects/agentic-ui` | Default service repo (per-session selectable in the UI) |
 | `AGENTIC_UI_WORKTREE_ROOT` | `~/agentic-worktrees` | Where session worktrees live |
 | `AGENTIC_UI_SKILLS_ROOT` | `~/agentic-skills` | *Default* for the managed skills root, which is now a persisted setting (`library.skills-root`) — the create-dialog picker, provisioning's repo cache, and library imports all read the setting |
