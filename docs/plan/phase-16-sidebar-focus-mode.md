@@ -1,6 +1,6 @@
 # Phase 16 — Session sidebar & focus mode
 
-Status: **landed (2026-10-15)**. Decisions 1–4 and proposals P1–P8 were confirmed
+Status: **landed (2026-10-15)**, commit `701cac8`. Decisions 1–4 and proposals P1–P8 were confirmed
 as written; see the decision log for what changed on contact with the code. Edit sites were checked against the code as of commit `77e3890`.
 
 ## Background
@@ -326,3 +326,101 @@ Final picks will be checked against the whole file at Step 2.
 9. Toggle the system session in the topbar: a **System** group appears at the bottom of
    the sidebar and then disappears.
 10. Switch to the light theme and the large font size, and repeat steps 1–2 visually.
+
+## Implementation log
+
+Landed 2026-10-15 in commit `701cac8`, in one pass through all four steps, then
+corrected after a live run against the real backend the same day.
+
+### Steps
+
+| Step | Status | What landed |
+|---|---|---|
+| 1 — Store and shared helpers | Done | `SessionView` gains `stateSince`, `prUrl`, `prCheckStatus` and `parentSessionId`. There's a new `pr_status_changed` reducer case. The widget's PR chip and GitPanel read the store. `permissions.ts` holds `permissionResponseFor` (moved from `useHotkeys.ts`), `needsFullCard`, `permissionSummary` and `toolLabel`. `sidebarModel.ts` holds the pure `buildSidebarModel` plus `shortAge`. |
+| 2 — Sidebar and layout shell | Done | `Sidebar.tsx` has three fold states and inline Allow/Deny/Open. `Dashboard.tsx` gains the `.shell` layout, `ResizeObserver` grid width, `--topbar-h`, and `restoreAndFocus`. `DockStrip.tsx` is deleted. `notify()` gains `onClick` (P7). |
+| 3 — Focus mode | Done | `layoutMode` is persisted. `.focus-mode` and `.active` CSS. `onLayoutChange` is ignored in focus mode. Hotkey order follows the mode. Maximize is hidden in focus mode. |
+| 4 — Hotkeys, cheatsheet and docs | Done | `b`/`v`/`a` hotkeys and their cheatsheet rows. Updated: ARCHITECTURE (diagram plus a phase-16 paragraph), README features, the phase table, the decision log, and the dashboard screenshot. |
+
+### Deviations from the plan
+
+- **No grid-mode icon (P8).** `LayoutDashboard` sitting next to Exposé's `LayoutGrid`
+  looked identical at 16px. Focus mode is a single `FocusMode` toggle that uses
+  `.active`.
+- **Maximize hand-over.** Clicking a sidebar row while another widget is maximized moves
+  maximize to the target. Otherwise the target would stay hidden underneath.
+- **Focus-mode navigation skips minimized sessions.** `j`/`k`/`1`–`9` walk sidebar order
+  without them, and the shown session falls forward past minimized ones. Minimizing the
+  active session therefore moves to the next session, not back to the top.
+- **Hiding uses `visibility:hidden`, not `display:none`** (Decision 3 and P5 said
+  "same as minimize", which was `display:none`). `display:none` throws away a
+  transcript's scroll position. Minimize now uses `visibility:hidden` too, and the
+  focus-mode grid is zero-height and clipped. `Transcript.tsx` re-sticks to the bottom on
+  resize. This is a behaviour change for minimize, which predates this phase.
+- **Sessions are ordered oldest first.** The API lists newest first, while sessions
+  created on the page were appended last, so P2's "creation order" didn't hold. The
+  Dashboard reverses the API list in its initial state and in `refresh()`.
+- **Needs-you items carry a `key` of `sessionId:requestId`.** The Claude sidecar numbers
+  its requests `p1, p2…` per process, so after a restart two sessions both had a pending
+  `p1`. The colliding React keys left duplicate rows, and in-flight state would have been
+  shared between them.
+- **AskUserQuestion rows** show the first question instead of raw JSON, and MCP tool
+  labels drop the `mcp__server__` prefix (`toolLabel`).
+- **Open scrolls the widget into view, not the card itself** (P2, manual step 4).
+  Because the transcript sticks to the bottom, the pending card is normally already in
+  view.
+
+### Verification
+
+- **Unit and build:** frontend vitest 60 (up from 41: store phase-16 fields,
+  `permissions`, `sidebarModel`), `tsc --noEmit`, `npm run build`. No backend, sidecar
+  or migration file was touched.
+- **Mocked browser pass:** the built bundle, with REST and WS mocked through
+  Playwright's `route`/`routeWebSocket`. Covered: grouping, nesting, Needs-you order,
+  sidebar Allow/Deny and `y`/`d` resolving the card the same way, plan rows offering only
+  Open, `a`, focus-mode switching, `agentic-ui.layout` unchanged after
+  grid → focus → grid, minimizing in focus mode, fold reflow, and dark and light themes.
+- **Live pass:** the real backend with Claude and Codex sessions on this repo.
+  - Sidebar Allow drove a full fan-out: `list_services` → `spawn_child_session` → the
+    child's `report_result`.
+  - P7 was checked with a stubbed `Notification`.
+  - The live pass surfaced the key collision, ordering, scroll and AskUserQuestion fixes
+    above. All four are fixed and re-verified live.
+
+### Definition of Done
+
+- [x] Every step's DoD holds.
+- [x] Grid mode with the sidebar hidden matches phase 15, apart from the dock strip being
+  gone. One intended difference: minimize now keeps scroll position.
+- [x] Sidebar and `y`/`d` produce identical responses through the shared
+  `permissionResponseFor`. Plans and AskUserQuestion can't be resolved from the sidebar.
+- [x] Mode switches, folds and session switches open no new WS, and the grid layout is
+  preserved.
+- [~] Both themes are checked. Font sizes: only the default was checked; small and large
+  weren't.
+- [x] Frontend tests, `tsc` and the build pass. No backend, sidecar or migration change.
+
+### Manual test script results
+
+| # | Result | Notes |
+|---|---|---|
+| 1 | Passed (live), partly | Claude and Codex sessions were live. Time in state advanced. The review-session row was checked with mocked data only. |
+| 2 | Passed | Sidebar Allow was live on MCP permissions. Bash Allow and Deny from the sidebar were mocked. |
+| 3 | Passed (live), partly | Notifications fired for unwatched sessions, and clicking one focused the session (stubbed `Notification`, so not a real OS click). Deny from the sidebar was mocked, not live. |
+| 4 | Passed | Live plan and AskUserQuestion rows offered only Open. Open focuses the widget (see the deviation above). |
+| 5 | Passed | Fold states and grid reflow, in both the mocked and live runs. Persistence across reload was checked. |
+| 6 | Passed | Layout preserved (mocked). Live round trip with no reconnect and scroll positions kept. `a` (mocked). |
+| 7 | **Not run** | The repo has no PR to poll. The PR icon colour comes from the `pr_status_changed` reducer, which is unit-tested. |
+| 8 | Passed, partly | Live: the child nests under its parent after Refresh. "Close the parent → child moves to top level" is covered by a unit test only. |
+| 9 | **Not run** live | The System group is covered by a unit test only. |
+| 10 | Partly | Dark and light themes checked. The large font size wasn't. |
+
+### Follow-ups
+
+- **Server-spawned children appear only after Refresh.** No WS event tells the dashboard
+  about a new session. This predates phase 16, but the sidebar makes it more visible. A
+  `child_spawned` event, or refreshing on the parent's `spawn_child_session` tool
+  result, would fix it.
+- **Manual steps 7 and 9, and font sizes, against a live backend.**
+- **Candidates from the original comparison:** a 2-way split in focus mode, the mobile
+  drawer (ARCHITECTURE §5.6), the Ctrl+K palette, diff-line annotations, and
+  best-of-N prompts.
