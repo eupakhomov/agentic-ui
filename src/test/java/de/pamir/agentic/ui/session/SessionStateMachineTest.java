@@ -381,6 +381,26 @@ class SessionStateMachineTest {
 		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.CLOSED);
 	}
 
+	/** A close that died part-way leaves CLOSING behind; closing again must finish it, not no-op. */
+	@Test
+	void closeRetriesASessionStuckInClosing() {
+		SessionEntity s = session(SessionState.CLOSING);
+
+		sessionService.close(s.id(), null, null);
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.CLOSED);
+	}
+
+	@Test
+	void closeRetryOfClosingSkipsTheDirtyCheckBecauseTheWorktreeIsHalfGone() {
+		SessionEntity s = session(SessionState.CLOSING);
+		worktrees.setDirtyFiles(List.of(" M a.txt"));
+
+		sessionService.close(s.id(), null, null);
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.CLOSED);
+	}
+
 	@Test
 	void closeThrowsOnADirtyWorktreeByDefault() {
 		SessionEntity s = session(SessionState.IDLE);

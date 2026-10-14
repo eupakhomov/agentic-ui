@@ -9,6 +9,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -121,9 +122,36 @@ public class GitWorktreeService {
 
 	public void removeWorktree(Path repo, Path worktreePath) {
 		if (Files.isDirectory(worktreePath)) {
-			git.runOrThrow(repo, "worktree", "remove", "--force", worktreePath.toString());
+			var result = git.run(repo, "worktree", "remove", "--force", worktreePath.toString());
+			if (!result.ok() && Files.isDirectory(worktreePath)) {
+				// git deletes the tree before it forgets the worktree, so a failure part-way (a build
+				// daemon recreating .gradle/ mid-delete, a file held open, a worktree whose .git link
+				// is already gone) leaves a half-removed directory that "worktree remove" will never
+				// accept again. We own this directory — finish the job and let prune drop the metadata.
+				log.warn("git worktree remove failed for {} ({}), deleting directory",
+						worktreePath, result.stderr().strip());
+				deleteRecursively(worktreePath);
+				if (Files.exists(worktreePath)) {
+					throw new GitException("could not remove worktree directory " + worktreePath
+							+ " (git: " + result.stderr().strip() + ")");
+				}
+			}
 		}
 		git.run(repo, "worktree", "prune");
+	}
+
+	private static void deleteRecursively(Path dir) {
+		try (Stream<Path> walk = Files.walk(dir)) {
+			walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+				try {
+					Files.deleteIfExists(p);
+				} catch (IOException e) {
+					log.debug("could not delete {}: {}", p, e.getMessage());
+				}
+			});
+		} catch (IOException e) {
+			log.warn("could not walk {}: {}", dir, e.getMessage());
+		}
 	}
 
 	public List<String> localBranches(Path repo) {

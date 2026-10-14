@@ -343,11 +343,17 @@ public class SessionService {
 	public void close(UUID id, String dirtyMode, String commitMessage) {
 		synchronized (lock(id)) {
 			SessionEntity session = sessions.get(id);
-			if (session.state() == SessionState.CLOSED || session.state() == SessionState.CLOSING) {
+			if (session.state() == SessionState.CLOSED) {
 				return;
 			}
+			// A concurrent close holds this lock, so CLOSING seen here means an earlier close died
+			// part-way (failed worktree removal, backend killed mid-close) — retry it instead of
+			// leaving the session stuck: CLOSING rejects messages and nothing else ever resolves it.
+			boolean retry = session.state() == SessionState.CLOSING;
 			if ("system".equals(session.kind())) {
-				transition(id, SessionState.CLOSING);
+				if (!retry) {
+					transition(id, SessionState.CLOSING);
+				}
 				sidecars.terminate(id);
 				deleteRecursively(Path.of(session.worktreePath()));
 				deleteGraph(id);
@@ -356,7 +362,9 @@ public class SessionService {
 				return;
 			}
 			Path worktree = Path.of(session.worktreePath());
-			List<String> dirty = worktrees.dirtyFiles(worktree);
+			// a retry has already been through the dirty handling (commit/stash/discard runs before
+			// removal), and the half-removed worktree may no longer be a git repo to ask
+			List<String> dirty = retry ? List.of() : worktrees.dirtyFiles(worktree);
 			if (!dirty.isEmpty() && (dirtyMode == null || dirtyMode.equals("fail"))) {
 				throw new DirtyWorktreeException(dirty);
 			}
@@ -365,7 +373,9 @@ public class SessionService {
 				// immovable (detached checkout), stash/discard stay available for scratch notes
 				throw new IllegalStateException("review sessions cannot commit — use stash or discard");
 			}
-			transition(id, SessionState.CLOSING);
+			if (!retry) {
+				transition(id, SessionState.CLOSING);
+			}
 			sidecars.terminate(id);
 			if (!dirty.isEmpty()) {
 				switch (dirtyMode) {

@@ -83,6 +83,24 @@ public class SessionHousekeeping {
 		}
 	}
 
+	/**
+	 * A close that died part-way (failed worktree removal, backend stopped mid-close) leaves the
+	 * session in CLOSING forever: it rejects messages and has no Resume. Nothing can be in flight
+	 * at startup, so finish the close here; a failure is logged and the session stays CLOSING for
+	 * the user to retry from the close dialog.
+	 */
+	@EventListener(ApplicationReadyEvent.class)
+	void finishInterruptedCloses() {
+		for (SessionEntity session : sessions.findByStates(List.of(SessionState.CLOSING))) {
+			log.info("startup sweep: session {} was CLOSING -> retrying close", session.id());
+			try {
+				sessionService.close(session.id(), "fail", null);
+			} catch (RuntimeException e) {
+				log.warn("startup sweep: retrying close of session {} failed: {}", session.id(), e.getMessage());
+			}
+		}
+	}
+
 	/** A kill -9'd backend leaves sidecars running; their PID files let us reap them. */
 	private void killOrphanSidecar(SessionEntity session) {
 		Path pidFile = SidecarManager.pidFile(session);

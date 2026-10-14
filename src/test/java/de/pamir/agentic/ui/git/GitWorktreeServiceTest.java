@@ -321,4 +321,36 @@ class GitWorktreeServiceTest {
 		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, false, mono, mono.resolve("packages/foo"))).isFalse();
 		assertThat(worktrees.isKnownService(mono, DEFAULT_GLOBS, false, mono, mono)).isTrue();
 	}
+
+	@Test
+	void removeWorktreeFinishesAHalfRemovedDirectory(@TempDir Path tmp) throws IOException {
+		Path repo = tmp.resolve("repo");
+		initRepo(repo);
+		commit(repo, "init");
+		Path wt = tmp.resolve("wt");
+		git.runOrThrow(repo, "worktree", "add", "-q", "-b", "feat", wt.toString());
+		// what a failed "worktree remove" leaves behind: the .git link and tracked files are gone,
+		// something else (a build daemon's .gradle/) is still there
+		Files.deleteIfExists(wt.resolve(".git"));
+		Files.createDirectories(wt.resolve(".gradle/8.5"));
+		Files.writeString(wt.resolve(".gradle/8.5/lock"), "x");
+
+		worktrees.removeWorktree(repo, wt);
+
+		assertThat(wt).doesNotExist();
+		assertThat(git.run(repo, "worktree", "list").stdout()).doesNotContain("wt");
+	}
+
+	@Test
+	void removeWorktreeRemovesARegularWorktree(@TempDir Path tmp) throws IOException {
+		Path repo = tmp.resolve("repo");
+		initRepo(repo);
+		commit(repo, "init");
+		Path wt = tmp.resolve("wt");
+		git.runOrThrow(repo, "worktree", "add", "-q", "-b", "feat", wt.toString());
+
+		worktrees.removeWorktree(repo, wt);
+
+		assertThat(wt).doesNotExist();
+	}
 }
