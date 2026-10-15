@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import { WsSession } from '../api/ws';
+import { contextUsageTitle } from '../protocol';
 import type { Envelope, PermissionMode, SessionEntity } from '../protocol';
 import { type CodeIntelStatus, useStore } from '../store/store';
 import { notify, notificationForEvent } from '../notify';
@@ -361,10 +362,7 @@ export default function SessionWidget({
         {view.contextTokens != null && view.contextWindow != null && view.contextWindow > 0 && (
           <span
             className={`chip${ctxPercent >= 90 ? ' ctx-danger' : ctxPercent >= contextWarnPercent ? ' ctx-warn' : ''}`}
-            title={
-              `${view.contextTokens.toLocaleString()} / ${view.contextWindow.toLocaleString()} tokens`
-              + (view.autoCompactAt != null ? ` (auto-compact at ${Math.round((view.autoCompactAt / view.contextWindow) * 100)}%)` : '')
-            }
+            title={contextUsageTitle(view.contextTokens, view.contextWindow, view.autoCompactAt, view.contextBreakdown)}
             onMouseDown={(e) => e.stopPropagation()}
           >
             ctx {ctxPercent}%

@@ -218,6 +218,26 @@ export interface ContextUsageEvent {
   window: number;
   /** absolute token count at which the provider will auto-compact, when it reports one */
   autoCompactAt?: number;
+  /** what the tokens are made of, when the provider can say (Claude only; absent otherwise) */
+  breakdown?: ContextBreakdown;
+}
+
+/** Compact, display-oriented split of a context_usage snapshot; zero-token rows are omitted. */
+export interface ContextBreakdown {
+  /** provider's own category rows (system prompt, tools, messages, ...), largest first */
+  categories: { name: string; tokens: number }[];
+  /** MCP tool-schema tokens rolled up per server; `deferred` = schemas not loaded up front */
+  mcpServers: { name: string; tokens: number; deferred: boolean }[];
+  /** conversation split, when the provider reports one */
+  messages?: {
+    toolResults: number;
+    toolCalls: number;
+    assistant: number;
+    user: number;
+    attachments: number;
+  };
+  /** tools whose calls+results take the most conversation tokens (max 5) */
+  topTools: { name: string; tokens: number }[];
 }
 
 /** A compaction boundary just happened (manual command or provider auto-compact). */

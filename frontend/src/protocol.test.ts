@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeholdersOf, assetStub, pickDefaultBranch } from './protocol';
+import { placeholdersOf, assetStub, pickDefaultBranch, contextUsageTitle } from './protocol';
 import type { TemplateAsset } from './protocol';
 
 // docs/plan/phase-9-production-hardening.md T6: protocol.ts's pure helpers.
@@ -53,5 +53,27 @@ describe('assetStub', () => {
       id: 'a1', sourceId: null, kind: 'skill', name: 'my-skill', location: '/loc/a1', status: 'ACTIVE',
       description: '', sourcePath: null, contentHash: '', tags: [], createdAt: '', updatedAt: '',
     });
+  });
+});
+
+describe('contextUsageTitle', () => {
+  it('is the plain one-liner without a breakdown', () => {
+    expect(contextUsageTitle(1000, 200000, null, null)).toBe('1,000 / 200,000 tokens');
+    expect(contextUsageTitle(1000, 200000, 170000, null)).toBe('1,000 / 200,000 tokens (auto-compact at 85%)');
+  });
+
+  it('appends categories, MCP servers, messages and heaviest tools', () => {
+    const t = contextUsageTitle(1000, 200000, null, {
+      categories: [{ name: 'Messages', tokens: 900 }],
+      mcpServers: [{ name: 'linear', tokens: 300, deferred: true }, { name: 'memory', tokens: 5, deferred: false }],
+      messages: { toolResults: 800, toolCalls: 50, assistant: 40, user: 10, attachments: 0 },
+      topTools: [{ name: 'Bash', tokens: 700 }],
+    });
+    expect(t).toContain('Messages: 900');
+    expect(t).toContain('  linear: 300 (deferred)');
+    expect(t).toContain('  memory: 5\n');
+    expect(t).toContain('  tool results: 800');
+    expect(t).not.toContain('attachments');
+    expect(t).toContain('Heaviest tools:\n  Bash: 700');
   });
 });

@@ -116,6 +116,9 @@ on macOS; `./mvnw` sometimes loses its executable bit in git checkouts.
 
 **Token**: with `AGENTIC_UI_TOKEN` exported (§3) the same token is reused on every
 restart, so the browser stays logged in. Unset, a fresh one is generated each start.
+The in-process `memory` MCP server authenticates with the same token; its entry in a
+session's `mcpConfig` is re-stamped with the live token whenever the config is written
+(create, resume, wake), so a restart no longer leaves a session with a dead `memory` server.
 
 **LAN access** (phone, tablet, another laptop): the scripts already bind all interfaces,
 so open `http://<mac-name>.local:8080` from the other device and enter the token. macOS

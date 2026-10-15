@@ -1,8 +1,15 @@
-import { query, type Options, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import {
+  query,
+  type Options,
+  type SDKControlGetContextUsageResponse,
+  type SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import {
   CLAUDE_CAPABILITIES,
   PROTOCOL_VERSION,
   type Command,
+  type ContextBreakdown,
+  type ContextUsageEvent,
   type EffortLevel,
   type Event,
   type PermissionMode,
@@ -95,6 +102,67 @@ async function loadMcpServers(path: string): Promise<Record<string, unknown>> {
  * Split out from {@link runSession}'s main loop so it's testable without a live SDK
  * query — feed it canned SDK message shapes directly.
  */
+const TOP_TOOLS = 5;
+
+/**
+ * Maps the SDK's getContextUsage() report to our provider-neutral context_usage event.
+ * Pure (no I/O) so it is unit-testable. The breakdown is display-only: zero-token rows are
+ * dropped and nothing is matched on the SDK's category display names.
+ */
+export function toContextUsageEvent(
+  usage: Pick<
+    SDKControlGetContextUsageResponse,
+    'totalTokens' | 'rawMaxTokens' | 'autoCompactThreshold' | 'categories' | 'mcpTools' | 'messageBreakdown'
+  >,
+): ContextUsageEvent {
+  const categories = usage.categories
+    .filter((c) => c.tokens > 0)
+    .map((c) => ({ name: c.name, tokens: c.tokens }))
+    .sort((a, b) => b.tokens - a.tokens);
+
+  const servers = new Map<string, { tokens: number; allDeferred: boolean }>();
+  for (const t of usage.mcpTools ?? []) {
+    const s = servers.get(t.serverName) ?? { tokens: 0, allDeferred: true };
+    s.tokens += t.tokens;
+    s.allDeferred = s.allDeferred && t.isLoaded === false;
+    servers.set(t.serverName, s);
+  }
+  const mcpServers = [...servers.entries()]
+    .filter(([, s]) => s.tokens > 0)
+    .map(([name, s]) => ({ name, tokens: s.tokens, deferred: s.allDeferred }))
+    .sort((a, b) => b.tokens - a.tokens);
+
+  const mb = usage.messageBreakdown;
+  const breakdown: ContextBreakdown = {
+    categories,
+    mcpServers,
+    ...(mb
+      ? {
+          messages: {
+            toolResults: mb.toolResultTokens,
+            toolCalls: mb.toolCallTokens,
+            assistant: mb.assistantMessageTokens,
+            user: mb.userMessageTokens,
+            attachments: mb.attachmentTokens,
+          },
+        }
+      : {}),
+    topTools: (mb?.toolCallsByType ?? [])
+      .map((t) => ({ name: t.name, tokens: t.callTokens + t.resultTokens }))
+      .filter((t) => t.tokens > 0)
+      .sort((a, b) => b.tokens - a.tokens)
+      .slice(0, TOP_TOOLS),
+  };
+
+  return {
+    type: 'context_usage',
+    tokens: usage.totalTokens,
+    window: usage.rawMaxTokens,
+    ...(usage.autoCompactThreshold !== undefined ? { autoCompactAt: usage.autoCompactThreshold } : {}),
+    breakdown,
+  };
+}
+
 export function translateSdkMessage(
   message: { type: string } & Record<string, unknown>,
   modelState: { currentModel: string },
@@ -328,13 +396,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
 
   async function emitContextUsage(): Promise<void> {
     try {
-      const usage = await q.getContextUsage();
-      writeEvent({
-        type: 'context_usage',
-        tokens: usage.totalTokens,
-        window: usage.rawMaxTokens,
-        ...(usage.autoCompactThreshold !== undefined ? { autoCompactAt: usage.autoCompactThreshold } : {}),
-      });
+      writeEvent(toContextUsageEvent(await q.getContextUsage()));
     } catch (e) {
       log(`getContextUsage failed: ${String(e)}`);
     }

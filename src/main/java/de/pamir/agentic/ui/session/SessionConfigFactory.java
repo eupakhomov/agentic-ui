@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -168,6 +169,8 @@ public class SessionConfigFactory {
 				allowedTools.add("mcp__memory__find_service");
 				allowedTools.add("mcp__memory__list_discovered_services");
 			}
+			// a copied config (duplicate / quick session) already carries the tools appended above
+			allowedTools = new ArrayList<>(new LinkedHashSet<>(allowedTools));
 		}
 		String cwdPath = computeCwdPath(repo, resolution.servicePath(), worktree);
 		JsonNode mcpConfig = withDefaultCodeIntelMcp(withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig)),
@@ -404,6 +407,48 @@ public class SessionConfigFactory {
 	/** Layers the memory MCP server into a session's mcpConfig, same merge rule as {@link #withDefaultLinearMcp}. */
 	JsonNode withDefaultMemoryMcp(JsonNode configured) {
 		return withDefaultServer(configured, "memory", memoryMcpServer());
+	}
+
+	/** True if {@code entry} is the in-process memory server this backend generates (same URL), as opposed to a user-authored one. */
+	private boolean isManagedMemoryEntry(JsonNode entry) {
+		return entry != null && entry.path("url").asText("").equals("http://127.0.0.1:" + serverPort + "/api/mcp/memory");
+	}
+
+	/**
+	 * The memory entry carries this backend's bearer token, which rotates on every restart (unless
+	 * AGENTIC_UI_TOKEN is pinned), so a persisted copy goes stale and the server then fails its 401
+	 * handshake. Re-stamps the current token onto a managed entry; user-authored entries (any other
+	 * URL) and configs without one are returned untouched.
+	 */
+	JsonNode refreshManagedMcp(JsonNode mcpConfig) {
+		if (!(mcpConfig instanceof ObjectNode existing) || !isManagedMemoryEntry(existing.get("memory"))) {
+			return mcpConfig;
+		}
+		ObjectNode fresh = memoryMcpServer();
+		if (fresh == null) {
+			return mcpConfig;
+		}
+		ObjectNode refreshed = mapper.createObjectNode();
+		refreshed.setAll(existing);
+		refreshed.set("memory", fresh.get("memory"));
+		return refreshed;
+	}
+
+	/**
+	 * A session's mcpConfig minus the managed memory entry (re-layered with the current token at
+	 * prepare()); null if nothing user-authored remains, so a copy doesn't pin a stale token via
+	 * the "session's own key wins" rule in {@link #withDefaultServer}.
+	 */
+	private JsonNode withoutManagedMemoryServer(JsonNode mcpConfig) {
+		if (mcpConfig == null || mcpConfig.isNull()) {
+			return null;
+		}
+		if (!(mcpConfig instanceof ObjectNode existing) || !isManagedMemoryEntry(existing.get("memory"))) {
+			return mcpConfig;
+		}
+		ObjectNode rest = existing.deepCopy();
+		rest.remove("memory");
+		return rest.isEmpty() ? null : rest;
 	}
 
 	/**
@@ -652,8 +697,9 @@ public class SessionConfigFactory {
 		if (!source.disallowedTools().isEmpty()) {
 			overrides.set("disallowedTools", mapper.valueToTree(source.disallowedTools()));
 		}
-		if (source.mcpConfig() != null && !source.mcpConfig().isNull()) {
-			overrides.set("mcpConfig", source.mcpConfig());
+		JsonNode carriedMcp = withoutManagedMemoryServer(source.mcpConfig());
+		if (carriedMcp != null) {
+			overrides.set("mcpConfig", carriedMcp);
 		}
 		if (source.envVars() != null && !source.envVars().isNull()) {
 			overrides.set("envVars", source.envVars());

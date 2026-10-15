@@ -154,6 +154,61 @@ class SessionConfigFactoryTest {
 		assertThat(result.path("memory").path("headers").path("Authorization").asText()).isEqualTo("Bearer authtoken");
 	}
 
+	private ObjectNode mcpWith(String name, String url, String token) {
+		ObjectNode root = mapper.createObjectNode();
+		ObjectNode server = root.putObject(name).put("type", "http").put("url", url);
+		server.putObject("headers").put("Authorization", "Bearer " + token);
+		return root;
+	}
+
+	@Test
+	void refreshManagedMcpRestampsTheCurrentTokenOnAStaleMemoryEntry() {
+		SessionConfigFactory factory = factoryWith(propsWithLinearKey("", "newtoken"), fakeSettings(false, true, false));
+		ObjectNode stale = mcpWith("memory", "http://127.0.0.1:8080/api/mcp/memory", "oldtoken");
+		stale.setAll(mcpWith("other", "http://example.test/mcp", "keepme"));
+
+		JsonNode result = factory.refreshManagedMcp(stale);
+
+		assertThat(result.path("memory").path("headers").path("Authorization").asText()).isEqualTo("Bearer newtoken");
+		assertThat(result.path("other").path("headers").path("Authorization").asText()).isEqualTo("Bearer keepme");
+		assertThat(stale.path("memory").path("headers").path("Authorization").asText()).isEqualTo("Bearer oldtoken");
+	}
+
+	@Test
+	void refreshManagedMcpLeavesAUserAuthoredMemoryEntryAlone() {
+		SessionConfigFactory factory = factoryWith(propsWithLinearKey("", "newtoken"), fakeSettings(false, true, false));
+		ObjectNode custom = mcpWith("memory", "http://other-host:9000/mcp", "theirs");
+
+		assertThat(factory.refreshManagedMcp(custom)).isEqualTo(custom);
+		assertThat(factory.refreshManagedMcp(null)).isNull();
+	}
+
+	@Test
+	void configOverridesFromDropsTheManagedMemoryEntryButKeepsOtherServers() {
+		SessionConfigFactory factory = factoryWith(propsWithLinearKey("", "newtoken"), fakeSettings(false, true, false));
+		ObjectNode mcp = mcpWith("memory", "http://127.0.0.1:8080/api/mcp/memory", "oldtoken");
+		mcp.setAll(mcpWith("custom", "http://example.test/mcp", "keepme"));
+		SessionEntity source = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("claude")
+				.repoPath("/r").branch("b").baseBranch("main").worktreePath("/wt").state(SessionState.IDLE)
+				.permissionMode("default").allowedTools(List.of()).disallowedTools(List.of()).mcpConfig(mcp).build();
+
+		JsonNode carried = factory.configOverridesFrom(source).get("mcpConfig");
+
+		assertThat(carried.has("memory")).isFalse();
+		assertThat(carried.has("custom")).isTrue();
+	}
+
+	@Test
+	void configOverridesFromOmitsMcpConfigWhenOnlyTheManagedMemoryEntryWasThere() {
+		SessionConfigFactory factory = factoryWith(propsWithLinearKey("", "newtoken"), fakeSettings(false, true, false));
+		SessionEntity source = SessionEntity.builder().id(UUID.randomUUID()).name("s").provider("claude")
+				.repoPath("/r").branch("b").baseBranch("main").worktreePath("/wt").state(SessionState.IDLE)
+				.permissionMode("default").allowedTools(List.of()).disallowedTools(List.of())
+				.mcpConfig(mcpWith("memory", "http://127.0.0.1:8080/api/mcp/memory", "oldtoken")).build();
+
+		assertThat(factory.configOverridesFrom(source).has("mcpConfig")).isFalse();
+	}
+
 	@Test
 	void withDefaultMemoryMcpIsANoOpWhenBothMemoryAndDiscoveryAreDisabled() {
 		SessionConfigFactory factory = factoryWith(propsWithLinearKey("", "authtoken"), fakeSettings(false, false, false));
@@ -250,6 +305,22 @@ class SessionConfigFactoryTest {
 		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), java.nio.file.Path.of("/worktree"), options);
 
 		assertThat(prepared.entity().maxTurns()).isEqualTo(5);
+	}
+
+	@Test
+	void prepareDoesNotDuplicateAutoAppendedMemoryToolsAlreadyInACopiedAllowedTools() {
+		SessionConfigFactory factory = new SessionConfigFactory(propsWithLinearKey("", "authtoken"),
+				fakeSettings(false, true, true), null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities())), null, null, null, null);
+		ObjectNode overrides = mapper.createObjectNode().put("provider", "claude");
+		overrides.putArray("allowedTools").add("Bash").add("mcp__memory__memory_search").add("mcp__memory__find_service");
+		SessionService.CreateOptions options = new SessionService.CreateOptions(
+				"s", "branch", "main", System.getProperty("user.dir"), null, overrides, Map.of(), false);
+
+		SessionConfigFactory.Prepared prepared = factory.prepare(UUID.randomUUID(), java.nio.file.Path.of("/worktree"), options);
+
+		assertThat(prepared.entity().allowedTools()).doesNotHaveDuplicates()
+				.contains("Bash", "mcp__memory__memory_search", "mcp__memory__memory_tags", "mcp__memory__find_service");
 	}
 
 	// --- prepare() servicePath resolution (docs/plan/phase-11-monorepo.md Step 3) ---

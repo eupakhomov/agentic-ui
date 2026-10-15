@@ -57,7 +57,7 @@ Bash is not path-policed — it flows through the normal approval path.
 | `permission_mode_changed` | `mode` | confirms `set_permission_mode` |
 | `model_changed` | `model` | confirms `set_model` |
 | `turn_complete` | `stopReason`, `usage`, `costUsd`, `durationMs`, `numTurns`, `model` | end of an agentic turn; `model` is the model that produced it (tracked from the preceding `system_init`, which fires at the start of every turn) |
-| `context_usage` | `tokens`, `window`, `autoCompactAt?` | how full the *next* request's context will be — never `turn_complete.usage`'s per-turn summary. Emitted after every `turn_complete` and after a `context_compacted`, never mid-turn |
+| `context_usage` | `tokens`, `window`, `autoCompactAt?`, `breakdown?` | how full the *next* request's context will be — never `turn_complete.usage`'s per-turn summary. Emitted after every `turn_complete` and after a `context_compacted`, never mid-turn. `breakdown` (Claude only; display-only, journaled with the event, not persisted on the session row) = `{categories: [{name, tokens}], mcpServers: [{name, tokens, deferred}], messages?: {toolResults, toolCalls, assistant, user, attachments}, topTools: [{name, tokens}]}` — zero-token rows omitted, `mcpServers[].deferred` = the server's tool schemas are not loaded up front (tool search), `topTools` = max 5 by call+result tokens |
 | `context_compacted` | `preTokens`, `postTokens`, `trigger: manual\|auto` | a compaction boundary just happened (a `compact` command or the provider's own auto-compact) |
 | `error` | `message`, `fatal` | non-fatal: guard denials, malformed input, transient provider errors; fatal: precedes exit 1 |
 | `exiting` | `reason: shutdown\|fatal\|stdin_closed` | last event before exit |

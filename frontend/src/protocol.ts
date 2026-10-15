@@ -104,6 +104,14 @@ export interface SessionEntity {
   contextWindow: number | null;
 }
 
+/** Mirrors docs/PROTOCOL.md `context_usage.breakdown` (Claude only; absent for other providers). */
+export interface ContextBreakdown {
+  categories: { name: string; tokens: number }[];
+  mcpServers: { name: string; tokens: number; deferred: boolean }[];
+  messages?: { toolResults: number; toolCalls: number; assistant: number; user: number; attachments: number };
+  topTools: { name: string; tokens: number }[];
+}
+
 export type PrCheckStatus = 'PENDING' | 'SUCCESS' | 'FAILURE' | 'MERGED' | 'CLOSED' | 'ERROR';
 
 /** GET /api/repo/prs — open PRs for the review create-dialog's PR picker (phase 15). */
@@ -460,4 +468,33 @@ export function assetStub(a: TemplateAsset): LibraryAsset {
     id: a.id, sourceId: null, kind: a.kind, name: a.name, description: '', location: a.location,
     sourcePath: null, contentHash: '', status: a.status, tags: [], createdAt: '', updatedAt: '',
   };
+}
+
+/** Multi-line chip tooltip for a context_usage snapshot; the breakdown block only when one was reported. */
+export function contextUsageTitle(
+  tokens: number, window: number, autoCompactAt: number | null, breakdown: ContextBreakdown | null,
+): string {
+  const n = (x: number) => x.toLocaleString();
+  let head = `${n(tokens)} / ${n(window)} tokens`;
+  if (autoCompactAt != null) head += ` (auto-compact at ${Math.round((autoCompactAt / window) * 100)}%)`;
+  if (!breakdown) return head;
+  const lines = [head];
+  if (breakdown.categories.length > 0) {
+    lines.push('', ...breakdown.categories.map((c) => `${c.name}: ${n(c.tokens)}`));
+  }
+  if (breakdown.mcpServers.length > 0) {
+    lines.push('', 'MCP servers:', ...breakdown.mcpServers.map(
+      (m) => `  ${m.name}: ${n(m.tokens)}${m.deferred ? ' (deferred)' : ''}`));
+  }
+  const m = breakdown.messages;
+  if (m) {
+    lines.push('', 'Messages:',
+      `  tool results: ${n(m.toolResults)}`, `  tool calls: ${n(m.toolCalls)}`,
+      `  assistant: ${n(m.assistant)}`, `  user: ${n(m.user)}`);
+    if (m.attachments > 0) lines.push(`  attachments: ${n(m.attachments)}`);
+  }
+  if (breakdown.topTools.length > 0) {
+    lines.push('', 'Heaviest tools:', ...breakdown.topTools.map((t) => `  ${t.name}: ${n(t.tokens)}`));
+  }
+  return lines.join('\n');
 }

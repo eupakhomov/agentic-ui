@@ -212,6 +212,18 @@ describe('store actions outside reduce', () => {
 });
 
 describe('context_usage', () => {
+  it('stores the breakdown when present and clears it when a later snapshot has none', () => {
+    const breakdown = {
+      categories: [{ name: 'Messages', tokens: 900 }],
+      mcpServers: [{ name: 'linear', tokens: 300, deferred: true }],
+      topTools: [],
+    };
+    useStore.getState().apply(SID, env('context_usage', { tokens: 1000, window: 200000, breakdown }));
+    expect(useStore.getState().views[SID]!.contextBreakdown).toEqual(breakdown);
+    useStore.getState().apply(SID, env('context_usage', { tokens: 1100, window: 200000 }));
+    expect(useStore.getState().views[SID]!.contextBreakdown).toBeNull();
+  });
+
   it('records tokens/window/autoCompactAt', () => {
     useStore.getState().apply(SID, env('context_usage', { tokens: 38000, window: 200000, autoCompactAt: 178000 }));
     const v = useStore.getState().views[SID]!;

@@ -512,6 +512,13 @@ effect on the next use with no backend restart.
   plus a "Pending" tab (topbar badge count) for approving/discarding proposals; the
   widget's reflect button triggers an immediate reflection on that session.
 
+**MCP tool search**: every sidecar is spawned with `ENABLE_TOOL_SEARCH=true`
+(`SidecarManager.applySidecarEnvironment`) so MCP tool schemas (Linear alone is ~80 tools) are
+deferred and loaded on demand instead of filling the first request. A session overrides it via its
+`envVars` (`ENABLE_TOOL_SEARCH=auto|false`). The widget's `ctx N%` chip tooltip shows the
+per-category / per-MCP-server breakdown (`context_usage.breakdown`, Claude only) — use it to check
+what a session's context is made of.
+
 **Fixed internals** (code constants, for awareness): stream_delta journal batching
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100
 lines; WS send timeout 10 s; git command timeout 60 s; sidecar shutdown grace 5 s + 2 s

@@ -79,18 +79,7 @@ public class SidecarManager {
 		command.addAll(buildArgs(session, mcpConfigFile, resume, extraSystemPrompt));
 
 		ProcessBuilder builder = new ProcessBuilder(command).directory(Path.of(session.worktreePath()).toFile());
-		if (SettingsService.CODE_INTEL_SERENA.equals(session.codeIntel())) {
-			// Serena's language server can take minutes to download on a cold cache (docs/plan/
-			// phase-12-linear-cache-serena-context.md Step B0) — a generous, conservative default
-			// the client's own MCP handshake timeout should honor, so it doesn't give up on Serena
-			// as a dead server mid-download. Set before the session's own envVars so it can still
-			// override this. Serena-only: graphify's stdio server initializes in under a second
-			// (phase-13 Step 0) and the graph is built out of band.
-			builder.environment().put("MCP_TIMEOUT", "300000");
-		}
-		if (session.envVars() != null && session.envVars().isObject()) {
-			session.envVars().properties().forEach(e -> builder.environment().put(e.getKey(), e.getValue().asText()));
-		}
+		applySidecarEnvironment(session, builder.environment());
 		try {
 			Process process = builder.start();
 			Path stderrLog = Path.of(props.logDir(), "sidecar", session.id() + ".log");
@@ -158,6 +147,29 @@ public class SidecarManager {
 	void terminateAll() {
 		log.info("terminating {} sidecar(s)", handles.size());
 		handles.keySet().forEach(this::terminate);
+	}
+
+	/**
+	 * Environment defaults for a session's sidecar, then the session's own {@code envVars} on top
+	 * so any of them can be overridden per session. Package-private: unit-tested directly.
+	 */
+	void applySidecarEnvironment(SessionEntity session, Map<String, String> env) {
+		// Defer MCP tool schemas behind the SDK's tool search instead of loading every tool
+		// definition into the first request (Linear alone is ~80 tools, tens of thousands of tokens
+		// of a 200k window). A Claude Code setting; the Codex sidecar and its child ignore it, so
+		// no per-provider gate. Override per session with envVars ENABLE_TOOL_SEARCH=auto|false.
+		env.put("ENABLE_TOOL_SEARCH", "true");
+		if (SettingsService.CODE_INTEL_SERENA.equals(session.codeIntel())) {
+			// Serena's language server can take minutes to download on a cold cache (docs/plan/
+			// phase-12-linear-cache-serena-context.md Step B0) — a generous, conservative default
+			// the client's own MCP handshake timeout should honor, so it doesn't give up on Serena
+			// as a dead server mid-download. Serena-only: graphify's stdio server initializes in
+			// under a second (phase-13 Step 0) and the graph is built out of band.
+			env.put("MCP_TIMEOUT", "300000");
+		}
+		if (session.envVars() != null && session.envVars().isObject()) {
+			session.envVars().properties().forEach(e -> env.put(e.getKey(), e.getValue().asText()));
+		}
 	}
 
 	// package-private (not private): unit-tested directly — see SidecarManagerTest /

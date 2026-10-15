@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Capabilities, Envelope, PermissionMode, QueuedMessage, SessionState, SessionType } from '../protocol';
+import type { Capabilities, ContextBreakdown, Envelope, PermissionMode, QueuedMessage, SessionState, SessionType } from '../protocol';
 import type { WsStatus } from '../api/ws';
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,8 @@ export interface SessionView {
   contextTokens: number | null;
   contextWindow: number | null;
   autoCompactAt: number | null;
+  /** what the context is made of (Claude sidecars only); null until a snapshot carries one */
+  contextBreakdown: ContextBreakdown | null;
   /** false once the warn threshold has been crossed and the suggestion card has fired for it;
    * re-armed by a context_compacted. Distinct from ctxSuggestionVisible so a dismiss doesn't
    * re-show on the next context_usage while still above threshold — see evaluateContextWarn. */
@@ -82,6 +84,7 @@ const emptyView = (): SessionView => ({
   contextTokens: null,
   contextWindow: null,
   autoCompactAt: null,
+  contextBreakdown: null,
   ctxWarnArmed: true,
   ctxSuggestionVisible: false,
   codeIntelStatus: null,
@@ -306,6 +309,7 @@ function reduce(view: SessionView, e: Envelope): SessionView {
       v.contextTokens = p['tokens'] as number;
       v.contextWindow = p['window'] as number;
       v.autoCompactAt = p['autoCompactAt'] == null ? null : (p['autoCompactAt'] as number);
+      v.contextBreakdown = p['breakdown'] == null ? null : (p['breakdown'] as ContextBreakdown);
       break;
     case 'code_intel_status': {
       const status = p['status'] as CodeIntelStatus['status'];

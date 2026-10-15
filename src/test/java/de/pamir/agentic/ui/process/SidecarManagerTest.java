@@ -4,7 +4,9 @@ import de.pamir.agentic.ui.session.ProviderCapabilities;
 import de.pamir.agentic.ui.session.SessionEntity;
 import de.pamir.agentic.ui.session.SessionState;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -135,5 +137,40 @@ class SidecarManagerTest {
 
 		assertThat(args).containsSequence("--writable-root", "/wt");
 		assertThat(args).doesNotContain("--context-dir");
+	}
+
+	// --- MCP tool search: defer tool schemas instead of loading every one up front ---
+
+	@Test
+	void sidecarEnvironmentEnablesToolSearchByDefault() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
+		Map<String, String> env = new HashMap<>();
+
+		manager.applySidecarEnvironment(baseEntity().provider("widget").build(), env);
+
+		assertThat(env).containsEntry("ENABLE_TOOL_SEARCH", "true").doesNotContainKey("MCP_TIMEOUT");
+	}
+
+	@Test
+	void aSessionsOwnEnvVarsOverrideTheToolSearchDefault() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
+		Map<String, String> env = new HashMap<>();
+		SessionEntity entity = baseEntity().provider("widget")
+				.envVars(new ObjectMapper().createObjectNode().put("ENABLE_TOOL_SEARCH", "false").put("FOO", "bar"))
+				.build();
+
+		manager.applySidecarEnvironment(entity, env);
+
+		assertThat(env).containsEntry("ENABLE_TOOL_SEARCH", "false").containsEntry("FOO", "bar");
+	}
+
+	@Test
+	void serenaSessionsStillGetTheLongMcpTimeout() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
+		Map<String, String> env = new HashMap<>();
+
+		manager.applySidecarEnvironment(baseEntity().provider("widget").codeIntel("serena").build(), env);
+
+		assertThat(env).containsEntry("MCP_TIMEOUT", "300000").containsEntry("ENABLE_TOOL_SEARCH", "true");
 	}
 }
