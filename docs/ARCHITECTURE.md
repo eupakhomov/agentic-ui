@@ -14,7 +14,8 @@ decision log in `docs/plan/README.md` remains the authority on *why*; this file 
 
 ```
 ┌────────────────────────────  Browser (React SPA)  ───────────────────────────┐
-│  Dashboard grid (react-grid-layout, layout in localStorage)                  │
+│  Dashboard grid (react-grid-layout, layout in localStorage) or focus mode    │
+│  Session sidebar: live state · time in state · PR · inline allow/deny       │
 │  SessionWidget ×N: transcript ⟵ zustand reducer ⟵ WS envelopes              │
 │    permission/plan cards · git panel · queued chips · mode toggle · budget   │
 │  TokenGate (bearer in localStorage) · desktop Notifications (unfocused tab)  │
@@ -193,10 +194,28 @@ Full design + decisions: `docs/plan/phase-7-ux-and-orchestration.md`.
   default text-insertion for that same keystroke, landing the letter in the field.
 - **7.2 window management**: tiling (react-grid-layout) stays the base; maximize is
   a CSS class (`!important`, since RGL sets `position`/`transform` inline) on the
-  same grid-item DOM node — no remount, no WS reconnect. Minimize is `display:none`
-  on that node, not unmount, so the widget's WS/store stay live (Exposé cards and
-  desktop notifications keep working while hidden). Exposé and the dock strip read
-  straight from the Zustand store; zero new connections.
+  same grid-item DOM node — no remount, no WS reconnect. Minimize is
+  `visibility:hidden` on that node (phase 16: `display:none` discarded the transcript's
+  scroll position), not unmount, so the widget's WS/store stay live (Exposé cards and
+  desktop notifications keep working while hidden). Exposé reads straight from the
+  Zustand store; zero new connections. (Phase 16 replaced the 7.2 dock strip with the
+  sidebar below.)
+- **Phase 16 sidebar & focus mode** (frontend only): the left sidebar renders
+  `buildSidebarModel()` (`sidebarModel.ts`, pure — Needs-you list oldest first by
+  `stateSince`, service groups in creation order, children nested under an open
+  parent, System last) from the same store, so it also opens no connections.
+  `stateSince` comes from the `state_changed` envelope's `ts`, which replay preserves,
+  so time in state survives a reload. PR status (`prUrl`/`prCheckStatus`) lives in the
+  store too (seeded from the entity, kept current by `pr_status_changed`) — one source
+  for the widget chip and the sidebar. Inline Allow/Deny goes through
+  `widgetRegistry.respondPermission` with `permissions.ts`'s `permissionResponseFor`,
+  the exact path of the `y`/`d` hotkeys; plans and AskUserQuestion get only **Open**.
+  Focus mode hides every grid item but the active one (`focusedId`, falling forward
+  past minimized sessions) and pins that one into the main column with the same
+  `!important` override trick as maximize — every widget stays mounted, and
+  `onLayoutChange` is ignored while in focus mode so the saved grid layout survives
+  the round trip. Fold state (`agentic-ui.sidebar`) and layout mode
+  (`agentic-ui.layoutMode`) persist in localStorage.
 - **7.3 continuation**: `session.continued_from_id` (V11). `HandoffService`
   (mirrors `GitAssistService`'s digest→system-turn shape) runs one system-session
   turn over `TranscriptDigest.render()` — the same capped digest reflection uses —

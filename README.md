@@ -9,7 +9,7 @@ same repository at once without stepping on each other's branches. Everything is
 journaled to PostgreSQL, so sessions survive backend restarts, laptop sleeps, and
 browser reloads.
 
-![Dashboard: four parallel sessions — plan approval, Codex provider, tool calls, cost tracking](docs/images/dashboard.png)
+![Dashboard: session sidebar with a "Needs you" list, four parallel sessions — Bash approval, plan approval, Codex provider, parent/child fan-out, cost tracking](docs/images/dashboard.png)
 
 ## Why
 
@@ -60,6 +60,9 @@ auth, your own machine's `claude`/`codex`/`gh` credentials.
 - Git panel per session: status, diff, log, commit, push, PR creation — with commit
   messages and PR descriptions drafted by a cheap helper model — and background polling
   of the PR's checks
+- Collapsible session sidebar: live state and time in state for every session, PR check
+  status, and a "Needs you" list with inline allow/deny for tool permissions; grid or
+  focus (one session at a time) layout
 - Auto-titled sessions, keyboard-first UI with a hotkey cheatsheet, dark and light themes
 
 **Around the sessions**

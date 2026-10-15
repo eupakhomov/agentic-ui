@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import type { Capabilities, ContextBreakdown, Envelope, PermissionMode, QueuedMessage, SessionState, SessionType } from '../protocol';
+import type {
+  Capabilities, ContextBreakdown, Envelope, PermissionMode, PrCheckStatus, QueuedMessage, SessionState, SessionType,
+} from '../protocol';
 import type { WsStatus } from '../api/ws';
 
 // ---------------------------------------------------------------------------
@@ -22,6 +24,8 @@ export type TranscriptItem =
 
 export interface SessionView {
   state: SessionState;
+  /** ts of the latest state_changed (phase 16 sidebar's "time in state"); replayed envelopes keep their original ts */
+  stateSince: string | null;
   permissionMode: PermissionMode;
   capabilities: Capabilities | null;
   model: string | null;
@@ -53,6 +57,11 @@ export interface SessionView {
   ctxSuggestionVisible: boolean;
   /** phase 13: the session's graphify graph-build state (journaled `code_intel_status`); null until the first event */
   codeIntelStatus: CodeIntelStatus | null;
+  // --- phase 16: seeded from the REST entity, so the sidebar needs no fetch of its own ---
+  prUrl: string | null;
+  /** kept current by pr_status_changed; the widget's PR chip and the sidebar both read it */
+  prCheckStatus: PrCheckStatus | null;
+  parentSessionId: string | null;
 }
 
 export interface CodeIntelStatus {
@@ -67,6 +76,7 @@ export interface CodeIntelStatus {
 
 const emptyView = (): SessionView => ({
   state: 'CREATING',
+  stateSince: null,
   permissionMode: 'default',
   capabilities: null,
   model: null,
@@ -88,6 +98,9 @@ const emptyView = (): SessionView => ({
   ctxWarnArmed: true,
   ctxSuggestionVisible: false,
   codeIntelStatus: null,
+  prUrl: null,
+  prCheckStatus: null,
+  parentSessionId: null,
 });
 
 function last<T>(arr: T[]): T | undefined {
@@ -170,6 +183,7 @@ function reduce(view: SessionView, e: Envelope): SessionView {
   switch (e.type) {
     case 'state_changed':
       v.state = p['state'] as SessionState;
+      v.stateSince = e.ts ?? new Date().toISOString();
       if (v.state === 'IDLE' || v.state === 'CRASHED') v.pendingPermission = null;
       break;
     case 'ready':
@@ -327,6 +341,10 @@ function reduce(view: SessionView, e: Envelope): SessionView {
       }
       break;
     }
+    case 'pr_status_changed':
+      v.prCheckStatus = (p['status'] as PrCheckStatus | undefined) ?? v.prCheckStatus;
+      v.prUrl = (p['url'] as string | undefined) ?? v.prUrl;
+      break;
     case 'context_compacted':
       t.push({
         kind: 'context_compacted',

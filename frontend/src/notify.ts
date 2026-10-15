@@ -31,12 +31,14 @@ export async function toggleNotifications(): Promise<boolean> {
  * multi-session dashboard, having the browser tab focused doesn't mean this particular
  * session is the one being watched (it could be a different session, a minimized one,
  * or one scrolled off-screen); the caller decides that and asks to notify anyway.
+ * `onClick` runs after the click has focused the window — phase 16 uses it to land on
+ * the session the notification is about.
  */
-export function notify(title: string, body: string, opts?: { evenIfTabFocused?: boolean }): void {
+export function notify(title: string, body: string, opts?: { evenIfTabFocused?: boolean; onClick?: () => void }): void {
   if (document.hasFocus() && !opts?.evenIfTabFocused) return;
   bumpTitleBadge();
   if (notificationsEnabled()) {
-    show(title, body);
+    show(title, body, opts?.onClick);
   }
 }
 
@@ -53,7 +55,7 @@ window.addEventListener('focus', () => {
   document.title = BASE_TITLE;
 });
 
-function show(title: string, body: string): void {
+function show(title: string, body: string, onClick?: () => void): void {
   // no `tag` — a repeated event on the same session (e.g. successive permission requests)
   // would otherwise share an identical title and get coalesced by the OS into a single
   // notification record instead of alerting fresh each time. Once the first one auto-dismisses
@@ -63,6 +65,7 @@ function show(title: string, body: string): void {
   const n = new Notification(title, { body, requireInteraction: false });
   n.onclick = () => {
     window.focus();
+    onClick?.();
     n.close();
   };
 }

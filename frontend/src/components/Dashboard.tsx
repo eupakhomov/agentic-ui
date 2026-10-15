@@ -12,19 +12,35 @@ import LibraryDialog from './LibraryDialog';
 import MemoryDialog from './MemoryDialog';
 import ServiceDiscoveryDialog from './ServiceDiscoveryDialog';
 import HotkeyCheatsheet from './HotkeyCheatsheet';
-import DockStrip from './DockStrip';
 import ExposeOverlay from './ExposeOverlay';
+import Sidebar, { type SidebarFold } from './Sidebar';
+import { buildSidebarModel } from '../sidebarModel';
 import { useStore } from '../store/store';
 import { notificationsEnabled, notify, toggleNotifications } from '../notify';
 import { useHotkeys } from '../hotkeys/useHotkeys';
 import {
-  Expose, Memory, New, NotifyOff, NotifyOn, QuickSession, Refresh, ServiceDiscovery, SettingsIcon, Shortcuts,
-  SkillLibrary, SystemSession, Templates, Usage,
+  Expose, FocusMode, Memory, New, NotifyOff, NotifyOn, QuickSession, Refresh, ServiceDiscovery,
+  SettingsIcon, Shortcuts, SidebarToggle, SkillLibrary, SystemSession, Templates, Usage,
 } from '../icons';
 
 const LAYOUT_KEY = 'agentic-ui.layout';
 const MINIMIZED_KEY = 'agentic-ui.minimized';
+const SIDEBAR_KEY = 'agentic-ui.sidebar';
+const LAYOUT_MODE_KEY = 'agentic-ui.layoutMode';
 const COLS = 12;
+const FOLD_CYCLE: SidebarFold[] = ['expanded', 'rail', 'hidden'];
+
+type LayoutMode = 'grid' | 'focus';
+
+function loadFold(): SidebarFold {
+  const stored = localStorage.getItem(SIDEBAR_KEY) as SidebarFold | null;
+  if (stored && FOLD_CYCLE.includes(stored)) return stored;
+  return window.innerWidth < 1100 ? 'rail' : 'expanded';
+}
+
+function loadLayoutMode(): LayoutMode {
+  return localStorage.getItem(LAYOUT_MODE_KEY) === 'focus' ? 'focus' : 'grid';
+}
 
 function loadMinimized(): string[] {
   try {
@@ -56,8 +72,11 @@ function loadLayout(): Layout[] {
 }
 
 export default function Dashboard({ initialSessions }: { initialSessions: SessionSummary[] }) {
+  // oldest first: the API lists newest first, but a session created on this page is
+  // appended at the end — reversing keeps one creation order, which the sidebar relies on
+  // so rows don't reshuffle across a reload
   const [sessionIds, setSessionIds] = useState<string[]>(
-    initialSessions.filter((s) => s.state !== 'CLOSED' && s.kind !== 'system').map((s) => s.id),
+    initialSessions.filter((s) => s.state !== 'CLOSED' && s.kind !== 'system').map((s) => s.id).reverse(),
   );
   const [systemSessions, setSystemSessions] = useState<SessionSummary[]>(
     initialSessions.filter((s) => s.state !== 'CLOSED' && s.kind === 'system'),
@@ -81,6 +100,12 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [discoveryCount, setDiscoveryCount] = useState(0);
   const [pendingMemoryCount, setPendingMemoryCount] = useState(0);
   const [width, setWidth] = useState(window.innerWidth - 24);
+  const [fold, setFold] = useState<SidebarFold>(loadFold);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(loadLayoutMode);
+  const layoutModeRef = useRef(layoutMode);
+  layoutModeRef.current = layoutMode;
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+  const topbarRef = useRef<HTMLDivElement>(null);
   // seeds a just-created session's compose box (e.g. an edited-but-unsent ticket import
   // draft); read once by SessionWidget's initial state, no cleanup needed afterward
   const [pendingDraft, setPendingDraft] = useState<{ id: string; text: string } | null>(null);
@@ -88,10 +113,27 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const focusedId = useStore((s) => s.focusedId);
   const setFocused = useStore((s) => s.setFocused);
 
+  // the grid follows its own column's width, so a sidebar fold reflows it without a reload
   useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth - 24);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const el = gridWrapRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width > 0) setWidth(Math.floor(entry.contentRect.width));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // the sticky sidebar and the focus-mode pane sit right under the topbar, whose height
+  // varies with the font-size setting
+  useEffect(() => {
+    const el = topbarRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--topbar-h', `${el.offsetHeight}px`);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   const refreshStale = useCallback(() => {
@@ -174,6 +216,9 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   }, [visibleIds, layout]);
 
   const onLayoutChange = useCallback((next: Layout[]) => {
+    // focus mode hides every item but one — never let react-grid-layout persist whatever
+    // it makes of that, so switching back to grid restores the saved layout exactly
+    if (layoutModeRef.current === 'focus') return;
     setLayout(next);
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(next));
   }, []);
@@ -203,7 +248,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const refresh = useCallback(async () => {
     const list = await api.listSessions();
     const live = list.filter((s) => s.state !== 'CLOSED');
-    setSessionIds(live.filter((s) => s.kind !== 'system').map((s) => s.id));
+    setSessionIds(live.filter((s) => s.kind !== 'system').map((s) => s.id).reverse());
     setSystemSessions(live.filter((s) => s.kind === 'system'));
   }, []);
 
@@ -222,6 +267,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     showServiceDiscovery]);
 
   const toggleMaximize = useCallback((id: string) => {
+    if (layoutModeRef.current === 'focus') return; // the active session already fills the main column
     setMaximizedId((cur) => (cur === id ? null : id));
   }, []);
 
@@ -249,6 +295,65 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     setShowExpose(false);
   }, [restore]);
 
+  const systemIds = useMemo(() => new Set(systemSessions.map((s) => s.id)), [systemSessions]);
+  const sidebarModel = useMemo(
+    () => buildSidebarModel(visibleIds, views, minimizedIds, systemIds),
+    [visibleIds, views, minimizedIds, systemIds],
+  );
+
+  // focus mode shows the focused session; if that's gone or minimized, the next available
+  // one after it in sidebar order (so minimizing the active session moves on, not back to the top)
+  const activeId = useMemo(() => {
+    if (layoutMode !== 'focus') return null;
+    const order = sidebarModel.order;
+    const available = (id: string) => !minimizedIds.includes(id);
+    if (focusedId && order.includes(focusedId) && available(focusedId)) return focusedId;
+    const start = focusedId ? order.indexOf(focusedId) : -1;
+    for (let k = 1; k <= order.length; k++) {
+      const candidate = order[(start + k + order.length) % order.length]!;
+      if (available(candidate)) return candidate;
+    }
+    return null;
+  }, [layoutMode, sidebarModel.order, minimizedIds, focusedId]);
+  // y/d/g/Enter act on focusedId, so it must be the session actually on screen
+  useEffect(() => {
+    if (activeId && activeId !== focusedId) setFocused(activeId);
+  }, [activeId, focusedId, setFocused]);
+
+  /** the one "take me to this session" path: sidebar rows, notification clicks, and `a` */
+  const restoreAndFocus = useCallback((id: string) => {
+    restore(id);
+    // grid mode: a maximized widget would cover the target — hand maximize over to it
+    setMaximizedId((cur) => (cur && cur !== id ? id : cur));
+    if (layoutModeRef.current === 'grid') {
+      requestAnimationFrame(() => {
+        document.querySelector(`[data-session-id="${id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
+    }
+  }, [restore]);
+
+  const cycleFold = useCallback(() => {
+    setFold((cur) => {
+      const next = FOLD_CYCLE[(FOLD_CYCLE.indexOf(cur) + 1) % FOLD_CYCLE.length]!;
+      localStorage.setItem(SIDEBAR_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const toggleLayoutMode = useCallback(() => {
+    setLayoutMode((cur) => {
+      const next: LayoutMode = cur === 'grid' ? 'focus' : 'grid';
+      localStorage.setItem(LAYOUT_MODE_KEY, next);
+      return next;
+    });
+    setMaximizedId(null);
+  }, []);
+
+  const jumpToNeedsYou = useCallback(() => {
+    const oldest = sidebarModel.needsYou[0];
+    if (oldest) restoreAndFocus(oldest.id);
+  }, [sidebarModel.needsYou, restoreAndFocus]);
+
   const exitOverlay = useCallback((): boolean => {
     if (showExpose) { setShowExpose(false); return true; }
     if (maximizedId) { setMaximizedId(null); return true; }
@@ -256,7 +361,10 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   }, [showExpose, maximizedId]);
 
   useHotkeys({
-    orderedIds: () => [...fullLayout].sort((a, b) => a.y - b.y || a.x - b.x).map((l) => l.i),
+    // grid: on-screen grid order; focus: sidebar order, skipping minimized (they can't be shown)
+    orderedIds: () => (layoutMode === 'focus'
+      ? sidebarModel.order.filter((id) => !minimizedIds.includes(id))
+      : [...fullLayout].sort((a, b) => a.y - b.y || a.x - b.x).map((l) => l.i)),
     openCreate: () => setShowCreate(true),
     openQuickCreate: () => setShowQuickCreate(true),
     openMemory: () => setShowMemory(true),
@@ -268,6 +376,9 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     toggleMaximizeFocused: () => { if (focusedId) toggleMaximize(focusedId); },
     toggleMinimizeFocused: () => { if (focusedId) toggleMinimize(focusedId); },
     openExpose: () => setShowExpose(true),
+    cycleSidebar: cycleFold,
+    toggleLayoutMode,
+    jumpToNeedsYou,
     anyDialogOpen: () =>
       showCreate || showQuickCreate || showTemplates || showSettings || showUsage || showLibrary || showMemory
         || showServiceDiscovery || showCheatsheet || showExpose,
@@ -277,7 +388,12 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
 
   return (
     <>
-      <div className="topbar">
+      <div className="topbar" ref={topbarRef}>
+        <button
+          className={`icon-btn${fold !== 'hidden' ? ' active' : ''}`}
+          title={`Sidebar: ${fold} — click to cycle (b)`}
+          onClick={cycleFold}
+        ><SidebarToggle /></button>
         <h1>agentic-ui</h1>
         <NotifyToggle />
         <button className="icon-btn" title="Refresh session list" onClick={() => void refresh()}><Refresh /></button>
@@ -323,6 +439,11 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
           <ServiceDiscovery />
         </button>
         <button className="icon-btn" title="Keyboard shortcuts (?)" onClick={() => setShowCheatsheet(true)}><Shortcuts /></button>
+        <button
+          className={`icon-btn${layoutMode === 'focus' ? ' active' : ''}`}
+          title={layoutMode === 'grid' ? 'Focus layout — one session at a time (v)' : 'Focus layout on — back to grid (v)'}
+          onClick={toggleLayoutMode}
+        ><FocusMode /></button>
         <button className="icon-btn" title="Exposé — all sessions (e)" onClick={() => setShowExpose(true)}><Expose /></button>
         <button className="icon-btn" title="Settings (,)" onClick={() => setShowSettings(true)}><SettingsIcon /></button>
         <button className="icon-btn" title="Quick session — service + branch + prompt (q)" onClick={() => setShowQuickCreate(true)}>
@@ -331,7 +452,9 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
         {/* the one deliberate accent in the topbar: the primary action keeps its label */}
         <button className="primary with-icon" onClick={() => setShowCreate(true)}><New />New Session</button>
       </div>
-      <div className="grid-wrap">
+      <div className={`shell sidebar-${fold}`}>
+      <Sidebar model={sidebarModel} fold={fold} showHints={layoutMode === 'focus'} onSelect={restoreAndFocus} />
+      <div className={`grid-wrap${layoutMode === 'focus' ? ' focus-mode' : ''}`} ref={gridWrapRef}>
         <GridLayout
           className="layout"
           layout={fullLayout}
@@ -344,7 +467,8 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
           {visibleIds.map((id) => (
             <div
               key={id}
-              className={`grid-item-wrap${maximizedId === id ? ' maximized' : ''}${minimizedIds.includes(id) ? ' minimized' : ''}`}
+              data-session-id={id}
+              className={`grid-item-wrap${maximizedId === id ? ' maximized' : ''}${minimizedIds.includes(id) ? ' minimized' : ''}${activeId === id ? ' active' : ''}`}
             >
               <SessionWidget
                 sessionId={id}
@@ -352,13 +476,15 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
                 onClosed={() => onClosed(id)}
                 onDuplicated={onCreated}
                 isMaximized={maximizedId === id}
+                canMaximize={layoutMode === 'grid'}
                 onToggleMaximize={() => toggleMaximize(id)}
                 onToggleMinimize={() => toggleMinimize(id)}
+                onRequestFocus={() => restoreAndFocus(id)}
               />
             </div>
           ))}
         </GridLayout>
-        <DockStrip ids={minimizedIds} onRestore={restore} />
+      </div>
       </div>
       {showCreate && <CreateSessionDialog onCreated={onCreated} onCancel={() => setShowCreate(false)} />}
       {showQuickCreate && <QuickSessionDialog onCreated={onCreated} onCancel={() => setShowQuickCreate(false)} />}

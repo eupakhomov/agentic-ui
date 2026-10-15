@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../store/store';
 import { getWidget } from './widgetRegistry';
-import type { PermissionResponse } from '../components/PermissionCard';
+import { permissionResponseFor } from '../permissions';
 
 export interface HotkeyActions {
-  /** visible widget ids, grid order (top-to-bottom, left-to-right) — recomputed on every call */
+  /** visible widget ids in on-screen order (grid order, or sidebar order in focus mode) — recomputed on every call */
   orderedIds: () => string[];
   openCreate: () => void;
   openQuickCreate: () => void;
@@ -17,6 +17,12 @@ export interface HotkeyActions {
   toggleMaximizeFocused: () => void;
   toggleMinimizeFocused: () => void;
   openExpose: () => void;
+  /** phase 16: sidebar expanded → rail → hidden */
+  cycleSidebar: () => void;
+  /** phase 16: grid ↔ focus layout */
+  toggleLayoutMode: () => void;
+  /** phase 16: restore + focus the session that has waited longest for a permission answer */
+  jumpToNeedsYou: () => void;
   /** true while any Dashboard-level dialog (including the cheatsheet/Exposé) is open */
   anyDialogOpen: () => boolean;
   /** closes the topmost open dialog, if any; returns whether it closed something */
@@ -30,23 +36,6 @@ function isTypingTarget(el: Element | null): boolean {
   const tag = el.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
   return (el as HTMLElement).isContentEditable;
-}
-
-/**
- * y/d can't just fire a blind allow/deny: AskUserQuestion has no safe keystroke "allow"
- * (it needs synthesized answers), so y is a no-op and d reuses its existing skip message;
- * ExitPlanMode's deny keeps its friendlier "keep planning" wording. Everything else gets
- * the plain allow/deny PermissionCard already sends. Returns null for a deliberate no-op.
- */
-function permissionResponseFor(toolName: string, isPlan: boolean, key: 'y' | 'd'): PermissionResponse | null {
-  if (toolName === 'AskUserQuestion') {
-    if (key === 'y') return null;
-    return { behavior: 'deny', message: 'User skipped answering; proceed with your best judgment.' };
-  }
-  if (isPlan) {
-    return key === 'y' ? { behavior: 'allow' } : { behavior: 'deny', message: 'Keep planning; do not execute yet.' };
-  }
-  return key === 'y' ? { behavior: 'allow' } : { behavior: 'deny' };
 }
 
 /**
@@ -153,12 +142,21 @@ export function useHotkeys(actions: HotkeyActions): void {
         case 'e':
           a.openExpose();
           return;
+        case 'b':
+          a.cycleSidebar();
+          return;
+        case 'v':
+          a.toggleLayoutMode();
+          return;
+        case 'a':
+          a.jumpToNeedsYou();
+          return;
         case 'y':
         case 'd': {
           if (!focused) return;
           const pending = viewsRef.current[focused]?.pendingPermission;
           if (!pending) return;
-          const response = permissionResponseFor(pending.toolName, pending.plan !== null, e.key);
+          const response = permissionResponseFor(pending.toolName, pending.plan !== null, e.key === 'y' ? 'allow' : 'deny');
           if (response) getWidget(focused)?.respondPermission(pending.requestId, response);
           return;
         }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import { WsSession } from '../api/ws';
 import { contextUsageTitle } from '../protocol';
-import type { Envelope, PermissionMode, SessionEntity } from '../protocol';
+import type { Envelope, PermissionMode, PrCheckStatus, SessionEntity } from '../protocol';
 import { type CodeIntelStatus, useStore } from '../store/store';
 import { notify, notificationForEvent } from '../notify';
 import { registerWidget, unregisterWidget } from '../hotkeys/widgetRegistry';
@@ -26,7 +26,7 @@ export const MODE_LABEL: Record<PermissionMode, string> = {
 
 // one glyph for every PR state — the *colour* carries the status (see .chip.pr-* in
 // styles.css), instead of six differently-coloured emoji competing in the header
-const PR_STATUS_LABEL: Record<NonNullable<SessionEntity['prCheckStatus']>, string> = {
+export const PR_STATUS_LABEL: Record<PrCheckStatus, string> = {
   PENDING: 'checks running',
   SUCCESS: 'checks passed',
   FAILURE: 'checks failed',
@@ -41,16 +41,22 @@ export default function SessionWidget({
   onClosed,
   onDuplicated,
   isMaximized,
+  canMaximize,
   onToggleMaximize,
   onToggleMinimize,
+  onRequestFocus,
 }: {
   sessionId: string;
   initialInput?: string;
   onClosed: () => void;
   onDuplicated: (id: string) => void;
   isMaximized: boolean;
+  /** false in focus layout mode, where the active session already fills the main column */
+  canMaximize: boolean;
   onToggleMaximize: () => void;
   onToggleMinimize: () => void;
+  /** restore + focus this session — what a click on its desktop notification does (phase 16) */
+  onRequestFocus: () => void;
 }) {
   const view = useStore((s) => s.views[sessionId]);
   const apply = useStore((s) => s.apply);
@@ -75,6 +81,8 @@ export default function SessionWidget({
   const nameRef = useRef<string>('');
   const focusedRef = useRef<string | null>(null);
   const liveRef = useRef(false);
+  const requestFocusRef = useRef(onRequestFocus);
+  requestFocusRef.current = onRequestFocus;
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -96,6 +104,9 @@ export default function SessionWidget({
         // right after a reload, before any turn has produced a fresh context_usage event
         contextTokens: v.contextTokens ?? d.session.contextTokens,
         contextWindow: v.contextWindow ?? d.session.contextWindow,
+        prUrl: v.prUrl ?? d.session.prUrl,
+        prCheckStatus: v.prCheckStatus ?? d.session.prCheckStatus,
+        parentSessionId: d.session.parentSessionId,
       }));
     }).catch(() => setEntity(null));
     const onEvent = (e: Envelope) => {
@@ -106,11 +117,6 @@ export default function SessionWidget({
         return;
       }
       const who = nameRef.current || 'session';
-      if (e.type === 'pr_status_changed') {
-        const status = e.payload['status'] as SessionEntity['prCheckStatus'];
-        const url = e.payload['url'] as string | undefined;
-        setEntity((prev) => (prev ? { ...prev, prCheckStatus: status ?? prev.prCheckStatus, prUrl: url ?? prev.prUrl } : prev));
-      }
       // the POST only awaits the 202 ack — the pulse should track actual completion
       // (success, its own failure, or the turn it rides on wrapping up either way)
       if (e.type === 'context_compacted' || e.type === 'turn_complete' || e.type === 'error') {
@@ -119,7 +125,7 @@ export default function SessionWidget({
       const n = notificationForEvent(who, e);
       // the browser tab having focus doesn't mean THIS session is the one being watched —
       // it could be a different widget, a minimized one, or one scrolled off-screen
-      if (n) notify(n.title, n.body, { evenIfTabFocused: focusedRef.current !== sessionId });
+      if (n) notify(n.title, n.body, { evenIfTabFocused: focusedRef.current !== sessionId, onClick: () => requestFocusRef.current() });
     };
     const ws = new WsSession(sessionId, onEvent, (s) => {
       setWsStatus(sessionId, s);
@@ -317,13 +323,13 @@ export default function SessionWidget({
               <ChildOf />{parentName ?? 'parent'}
             </span>
           )}
-          {entity?.prUrl && (
+          {view.prUrl && (
             <a
-              className={`chip clickable pr-${entity.prCheckStatus ?? 'PENDING'}`}
-              href={entity.prUrl}
+              className={`chip clickable pr-${view.prCheckStatus ?? 'PENDING'}`}
+              href={view.prUrl}
               target="_blank"
               rel="noreferrer"
-              title={`PR — ${PR_STATUS_LABEL[entity.prCheckStatus ?? 'PENDING']}; click to open on GitHub`}
+              title={`PR — ${PR_STATUS_LABEL[view.prCheckStatus ?? 'PENDING']}; click to open on GitHub`}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <PullRequest />PR
@@ -372,12 +378,14 @@ export default function SessionWidget({
           // a rare recovery action: keeps its label rather than becoming another glyph
           <button onMouseDown={(e) => e.stopPropagation()} onClick={() => void resume()}>Resume</button>
         )}
-        <button
-          className="icon-btn"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={onToggleMaximize}
-          title={isMaximized ? 'restore (f)' : 'maximize (f)'}
-        >{isMaximized ? <Restore /> : <Maximize />}</button>
+        {canMaximize && (
+          <button
+            className="icon-btn"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={onToggleMaximize}
+            title={isMaximized ? 'restore (f)' : 'maximize (f)'}
+          >{isMaximized ? <Restore /> : <Maximize />}</button>
+        )}
         <button
           className="icon-btn"
           onMouseDown={(e) => e.stopPropagation()}
@@ -437,11 +445,9 @@ export default function SessionWidget({
             sessionId={sessionId}
             sessionType={entity?.sessionType ?? 'development'}
             onClose={() => setShowGit(false)}
-            prUrl={entity?.prUrl ?? null}
-            prCheckStatus={entity?.prCheckStatus ?? null}
-            onPrCreated={(url) =>
-              setEntity((prev) => (prev ? { ...prev, prUrl: url, prCheckStatus: 'PENDING' } : prev))
-            }
+            prUrl={view.prUrl}
+            prCheckStatus={view.prCheckStatus}
+            onPrCreated={(url) => seed(sessionId, (v) => ({ ...v, prUrl: url, prCheckStatus: 'PENDING' }))}
           />
         )}
         <Transcript items={view.transcript} onPermission={(requestId, response) => send({ type: 'permission_response', requestId, ...response })} />
