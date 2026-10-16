@@ -23,6 +23,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [memoryRetentionDraft, setMemoryRetentionDraft] = useState('');
   const [serviceDiscoveryStalenessDraft, setServiceDiscoveryStalenessDraft] = useState('');
   const [contextWarnPercentDraft, setContextWarnPercentDraft] = useState('');
+  const [linearToolsDraft, setLinearToolsDraft] = useState('');
   const [mcpSerenaRootDraft, setMcpSerenaRootDraft] = useState('');
   const [mcpUvPathDraft, setMcpUvPathDraft] = useState('');
   const [mcpGraphifyRootDraft, setMcpGraphifyRootDraft] = useState('');
@@ -47,6 +48,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setMemoryRetentionDraft(String(s.memoryRetentionDays));
       setServiceDiscoveryStalenessDraft(String(s.serviceDiscoveryStalenessDays));
       setContextWarnPercentDraft(String(s.contextWarnPercent));
+      setLinearToolsDraft(s.linearAllowedTools);
       setMcpSerenaRootDraft(s.mcpSerenaRoot);
       setMcpUvPathDraft(s.mcpUvPath);
       setMcpGraphifyRootDraft(s.mcpGraphifyRoot);
@@ -141,6 +143,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     const previous = settings.systemProvider;
     setSettings({ ...settings, systemProvider: id });
     void api.updateSettings({ systemProvider: id }).catch(() => setSettings({ ...settings, systemProvider: previous }));
+  };
+
+  const saveLinearTools = () => {
+    if (!settings || linearToolsDraft === settings.linearAllowedTools) return;
+    void api.updateSettings({ linearAllowedTools: linearToolsDraft })
+      .then((s) => { setSettings(s); setLinearToolsDraft(s.linearAllowedTools); })
+      .catch(() => setLinearToolsDraft(settings.linearAllowedTools));
   };
 
   const saveContextWarnPercent = () => {
@@ -657,6 +666,17 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 <input type="checkbox" checked={settings.linearOAuthEnabled} onChange={toggleOAuth} />
                 use the ambient <code>claude</code> CLI's cached OAuth credential
               </label>
+
+              <label>Allowed tools</label>
+              <input
+                className="full"
+                style={{ gridColumn: '2 / -1', fontFamily: 'monospace' }}
+                value={linearToolsDraft}
+                onChange={(e) => setLinearToolsDraft(e.target.value)}
+                onBlur={saveLinearTools}
+                title="Linear MCP tools new sessions may call, comma-separated; everything else is denied. Applies to sessions created after saving."
+                placeholder="get_issue,list_issues,list_comments,get_attachment,extract_images,save_comment"
+              />
 
               <label>Branch naming</label>
               <textarea

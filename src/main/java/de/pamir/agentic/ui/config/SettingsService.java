@@ -28,6 +28,10 @@ import java.util.function.UnaryOperator;
 public class SettingsService {
 
 	private static final String LINEAR_OAUTH_KEY = "linear.oauth";
+	private static final String LINEAR_ALLOWED_TOOLS_KEY = "linear.allowed-tools";
+	/** Read tools plus comment — enough to work from a ticket; everything else stays blocked. */
+	public static final String DEFAULT_LINEAR_ALLOWED_TOOLS =
+			"get_issue,list_issues,list_comments,get_attachment,extract_images,save_comment";
 	private static final String TICKET_IMPORT_SPEC_KEY = "ticket-import.spec";
 	private static final String ECOSYSTEM_ROOT_KEY = "ecosystem.root";
 	private static final String MONOREPO_SERVICE_GLOBS_KEY = "ecosystem.monorepo-service-globs";
@@ -126,6 +130,8 @@ public class SettingsService {
 	}
 
 	private final Field<Boolean> linearOAuthEnabled = boolField(LINEAR_OAUTH_KEY, false, SettingsPatch::linearOAuthEnabled);
+	private final Field<String> linearAllowedTools =
+			strField(LINEAR_ALLOWED_TOOLS_KEY, () -> DEFAULT_LINEAR_ALLOWED_TOOLS, SettingsPatch::linearAllowedTools);
 	private final Field<String> ticketImportSpec = strField(TICKET_IMPORT_SPEC_KEY, () -> "", SettingsPatch::ticketImportSpec);
 	private final Field<String> ecosystemRoot = strField(ECOSYSTEM_ROOT_KEY, () -> "", SettingsPatch::ecosystemRoot);
 	private final Field<String> monorepoServiceGlobs = strField(MONOREPO_SERVICE_GLOBS_KEY,
@@ -203,7 +209,7 @@ public class SettingsService {
 				memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes, memoryRetentionDays,
 				memoryReflectionApprovalRequired, serviceDiscoveryEnabled, serviceDiscoveryStalenessDays,
 				serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot,
-				mcpCodegraphRoot, codeIntelField);
+				mcpCodegraphRoot, codeIntelField, linearAllowedTools);
 	}
 
 	/** One snapshot of every setting in {@link #fields}, cached until the next {@link #apply}. */
@@ -245,7 +251,8 @@ public class SettingsService {
 				mcpUvPath.resolve(raw),
 				mcpGraphifyRoot.resolve(raw),
 				mcpCodegraphRoot.resolve(raw),
-				storedCodeIntel.isBlank() ? defaultCodeIntel(serenaRoot) : storedCodeIntel);
+				storedCodeIntel.isBlank() ? defaultCodeIntel(serenaRoot) : storedCodeIntel,
+				linearAllowedTools.resolve(raw));
 		cache = built;
 		return built;
 	}

@@ -49,5 +49,7 @@ public record Settings(
 		 * an unset selector reads {@code serena} when a Serena root is configured, else {@code none}
 		 * (decision 12).
 		 */
-		String codeIntel) {
+		String codeIntel,
+		/** Comma-separated Linear MCP tool names sessions may call; blank = {@link SettingsService#DEFAULT_LINEAR_ALLOWED_TOOLS}. Baked into each new session. */
+		String linearAllowedTools) {
 }

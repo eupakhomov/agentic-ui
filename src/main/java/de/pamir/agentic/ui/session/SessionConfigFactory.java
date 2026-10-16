@@ -178,10 +178,7 @@ public class SessionConfigFactory {
 			allowedTools = new ArrayList<>(new LinkedHashSet<>(allowedTools));
 		}
 		String cwdPath = computeCwdPath(repo, resolution.servicePath(), worktree);
-		// Linear's ~80 tool schemas cost tens of thousands of tokens per session, so it is opt-in.
-		JsonNode withLinear = config.path("linearEnabled").asBoolean(false)
-				? withDefaultLinearMcp(explicitMcpConfig) : explicitMcpConfig;
-		JsonNode mcpConfig = withDefaultCodeIntelMcp(withDefaultMemoryMcp(withLinear),
+		JsonNode mcpConfig = withDefaultCodeIntelMcp(withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig)),
 				provider, codeIntel, cwdPath, id);
 
 		SessionEntity entity = SessionEntity.builder()
@@ -392,7 +389,18 @@ public class SessionConfigFactory {
 	 */
 	// package-private (not private): unit-tested directly — see docs/plan/phase-9-production-hardening.md T1
 	JsonNode withDefaultLinearMcp(JsonNode configured) {
-		return withDefaultServer(configured, "linear", linearMcpServer());
+		ObjectNode block = linearMcpServer();
+		if (block != null) {
+			// our own key, stripped by each sidecar: Claude enforces it with a PreToolUse hook, Codex maps it
+			// to enabled_tools. Deliberately not in linearMcpServer(): the system session needs the full set.
+			ArrayNode enabled = block.path("linear") instanceof ObjectNode linear ? linear.putArray("enabledTools") : null;
+			if (enabled != null) {
+				String allowed = settings.current().linearAllowedTools();
+				Arrays.stream((allowed == null || allowed.isBlank() ? SettingsService.DEFAULT_LINEAR_ALLOWED_TOOLS : allowed).split(","))
+						.map(String::trim).filter(t -> !t.isEmpty()).forEach(enabled::add);
+			}
+		}
+		return withDefaultServer(configured, "linear", block);
 	}
 
 	/**

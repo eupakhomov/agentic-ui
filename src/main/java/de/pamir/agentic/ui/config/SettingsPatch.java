@@ -40,7 +40,8 @@ public record SettingsPatch(
 		String mcpUvPath,
 		String mcpGraphifyRoot,
 		String mcpCodegraphRoot,
-		String codeIntel) {
+		String codeIntel,
+		String linearAllowedTools) {
 
 	public static Builder builder() {
 		return new Builder();
@@ -79,6 +80,7 @@ public record SettingsPatch(
 		private String mcpGraphifyRoot;
 		private String mcpCodegraphRoot;
 		private String codeIntel;
+		private String linearAllowedTools;
 
 		public Builder linearOAuthEnabled(Boolean v) {
 			this.linearOAuthEnabled = v;
@@ -235,6 +237,11 @@ public record SettingsPatch(
 			return this;
 		}
 
+		public Builder linearAllowedTools(String v) {
+			this.linearAllowedTools = v;
+			return this;
+		}
+
 		public SettingsPatch build() {
 			return new SettingsPatch(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs,
 					monorepoDetectionEnabled, prChecksEnabled,
@@ -243,7 +250,7 @@ public record SettingsPatch(
 					memoryRoot, memoryEnabled, memoryReflectionDefault, memoryReflectionModel,
 					memorySyncIntervalMinutes, memoryRetentionDays, memoryReflectionApprovalRequired,
 					serviceDiscoveryEnabled, serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent,
-					mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot, mcpCodegraphRoot, codeIntel);
+					mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot, mcpCodegraphRoot, codeIntel, linearAllowedTools);
 		}
 	}
 }

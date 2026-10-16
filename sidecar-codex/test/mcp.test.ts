@@ -82,3 +82,14 @@ describe('translateMcpConfig', () => {
     expect(result.mcpServers).toEqual({});
   });
 });
+
+describe('enabledTools allowlist', () => {
+  it('maps a url server\'s enabledTools to Codex enabled_tools', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mcp-'));
+    const path = join(dir, 'mcp.json');
+    await writeFile(path, JSON.stringify({ linear: { type: 'http', url: 'https://x', enabledTools: ['get_issue'] }, other: { type: 'http', url: 'https://y' } }));
+    const { mcpServers } = await translateMcpConfig(path);
+    expect(mcpServers['linear']).toEqual({ url: 'https://x', enabled_tools: ['get_issue'] });
+    expect(mcpServers['other']).toEqual({ url: 'https://y' });
+  });
+});

@@ -95,6 +95,52 @@ async function loadMcpServers(path: string): Promise<Record<string, unknown>> {
 }
 
 /**
+ * Splits our own per-server `enabledTools` allowlist out of the MCP config (the SDK would pass an
+ * unknown key through to the CLI). The SDK has no allow-only control for MCP tools — a per-server
+ * `tools` policy is ignored for these servers, and `disallowedTools: mcp__x__*` beats `allowedTools`
+ * — so enforcement is a PreToolUse hook, see {@link enabledToolsHook}.
+ */
+export function extractEnabledTools(servers: Record<string, unknown>): {
+  servers: Record<string, unknown>;
+  enabled: Map<string, Set<string>>;
+} {
+  const cleaned: Record<string, unknown> = {};
+  const enabled = new Map<string, Set<string>>();
+  for (const [name, value] of Object.entries(servers)) {
+    if (value && typeof value === 'object' && Array.isArray((value as Record<string, unknown>)['enabledTools'])) {
+      const { enabledTools, ...rest } = value as Record<string, unknown>;
+      enabled.set(name, new Set((enabledTools as unknown[]).filter((t): t is string => typeof t === 'string')));
+      cleaned[name] = rest;
+    } else {
+      cleaned[name] = value;
+    }
+  }
+  return { servers: cleaned, enabled };
+}
+
+/**
+ * Denies `mcp__<server>__<tool>` calls for a server with an allowlist unless the tool is on it.
+ * A PreToolUse hook fires in every permission mode, bypassPermissions included (verified), and the
+ * reason reaches the model, so it learns the tool is off-limits rather than seeing a bare failure.
+ */
+export function enabledToolsHook(enabled: Map<string, Set<string>>) {
+  return async (input: { hook_event_name: string; tool_name?: string }) => {
+    const m = /^mcp__(.+?)__(.+)$/.exec(input.tool_name ?? '');
+    const allowed = m ? enabled.get(m[1]!) : undefined;
+    if (m && allowed && !allowed.has(m[2]!)) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse' as const,
+          permissionDecision: 'deny' as const,
+          permissionDecisionReason: `The ${m[1]} tool ${m[2]} is not enabled for agentic-ui sessions (allowed: ${[...allowed].join(', ') || 'none'}).`,
+        },
+      };
+    }
+    return { continue: true };
+  };
+}
+
+/**
  * Pure(ish) translation of one SDK message into the zero-or-more protocol Events it
  * produces, plus any stderr-bound diagnostic lines. Mutates `modelState.currentModel`
  * on a `system/init` message (mirrors the pre-extraction inline `currentModel`
@@ -341,6 +387,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     }
   }
 
+  const mcp = config.mcpConfigPath ? extractEnabledTools(await loadMcpServers(config.mcpConfigPath)) : undefined;
   const options: Options = {
     cwd: config.cwd,
     includePartialMessages: true,
@@ -373,7 +420,10 @@ export async function runSession(config: SidecarConfig): Promise<never> {
     ...(config.thinking !== undefined ? { thinking: thinkingConfig(config.thinking) } : {}),
     ...(config.effort !== undefined ? { effort: config.effort } : {}),
     ...(config.maxTurns !== undefined ? { maxTurns: config.maxTurns } : {}),
-    ...(config.mcpConfigPath ? { mcpServers: (await loadMcpServers(config.mcpConfigPath)) as never } : {}),
+    ...(mcp ? { mcpServers: mcp.servers as never } : {}),
+    ...(mcp && mcp.enabled.size > 0
+      ? { hooks: { PreToolUse: [{ matcher: 'mcp__.*', hooks: [enabledToolsHook(mcp.enabled) as never] }] } }
+      : {}),
     stderr: (data: string) => log('cli:', data.trimEnd()),
     canUseTool: async (toolName, input, { suggestions }) => {
       const denial = readOnlyDenial(toolName, input, config.cwd, config.writableRoot);

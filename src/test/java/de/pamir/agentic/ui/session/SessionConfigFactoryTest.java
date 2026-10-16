@@ -42,7 +42,7 @@ class SessionConfigFactoryTest {
 		// touch the (null in these tests) SettingsRepository regardless — overriding current() to
 		// return a fixed snapshot sidesteps that entirely.
 		Settings fixed = new Settings(linearOAuth, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
-				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv", "", "", "none");
+				memoryEnabled, false, "cheap", 5, 0, true, serviceDiscoveryEnabled, 14, "cheap", 70, "", "uv", "", "", "none", "");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -54,7 +54,7 @@ class SessionConfigFactoryTest {
 	/** Same fixed-snapshot fake, with the phase-13 code-intelligence selector set (docs/plan/phase-13-graphify.md decision 1). */
 	private static SettingsService fakeSettingsWithCodeIntel(String codeIntel) {
 		Settings fixed = new Settings(false, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
-				false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "", codeIntel);
+				false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "", codeIntel, "");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -327,7 +327,7 @@ class SessionConfigFactoryTest {
 
 	private static SettingsService fakeSettingsWithEcosystem(String ecosystemRoot) {
 		Settings fixed = new Settings(false, "", ecosystemRoot, "packages/*,services/*,apps/*,libs/*", true, true, 180,
-				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "", "none");
+				"", "", false, true, 60, "claude", "", "", false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "", "none", "");
 		return new SettingsService(null, null, null) {
 			@Override
 			public Settings current() {
@@ -925,22 +925,14 @@ class SessionConfigFactoryTest {
 	}
 
 	@Test
-	void prepareDoesNotLayerLinearUnlessTheSessionOptsIn() {
+	void prepareLayersLinearByDefaultWhenConfigured() {
 		SessionConfigFactory.Prepared prepared = prepareWith("claude", mapper.createObjectNode());
-
-		assertThat(prepared.entity().mcpConfig().has("linear")).isFalse();
-		assertThat(prepared.entity().mcpConfig().has("memory")).isTrue();
-	}
-
-	@Test
-	void prepareLayersLinearWhenLinearEnabledIsTrue() {
-		SessionConfigFactory.Prepared prepared = prepareWith("claude", mapper.createObjectNode().put("linearEnabled", true));
 
 		assertThat(prepared.entity().mcpConfig().path("linear").path("url").asText()).isEqualTo("https://mcp.linear.app/mcp");
 	}
 
 	@Test
-	void prepareKeepsAnExplicitLinearEntryEvenWithoutTheOptIn() {
+	void prepareKeepsAnExplicitLinearEntry() {
 		ObjectNode overrides = mapper.createObjectNode();
 		overrides.putObject("mcpConfig").putObject("linear").put("type", "http").put("url", "https://own.example/mcp");
 
@@ -988,5 +980,20 @@ class SessionConfigFactoryTest {
 
 		assertThat(overrides.has("disallowedTools")).isTrue();
 		assertThat(overrides.get("disallowedTools")).isEmpty();
+	}
+
+	@Test
+	void prepareBakesTheLinearAllowlistIntoTheLinearEntryUsingTheDefaultWhenBlank() {
+		JsonNode linear = prepareWith("claude", mapper.createObjectNode()).entity().mcpConfig().path("linear");
+
+		assertThat(linear.path("enabledTools")).extracting(JsonNode::asText)
+				.containsExactly("get_issue", "list_issues", "list_comments", "get_attachment", "extract_images", "save_comment");
+	}
+
+	@Test
+	void linearMcpServerItselfStaysUnrestrictedForTheSystemSession() {
+		SessionConfigFactory factory = trimFactory("claude");
+
+		assertThat(factory.linearMcpServer().path("linear").has("enabledTools")).isFalse();
 	}
 }

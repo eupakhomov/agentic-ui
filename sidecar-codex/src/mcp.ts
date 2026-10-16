@@ -47,6 +47,8 @@ export async function translateMcpConfig(path: string): Promise<McpTranslationRe
     }
     if (typeof entry['url'] === 'string') {
       const out: Record<string, unknown> = { url: entry['url'] };
+      // our own allowlist key -> Codex's per-server enabled_tools (an allowlist; verified on 0.163)
+      if (Array.isArray(entry['enabledTools'])) out['enabled_tools'] = entry['enabledTools'];
       const headers = entry['headers'] as Record<string, unknown> | undefined;
       const auth = typeof headers?.['Authorization'] === 'string' ? (headers['Authorization'] as string) : undefined;
       const match = auth?.match(/^Bearer\s+(.+)$/);

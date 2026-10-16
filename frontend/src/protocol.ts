@@ -233,6 +233,8 @@ export interface Settings {
   mcpGraphifyRoot: string;
   /** codegraph checkout root; empty = codegraph unavailable (phase 14) */
   mcpCodegraphRoot: string;
+  /** comma-separated Linear MCP tool names new sessions may call */
+  linearAllowedTools: string;
   /** which code-intelligence tool sessions may opt into — one per install (phase 13 decision 1); always resolved */
   codeIntel: CodeIntel;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readOnlyDenial } from '../src/permissions.js';
+import { enabledToolsHook, extractEnabledTools } from '../src/session.js';
 
 const CWD = '/work/session1';
 
@@ -69,5 +70,40 @@ describe('readOnlyDenial with an explicit writableRoot (docs/plan/phase-11-monor
     // "src/foo.ts" relative to SERVICE_CWD is .../packages/foo/src/foo.ts — inside WORKTREE either way,
     // but proves resolution didn't silently switch to resolving against writableRoot instead of cwd.
     expect(readOnlyDenial('Edit', { file_path: 'src/foo.ts' }, SERVICE_CWD, WORKTREE)).toBeUndefined();
+  });
+});
+
+describe('MCP enabledTools allowlist', () => {
+  const { servers, enabled } = extractEnabledTools({
+    linear: { type: 'http', url: 'https://x', enabledTools: ['get_issue', 'save_comment'] },
+    memory: { type: 'http', url: 'http://y' },
+  });
+  const hook = enabledToolsHook(enabled);
+
+  it('strips enabledTools from the config handed to the SDK', () => {
+    expect(servers['linear']).toEqual({ type: 'http', url: 'https://x' });
+    expect(servers['memory']).toEqual({ type: 'http', url: 'http://y' });
+    expect([...(enabled.get('linear') ?? [])]).toEqual(['get_issue', 'save_comment']);
+    expect(enabled.has('memory')).toBe(false);
+  });
+
+  it('denies a tool of a restricted server that is not on the list, with a reason', async () => {
+    const r = (await hook({ hook_event_name: 'PreToolUse', tool_name: 'mcp__linear__delete_comment' })) as {
+      hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string };
+    };
+    expect(r.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(r.hookSpecificOutput.permissionDecisionReason).toContain('delete_comment');
+  });
+
+  it('allows listed tools, other servers and built-ins', async () => {
+    for (const tool_name of ['mcp__linear__get_issue', 'mcp__memory__memory_search', 'Bash']) {
+      expect(await hook({ hook_event_name: 'PreToolUse', tool_name })).toEqual({ continue: true });
+    }
+  });
+
+  it('copes with underscores in server and tool names', async () => {
+    const h = enabledToolsHook(new Map([['my_srv', new Set(['do_it'])]]));
+    expect(await h({ hook_event_name: 'PreToolUse', tool_name: 'mcp__my_srv__do_it' })).toEqual({ continue: true });
+    expect(JSON.stringify(await h({ hook_event_name: 'PreToolUse', tool_name: 'mcp__my_srv__other_thing' }))).toContain('deny');
   });
 });
