@@ -910,4 +910,83 @@ class SessionConfigFactoryTest {
 		assertThat(factory.extraSystemPrompt(claudeCodegraph)).contains("codegraph` MCP server").doesNotContain("SERENA");
 		assertThat(factory.extraSystemPrompt(codexCodegraph)).contains("codegraph` MCP server");
 	}
+
+	// --- token-trimming defaults: Linear opt-in, default built-in block list ---
+
+	private SessionConfigFactory trimFactory(String provider) {
+		return new SessionConfigFactory(propsWithLinearKey("lin-key", "authtoken"), fakeSettings(false, true, false),
+				null, mapper, null, 8080,
+				fakeCatalog(Map.of("claude", fullCapabilities(), "codex", codexLikeCapabilities())), null, null, null, null);
+	}
+
+	private SessionConfigFactory.Prepared prepareWith(String provider, ObjectNode overrides) {
+		overrides.put("provider", provider);
+		return trimFactory(provider).prepare(UUID.randomUUID(), Path.of("/worktree"), codeIntelOptions(overrides));
+	}
+
+	@Test
+	void prepareDoesNotLayerLinearUnlessTheSessionOptsIn() {
+		SessionConfigFactory.Prepared prepared = prepareWith("claude", mapper.createObjectNode());
+
+		assertThat(prepared.entity().mcpConfig().has("linear")).isFalse();
+		assertThat(prepared.entity().mcpConfig().has("memory")).isTrue();
+	}
+
+	@Test
+	void prepareLayersLinearWhenLinearEnabledIsTrue() {
+		SessionConfigFactory.Prepared prepared = prepareWith("claude", mapper.createObjectNode().put("linearEnabled", true));
+
+		assertThat(prepared.entity().mcpConfig().path("linear").path("url").asText()).isEqualTo("https://mcp.linear.app/mcp");
+	}
+
+	@Test
+	void prepareKeepsAnExplicitLinearEntryEvenWithoutTheOptIn() {
+		ObjectNode overrides = mapper.createObjectNode();
+		overrides.putObject("mcpConfig").putObject("linear").put("type", "http").put("url", "https://own.example/mcp");
+
+		SessionConfigFactory.Prepared prepared = prepareWith("claude", overrides);
+
+		assertThat(prepared.entity().mcpConfig().path("linear").path("url").asText()).isEqualTo("https://own.example/mcp");
+	}
+
+	@Test
+	void prepareAppliesTheDefaultBlockListWhenNoDisallowedToolsKeyIsGiven() {
+		SessionConfigFactory.Prepared prepared = prepareWith("claude", mapper.createObjectNode());
+
+		assertThat(prepared.entity().disallowedTools()).containsExactlyInAnyOrder("NotebookEdit", "WebFetch", "WebSearch");
+	}
+
+	@Test
+	void prepareLetsAnExplicitDisallowedToolsListReplaceTheDefault() {
+		ObjectNode overrides = mapper.createObjectNode();
+		overrides.putArray("disallowedTools").add("Bash");
+
+		assertThat(prepareWith("claude", overrides).entity().disallowedTools()).containsExactly("Bash");
+	}
+
+	@Test
+	void prepareTreatsAnExplicitEmptyDisallowedToolsListAsOptingOutOfTheDefault() {
+		ObjectNode overrides = mapper.createObjectNode();
+		overrides.putArray("disallowedTools");
+
+		assertThat(prepareWith("claude", overrides).entity().disallowedTools()).isEmpty();
+	}
+
+	@Test
+	void prepareDoesNotApplyTheDefaultBlockListToAProviderThatRejectsDisallowedTools() {
+		SessionConfigFactory.Prepared prepared = prepareWith("codex", mapper.createObjectNode());
+
+		assertThat(prepared.entity().disallowedTools()).isEmpty();
+	}
+
+	@Test
+	void configOverridesFromCarriesAnEmptyDisallowedToolsListSoDuplicatesStayOptedOut() {
+		SessionEntity source = SessionEntity.builder().id(UUID.randomUUID()).name("n").provider("claude")
+				.permissionMode("default").allowedTools(List.of()).disallowedTools(List.of()).build();
+
+		JsonNode overrides = trimFactory("claude").configOverridesFrom(source);
+
+		assertThat(overrides.has("disallowedTools")).isTrue();
+		assertThat(overrides.get("disallowedTools")).isEmpty();
+	}
 }

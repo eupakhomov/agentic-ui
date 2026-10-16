@@ -67,6 +67,7 @@ export default function CreateSessionDialog({
   const [reflectionEnabled, setReflectionEnabled] = useState(false);
   /** phase 13: one flag; which tool it attaches is the global Settings selector (`settings.codeIntel`) */
   const [codeIntelEnabled, setCodeIntelEnabled] = useState(false);
+  const [linearEnabled, setLinearEnabled] = useState(false);
   const [selectedSkillAssets, setSelectedSkillAssets] = useState<Map<string, LibraryAsset>>(new Map());
   const [selectedAgentAssets, setSelectedAgentAssets] = useState<Map<string, LibraryAsset>>(new Map());
   const [extraSkill, setExtraSkill] = useState('');
@@ -295,6 +296,7 @@ export default function CreateSessionDialog({
       overrides['ecosystemPath'] = ecosystemPath.trim() || null;
       overrides['reflectionEnabled'] = reflectionEnabled;
       overrides['codeIntelEnabled'] = codeIntelEnabled;
+      overrides['linearEnabled'] = linearEnabled;
       if (promptFromTicket && resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
       const sniffSource = (raw: string) =>
         raw.startsWith('http') || raw.endsWith('.git') ? { type: 'repo', ref: raw } : { type: 'dir', ref: raw };
@@ -560,6 +562,12 @@ export default function CreateSessionDialog({
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
               <input type="checkbox" checked={reflectionEnabled} onChange={(e) => setReflectionEnabled(e.target.checked)} />
               distill this session into long-term memory when it closes (or via the widget's brain button anytime)
+            </label>
+
+            <label>Linear</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+              <input type="checkbox" checked={linearEnabled} onChange={(e) => setLinearEnabled(e.target.checked)} />
+              give the agent Linear tools (read/update tickets) — adds tens of thousands of tokens of tool schemas
             </label>
 
             {settings && settings.codeIntel !== 'none' && (

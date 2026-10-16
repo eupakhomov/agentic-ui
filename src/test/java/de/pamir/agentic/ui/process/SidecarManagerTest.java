@@ -165,6 +165,29 @@ class SidecarManagerTest {
 	}
 
 	@Test
+	void anInheritedExperimentalBetasKillSwitchIsDroppedSoToolSearchTakesEffect() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
+		Map<String, String> env = new HashMap<>(Map.of("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1", "KEEP", "me"));
+
+		manager.applySidecarEnvironment(baseEntity().provider("widget").build(), env);
+
+		assertThat(env).doesNotContainKey("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS").containsEntry("KEEP", "me");
+	}
+
+	@Test
+	void aSessionCanRestoreTheExperimentalBetasKillSwitchViaItsEnvVars() {
+		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
+		Map<String, String> env = new HashMap<>(Map.of("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1"));
+		SessionEntity entity = baseEntity().provider("widget")
+				.envVars(new ObjectMapper().createObjectNode().put("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1"))
+				.build();
+
+		manager.applySidecarEnvironment(entity, env);
+
+		assertThat(env).containsEntry("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1");
+	}
+
+	@Test
 	void serenaSessionsStillGetTheLongMcpTimeout() {
 		SidecarManager manager = new SidecarManager(null, null, catalogOf("widget", fullCaps()));
 		Map<String, String> env = new HashMap<>();

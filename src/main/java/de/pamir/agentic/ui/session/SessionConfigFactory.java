@@ -101,7 +101,9 @@ public class SessionConfigFactory {
 		String permissionMode = text(config, "permissionMode", "default");
 		JsonNode explicitMcpConfig = config.get("mcpConfig");
 		List<String> allowedTools = stringList(config, "allowedTools");
-		List<String> disallowedTools = stringList(config, "disallowedTools");
+		// Absent key = the default block list; an explicit list (even empty) is the session's own choice.
+		boolean explicitDisallowed = config.has("disallowedTools");
+		List<String> disallowedTools = explicitDisallowed ? stringList(config, "disallowedTools") : List.of();
 		String thinking = nullableText(config, "thinking");
 		Integer maxTurns = config.hasNonNull("maxTurns") ? config.get("maxTurns").asInt() : null;
 		String fallbackModel = nullableText(config, "fallbackModel");
@@ -147,6 +149,9 @@ public class SessionConfigFactory {
 			contextDirs = List.of();
 		}
 		if (caps.supports("allowedTools")) {
+			if (!explicitDisallowed) {
+				disallowedTools = DEFAULT_DISALLOWED_TOOLS;
+			}
 			// allowedTools/disallowedTools are additive presets (bypass or block specific tools
 			// without switching the session into allow-list-only mode) — safe to append to
 			// regardless of whether the session configured any of its own. A provider that
@@ -173,7 +178,10 @@ public class SessionConfigFactory {
 			allowedTools = new ArrayList<>(new LinkedHashSet<>(allowedTools));
 		}
 		String cwdPath = computeCwdPath(repo, resolution.servicePath(), worktree);
-		JsonNode mcpConfig = withDefaultCodeIntelMcp(withDefaultMemoryMcp(withDefaultLinearMcp(explicitMcpConfig)),
+		// Linear's ~80 tool schemas cost tens of thousands of tokens per session, so it is opt-in.
+		JsonNode withLinear = config.path("linearEnabled").asBoolean(false)
+				? withDefaultLinearMcp(explicitMcpConfig) : explicitMcpConfig;
+		JsonNode mcpConfig = withDefaultCodeIntelMcp(withDefaultMemoryMcp(withLinear),
 				provider, codeIntel, cwdPath, id);
 
 		SessionEntity entity = SessionEntity.builder()
@@ -237,6 +245,12 @@ public class SessionConfigFactory {
 		}
 		return Character.toUpperCase(tool.charAt(0)) + tool.substring(1);
 	}
+
+	/**
+	 * Built-ins blocked unless a session sets its own {@code disallowedTools} — their schemas cost
+	 * context on every first request and most sessions never use them.
+	 */
+	static final List<String> DEFAULT_DISALLOWED_TOOLS = List.of("NotebookEdit", "WebFetch", "WebSearch");
 
 	private static final java.util.Set<String> SESSION_TYPES = java.util.Set.of("development", "review");
 
@@ -694,9 +708,8 @@ public class SessionConfigFactory {
 		if (!source.allowedTools().isEmpty()) {
 			overrides.set("allowedTools", mapper.valueToTree(source.allowedTools()));
 		}
-		if (!source.disallowedTools().isEmpty()) {
-			overrides.set("disallowedTools", mapper.valueToTree(source.disallowedTools()));
-		}
+		// always carried, even empty: an absent key would re-apply the default block list
+		overrides.set("disallowedTools", mapper.valueToTree(source.disallowedTools()));
 		JsonNode carriedMcp = withoutManagedMemoryServer(source.mcpConfig());
 		if (carriedMcp != null) {
 			overrides.set("mcpConfig", carriedMcp);

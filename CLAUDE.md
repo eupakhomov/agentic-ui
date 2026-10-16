@@ -326,7 +326,7 @@ the backend's environment):
 | `AGENTIC_UI_SKILLS_ROOT` | `~/agentic-skills` | *Default* for the managed skills root, which is now a persisted setting (`library.skills-root`) — the create-dialog picker, provisioning's repo cache, and library imports all read the setting |
 | `AGENTIC_UI_MEMORY_ROOT` | `~/agentic-memory` | *Default* for the managed semantic-memory root (`memory.root` persisted setting) — an Obsidian-compatible vault of Markdown files with YAML frontmatter; the DB is a rebuildable search index over it, not the source of truth |
 | `AGENTIC_UI_VOYAGE_API_KEY` | — | Voyage AI API key (a secret — env var only); enables the library's "vectorize" setting + semantic search (`VoyageEmbeddingClient`, voyage-3.5-lite, pgvector) **and** memory's dense-search arm. Unset = those features fall back to sparse-only (Postgres FTS + trigram for memory), everything else works |
-| `AGENTIC_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku). When configured (or the OAuth toggle is on), the Linear MCP server is also layered by default into every regular session's `mcpConfig` (`SessionService.linearMcpServer()`/`withDefaultLinearMcp()`), so the agent can read/update tickets directly — unless the session's own `mcpConfig` already declares its own `linear` entry, which wins. Regular sessions go through the normal permission-approval flow for its tools (the system session pre-approves them instead, since backend-initiated turns have nobody to answer a prompt). |
+| `AGENTIC_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku). The Linear MCP server is layered into a regular session's `mcpConfig` only when that session opts in (`linearEnabled`, the create dialog's "Linear" checkbox — **off by default**, since ~80 tool schemas cost tens of thousands of tokens) and Linear is configured (this key or the OAuth toggle) (`SessionService.linearMcpServer()`/`withDefaultLinearMcp()`); a session's own `mcpConfig` declaring a `linear` entry always wins and needs no opt-in. Regular sessions go through the normal permission-approval flow for its tools (the system session always gets it and pre-approves them instead, since backend-initiated turns have nobody to answer a prompt). |
 
 **Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
 `costBudgetUsd` (turns are refused once cumulative cost reaches it; in-flight turns
@@ -515,9 +515,16 @@ effect on the next use with no backend restart.
 **MCP tool search**: every sidecar is spawned with `ENABLE_TOOL_SEARCH=true`
 (`SidecarManager.applySidecarEnvironment`) so MCP tool schemas (Linear alone is ~80 tools) are
 deferred and loaded on demand instead of filling the first request. A session overrides it via its
-`envVars` (`ENABLE_TOOL_SEARCH=auto|false`). The widget's `ctx N%` chip tooltip shows the
-per-category / per-MCP-server breakdown (`context_usage.breakdown`, Claude only) — use it to check
-what a session's context is made of.
+`envVars` (`ENABLE_TOOL_SEARCH=auto|false`). Sidecars also **drop an inherited
+`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`** — a shell that exports it (typical for LiteLLM/gateway
+setups) makes the CLI silently ignore `ENABLE_TOOL_SEARCH`, which measured ~37k extra tokens per
+session (deferred MCP *and* built-in tool schemas) on Opus 4.6 / Sonnet / Haiku 4.5 through a
+LiteLLM proxy; a session's `envVars` can set it back if a gateway rejects the beta headers.
+Built-ins `NotebookEdit`, `WebFetch`, `WebSearch` are blocked by default
+(`SessionConfigFactory.DEFAULT_DISALLOWED_TOOLS`) for providers that support `disallowedTools`;
+a session that sets its own `disallowedTools` (even `[]`) replaces that default. The widget's
+`ctx N%` chip tooltip shows the per-category / per-MCP-server breakdown
+(`context_usage.breakdown`, Claude only) — use it to check what a session's context is made of.
 
 **Fixed internals** (code constants, for awareness): stream_delta journal batching
 50 events / 250 ms with coalescing after each completed turn; crash stderr tail 100

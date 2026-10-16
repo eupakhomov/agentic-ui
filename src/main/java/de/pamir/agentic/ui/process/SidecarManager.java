@@ -159,6 +159,12 @@ public class SidecarManager {
 		// of a 200k window). A Claude Code setting; the Codex sidecar and its child ignore it, so
 		// no per-provider gate. Override per session with envVars ENABLE_TOOL_SEARCH=auto|false.
 		env.put("ENABLE_TOOL_SEARCH", "true");
+		// ...but only if experimental betas aren't suppressed: a backend launched from a shell that
+		// exports CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 (typical for LiteLLM/gateway setups) makes
+		// the CLI silently ignore ENABLE_TOOL_SEARCH, and measured ~37k extra tokens per session
+		// (verified through a LiteLLM proxy on Opus 4.6, Sonnet and Haiku 4.5). Drop the inherited
+		// value for sidecars only; a session's own envVars below can set it back.
+		env.remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
 		if (SettingsService.CODE_INTEL_SERENA.equals(session.codeIntel())) {
 			// Serena's language server can take minutes to download on a cold cache (docs/plan/
 			// phase-12-linear-cache-serena-context.md Step B0) — a generous, conservative default
