@@ -1,6 +1,6 @@
 # Phase 19 — System session refactor: per-lane stateless workers
 
-Status: **landed (2026-10-17)**, all five steps; live manual script pending. Backend-heavy, one small frontend
+Status: **landed (2026-10-17)**, all five steps; live manual script partly run (see log). Backend-heavy, one small frontend
 touch (queue copy in the ticket dialogs); no schema migration.
 
 ## Background
@@ -280,3 +280,19 @@ mentions the direct-API fast path), `ARCHITECTURE.md`, decision log, phases tabl
 - **Docs:** `CLAUDE.md` (provider paragraph + Linear env-var row), `docs/ARCHITECTURE.md` box line.
 - Suites: backend `mvn test` 640 run / 0 failures; frontend vitest 80 + `tsc --noEmit` + `npm run build`
   green; sidecars untouched (not re-run). Live manual script (1–9) still to be run by the user.
+
+### 2026-10-17 — live verification (API-key mode, real Linear)
+
+- **Script 5 (legacy row):** startup log shows the old `name='system'` rows retired (CLOSED).
+- **Script 6 (API-key list/import):** list with `refresh=true` returns in ~0.1 s with no system turn.
+  Import first still made `mcp__linear` get_issue/list_comments calls — the inlined prompt told the
+  model to "read the comment thread", and it went and fetched it (12–20 s, one 409 where it replied
+  with a refusal-style non-JSON). **Fix:** the inlined prompt now opens with "complete Linear issue"
+  and says "Do NOT call any tools". After the fix the sidecar log shows no tool-call deltas; imports
+  take ~12–20 s of pure model time. A key with one extra char logs the 401 WARN for both list and
+  import and falls back to the system-turn path, which still succeeds.
+- **Script 3 (concurrent imports):** two simultaneous interactive imports — the second queued
+  (~11 s), then ran; both HTTP 200, no "busy" error.
+- **Script 4 (recycle):** between turns the interactive row is IDLE (re-warmed) with
+  `provider_session_id` NULL; the log shows terminate → wake → fresh spawn after each import.
+- **Not yet run:** 1 (close a session during reflection), 2, 7 (OAuth), 8 (Codex), 9 (idle-park).

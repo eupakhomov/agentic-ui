@@ -125,8 +125,8 @@ public class TicketImportService {
 			// API-key fast path: the issue and its comments are inlined, so this is a single LLM
 			// call with no MCP tool round trips. The canonical identifier is known, so set it
 			// rather than hoping the model echoes it.
-			String inlined = ("Here is the Linear issue \"%s\", with its comments (oldest first):\n\n%s\n\n"
-					+ "Read the comment thread for any clarifications, scope changes, decisions, or "
+			String inlined = ("Here is the complete Linear issue \"%s\", with all of its comments (oldest first):\n\n%s\n\n"
+					+ "Do NOT call any tools — everything you need is above. Read the comment thread for any clarifications, scope changes, decisions, or "
 					+ "blocking questions/answers raised after the ticket was created — the description alone may "
 					+ "be stale — and factor anything relevant into the prompt you write. "
 					+ "%s"

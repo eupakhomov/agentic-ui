@@ -329,7 +329,7 @@ class TicketImportServiceTest {
 
 		assertThat(result.ticketRef()).isEqualTo("ENG-7");
 		assertThat(turnClient.lastPrompt).contains("do the seven").contains("also handle nulls")
-				.doesNotContain("MCP tools");
+				.doesNotContain("MCP tools").contains("Do NOT call any tools");
 	}
 
 	@Test
