@@ -57,6 +57,13 @@ public class SessionService {
 	/** Index-at-create for {@code codeIntel == "codegraph"} sessions (docs/plan/phase-14-codegraph.md Step 2); null in unit tests. */
 	private final CodegraphService codegraph;
 	private final Map<UUID, Object> locks = new ConcurrentHashMap<>();
+	/** Requests each live session is blocked on (phase 18): lets the dashboard and Slack race for one decision safely. */
+	private final PendingPermissions pendingPermissions = new PendingPermissions();
+
+	public PendingPermissions pendingPermissions() {
+		return pendingPermissions;
+	}
+
 	/** Guards the enforceSessionLimit()+insert critical section — see {@link #enforceSessionLimitAndInsert}. */
 	private final Object sessionLimitLock = new Object();
 	/** Sessions woken by {@link #compact} for being PARKED — the compact command fires once
@@ -286,14 +293,56 @@ public class SessionService {
 		record(id, "reflection_setting_changed", mapper.createObjectNode().put("reflectionEnabled", enabled));
 	}
 
+	/** The dashboard's decision: always forwarded (as before), and it also settles the pending request. */
 	public void respondPermission(UUID id, JsonNode command) {
+		pendingPermissions.take(id, command.path("requestId").asText(""));
+		deliverPermissionResponse(id, command);
+	}
+
+	/**
+	 * A decision that must not double-send: delivered only if the request is still pending, in which
+	 * case it is settled atomically. Returns false when it was already decided (by the dashboard, or
+	 * by another Slack click) — the caller reports that instead of sending a second response.
+	 */
+	public boolean respondPermissionIfPending(UUID id, JsonNode command) {
+		var taken = pendingPermissions.take(id, command.path("requestId").asText(""));
+		if (taken.isEmpty()) {
+			return false;
+		}
+		try {
+			deliverPermissionResponse(id, command);
+		} catch (RuntimeException e) {
+			// not delivered (e.g. the sidecar just died): the request is still open, don't lose it
+			pendingPermissions.add(id, taken.get().requestId(), taken.get().toolName(), taken.get().input());
+			throw e;
+		}
+		return true;
+	}
+
+	/**
+	 * Journals the decision as received (including who made it, for a Slack-originated one) but forwards
+	 * the sidecar only the protocol fields — the audit fields are ours, not part of the adapter protocol.
+	 */
+	private void deliverPermissionResponse(UUID id, JsonNode command) {
 		record(id, "permission_response", command);
-		sidecars.handle(id).send(command.toString());
+		JsonNode forSidecar = command;
+		if (command instanceof ObjectNode obj) {
+			ObjectNode copy = obj.deepCopy();
+			copy.remove("source");
+			copy.remove("slackUser");
+			forSidecar = copy;
+		}
+		sidecars.handle(id).send(forSidecar.toString());
 		synchronized (lock(id)) {
 			if (sessions.get(id).state() == SessionState.WAITING_INPUT) {
 				transition(id, SessionState.RUNNING);
 			}
 		}
+	}
+
+	/** Journals who asked for something done from outside the dashboard (Slack): an audit trail, not a state change. */
+	public void recordExternalInput(UUID id, ObjectNode payload) {
+		record(id, "slack_input", payload);
 	}
 
 	public void interrupt(UUID id) {
@@ -425,8 +474,16 @@ public class SessionService {
 
 	// ------------------------------------------------------------------ sidecar event handling
 
-	private void onSidecarEvent(UUID id, JsonNode event) {
+	// package-private (not private): unit-tested directly — pending-permission tracking, phase 18
+	void onSidecarEvent(UUID id, JsonNode event) {
 		String type = event.path("type").asText("unknown");
+		// tracked before the event is journaled/published, so nothing that reacts to it (a Slack click)
+		// can arrive ahead of the bookkeeping
+		if ("permission_request".equals(type)) {
+			pendingPermissions.add(id, event.path("requestId").asText(""), event.path("toolName").asText(""), event.get("input"));
+		} else if ("turn_complete".equals(type)) {
+			pendingPermissions.clear(id); // whatever was outstanding died with the turn (an interrupt denies them)
+		}
 		if ("turn_complete".equals(type) && event instanceof ObjectNode turnComplete) {
 			applyEstimatedCost(id, turnComplete);
 		}
@@ -477,6 +534,7 @@ public class SessionService {
 
 	// package-private (not private): unit-tested directly — see docs/plan/phase-9-production-hardening.md T2
 	void onSidecarExit(UUID id, int code, List<String> stderrTail, boolean shutdownRequested) {
+		pendingPermissions.clear(id);
 		synchronized (lock(id)) {
 			SessionEntity session = sessions.find(id).orElse(null);
 			if (session == null) {

@@ -60,7 +60,7 @@ Bash is not path-policed — it flows through the normal approval path.
 | `context_usage` | `tokens`, `window`, `autoCompactAt?`, `breakdown?` | how full the *next* request's context will be — never `turn_complete.usage`'s per-turn summary. Emitted after every `turn_complete` and after a `context_compacted`, never mid-turn. `breakdown` (Claude only; display-only, journaled with the event, not persisted on the session row) = `{categories: [{name, tokens}], mcpServers: [{name, tokens, deferred}], messages?: {toolResults, toolCalls, assistant, user, attachments}, topTools: [{name, tokens}]}` — zero-token rows omitted, `mcpServers[].deferred` = the server's tool schemas are not loaded up front (tool search), `topTools` = max 5 by call+result tokens |
 | `context_compacted` | `preTokens`, `postTokens`, `trigger: manual\|auto` | a compaction boundary just happened (a `compact` command or the provider's own auto-compact) |
 | `error` | `message`, `fatal` | non-fatal: guard denials, malformed input, transient provider errors; fatal: precedes exit 1 |
-| `exiting` | `reason: shutdown\|fatal\|stdin_closed` | last event before exit |
+| `exiting` | `reason: shutdown\|fatal\|stdin_closed` | last event before exit. An error thrown by the underlying agent stream *after* a `shutdown` command or a closed stdin is expected and is only logged to stderr (`exiting` keeps that reason, exit 0); the same error while the sidecar was not asked to stop is `fatal` |
 
 ## Capabilities
 
@@ -267,7 +267,12 @@ approval round-trip. Full mapping tables and rationale:
   The backend also journals/broadcasts its own event types: `state_changed {state}`,
   `user_message {text}` (inbound messages echoed into the transcript),
   `queue_updated {queued:[{pos,text}]}`, `warning {message}`, `error`,
-  `permission_response` (echo of the user's decision), `budget_updated {costBudgetUsd}`
+  `permission_response` (echo of the user's decision; a decision made in Slack also carries
+  `source: "slack"` and `slackUser` — journal-only fields the backend strips before forwarding to the adapter),
+  `slack_input {source: "slack", slackUser, kind: "prompt"|"stop"|"close"|"start", tool?}` (audit of a Slack-originated prompt,
+  Stop, or — journaled on the new session — the `@bot review`/`dev` command that created it, with `tool` = the session
+  type; no state effect, the prompt's text is the `user_message` that follows),
+  `budget_updated {costBudgetUsd}`
   (the session's cost budget changed via `PATCH /api/sessions/{id}`; `costBudgetUsd` is
   `null` when the budget is cleared), `budget_exhausted {costBudgetUsd, costToDate}`
   (a turn was refused, or a queued message held rather than sent, because cumulative

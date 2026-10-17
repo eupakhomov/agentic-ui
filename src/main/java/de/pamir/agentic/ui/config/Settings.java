@@ -57,7 +57,9 @@ public record Settings(
 		 * AuthTokenService}, so a change applies on the next restart. Default: on when a token is
 		 * configured, off otherwise.
 		 */
-		boolean authTokenRequired) {
+		boolean authTokenRequired,
+		/** Phase 18: whether new sessions start with Slack mirroring on (the create dialog can still override). */
+		boolean slackDefaultEnabled) {
 
 	/** Pre-phase-17 arity (no {@code authTokenRequired}); keeps fixed-settings test fixtures compiling. */
 	public Settings(boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot,
@@ -76,6 +78,27 @@ public record Settings(
 				memoryEnabled, memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes,
 				memoryRetentionDays, memoryReflectionApprovalRequired, serviceDiscoveryEnabled,
 				serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath,
-				mcpGraphifyRoot, mcpCodegraphRoot, codeIntel, linearAllowedTools, false);
+				mcpGraphifyRoot, mcpCodegraphRoot, codeIntel, linearAllowedTools, false, false);
+	}
+
+	/** Pre-phase-18 arity (no {@code slackDefaultEnabled}); keeps fixed-settings test fixtures compiling. */
+	public Settings(boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot,
+					String monorepoServiceGlobs, boolean monorepoDetectionEnabled, boolean prChecksEnabled,
+					int prCheckPollIntervalSeconds, String librarySkillsRoot, String libraryAgentsRoot,
+					boolean libraryVectorize, boolean librarySyncEnabled, int librarySyncIntervalMinutes,
+					String defaultProvider, String systemProvider, String memoryRoot, boolean memoryEnabled,
+					boolean memoryReflectionDefault, String memoryReflectionModel, int memorySyncIntervalMinutes,
+					int memoryRetentionDays, boolean memoryReflectionApprovalRequired,
+					boolean serviceDiscoveryEnabled, int serviceDiscoveryStalenessDays,
+					String serviceDiscoveryModel, int contextWarnPercent, String mcpSerenaRoot, String mcpUvPath,
+					String mcpGraphifyRoot, String mcpCodegraphRoot, String codeIntel, String linearAllowedTools,
+					boolean authTokenRequired) {
+		this(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs, monorepoDetectionEnabled,
+				prChecksEnabled, prCheckPollIntervalSeconds, librarySkillsRoot, libraryAgentsRoot, libraryVectorize,
+				librarySyncEnabled, librarySyncIntervalMinutes, defaultProvider, systemProvider, memoryRoot,
+				memoryEnabled, memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes,
+				memoryRetentionDays, memoryReflectionApprovalRequired, serviceDiscoveryEnabled,
+				serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath,
+				mcpGraphifyRoot, mcpCodegraphRoot, codeIntel, linearAllowedTools, authTokenRequired, false);
 	}
 }

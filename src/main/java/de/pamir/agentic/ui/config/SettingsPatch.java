@@ -42,7 +42,8 @@ public record SettingsPatch(
 		String mcpCodegraphRoot,
 		String codeIntel,
 		String linearAllowedTools,
-		Boolean authTokenRequired) {
+		Boolean authTokenRequired,
+		Boolean slackDefaultEnabled) {
 
 	public static Builder builder() {
 		return new Builder();
@@ -83,6 +84,7 @@ public record SettingsPatch(
 		private String codeIntel;
 		private String linearAllowedTools;
 		private Boolean authTokenRequired;
+		private Boolean slackDefaultEnabled;
 
 		public Builder linearOAuthEnabled(Boolean v) {
 			this.linearOAuthEnabled = v;
@@ -249,6 +251,11 @@ public record SettingsPatch(
 			return this;
 		}
 
+		public Builder slackDefaultEnabled(Boolean v) {
+			this.slackDefaultEnabled = v;
+			return this;
+		}
+
 		public SettingsPatch build() {
 			return new SettingsPatch(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs,
 					monorepoDetectionEnabled, prChecksEnabled,
@@ -258,7 +265,7 @@ public record SettingsPatch(
 					memorySyncIntervalMinutes, memoryRetentionDays, memoryReflectionApprovalRequired,
 					serviceDiscoveryEnabled, serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent,
 					mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot, mcpCodegraphRoot, codeIntel, linearAllowedTools,
-					authTokenRequired);
+					authTokenRequired, slackDefaultEnabled);
 		}
 	}
 }

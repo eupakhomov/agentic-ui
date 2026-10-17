@@ -81,6 +81,9 @@ auth, your own machine's `claude`/`codex`/`gh` credentials.
 - Ecosystem awareness: point the tool at a folder of services and sessions get
   read-only context of sibling repos; monorepo detection optional
 - Orchestration: a session can spawn child sessions (fan-out) via an MCP tool
+- Slack (optional, off by default): mirror sessions into one private channel, and from Slack allow/deny
+  tools, approve plans, answer questions, prompt, stop, status and close — and, behind a separate switch,
+  start review and development sessions (optionally from a template) by mentioning the bot
 
 ## Architecture
 
@@ -149,6 +152,7 @@ links go to the phase doc with the rationale and decisions:
 | Code intelligence: CodeGraph | Node (no `uv`) + a codegraph checkout at the reviewed commit, built once; Settings → MCP servers → CodeGraph root, pick `CodeGraph`; tick **Code intelligence** per session. Index builds synchronously at session start, then stays fresh on its own (no background refresh) — [DEPLOY §8d](docs/DEPLOY.md#8d-optional-codegraph-code-graph-self-refreshing) | [`phase-14-codegraph.md`](docs/plan/phase-14-codegraph.md) |
 | PR checks polling | on by default; Settings → PR checks (interval); uses ambient `gh` auth | `docs/ARCHITECTURE.md` |
 | Ecosystem / service discovery | Settings → Sessions → Ecosystem root; monorepo detection is a separate toggle | [`phase-8-service-discovery.md`](docs/plan/phase-8-service-discovery.md), [`phase-11-monorepo.md`](docs/plan/phase-11-monorepo.md) |
+| Slack | a Slack app (Socket Mode), `AGENTIC_UI_SLACK_ENABLED` + tokens + channel ID + an allowlist; starting sessions from Slack has its own switch — [DEPLOY §8e](docs/DEPLOY.md#8e-optional-slack-mirror-sessions-approve-from-your-phone), full guide [`docs/SLACK.md`](docs/SLACK.md) | [`phase-18-slack.md`](docs/plan/phase-18-slack.md) |
 | Orchestration (child sessions) | none — agents get a `spawn_child_session` tool | [`phase-7-ux-and-orchestration.md`](docs/plan/phase-7-ux-and-orchestration.md) |
 
 ## Configuration
@@ -165,6 +169,7 @@ The most common knobs (all env vars are read at backend startup):
 | `AGENTIC_UI_DB_PASSWORD` | `agentic_ui` | Postgres password override |
 | `AGENTIC_UI_VOYAGE_API_KEY` | — | enables dense/semantic search (secret — env only) |
 | `AGENTIC_UI_LINEAR_API_KEY` | — | enables Linear import + MCP (secret — env only) |
+| `AGENTIC_UI_SLACK_ENABLED` | `false` | Slack mirroring and control; needs `AGENTIC_UI_SLACK_BOT_TOKEN`, `_APP_TOKEN` (secrets — env only), `_CHANNEL` and `_ALLOWED_USERS` (empty = nobody can act); `_START_ENABLED` additionally allows starting sessions from Slack — see [`docs/SLACK.md`](docs/SLACK.md) |
 
 The full list of limits, persisted settings, and operational notes is in
 [`CLAUDE.md`](CLAUDE.md) — which doubles as the contributor/agent handbook for this

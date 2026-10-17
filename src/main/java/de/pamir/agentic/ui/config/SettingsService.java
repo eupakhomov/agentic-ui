@@ -71,6 +71,7 @@ public class SettingsService {
 	private static final String EMPTY_PRICING = "{}";
 	private static final String MEMORY_ROOT_KEY = "memory.root";
 	private static final String MEMORY_ENABLED_KEY = "memory.enabled";
+	private static final String SLACK_DEFAULT_ENABLED_KEY = "slack.default-enabled";
 	private static final String MEMORY_REFLECTION_DEFAULT_KEY = "memory.reflection-default";
 	private static final String MEMORY_REFLECTION_MODEL_KEY = "memory.reflection-model";
 	private static final String MEMORY_SYNC_INTERVAL_KEY = "memory.sync-interval-minutes";
@@ -159,6 +160,9 @@ public class SettingsService {
 	/** Phase 17 B. Default tracks whether a token is configured, so existing installs behave unchanged. */
 	private final Field<Boolean> authTokenRequired;
 	private final Field<Boolean> memoryEnabled = boolField(MEMORY_ENABLED_KEY, true, SettingsPatch::memoryEnabled);
+	/** Phase 18: new sessions start with Slack mirroring on. Off by default — content leaves the machine. */
+	private final Field<Boolean> slackDefaultEnabled =
+			boolField(SLACK_DEFAULT_ENABLED_KEY, false, SettingsPatch::slackDefaultEnabled);
 	private final Field<Boolean> memoryReflectionDefault =
 			boolField(MEMORY_REFLECTION_DEFAULT_KEY, false, SettingsPatch::memoryReflectionDefault);
 	private final Field<String> memoryReflectionModel = tierField(MEMORY_REFLECTION_MODEL_KEY, SettingsPatch::memoryReflectionModel);
@@ -215,7 +219,7 @@ public class SettingsService {
 				memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes, memoryRetentionDays,
 				memoryReflectionApprovalRequired, serviceDiscoveryEnabled, serviceDiscoveryStalenessDays,
 				serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot,
-				mcpCodegraphRoot, codeIntelField, linearAllowedTools, authTokenRequired);
+				mcpCodegraphRoot, codeIntelField, linearAllowedTools, authTokenRequired, slackDefaultEnabled);
 	}
 
 	/** One snapshot of every setting in {@link #fields}, cached until the next {@link #apply}. */
@@ -259,7 +263,8 @@ public class SettingsService {
 				mcpCodegraphRoot.resolve(raw),
 				storedCodeIntel.isBlank() ? defaultCodeIntel(serenaRoot) : storedCodeIntel,
 				linearAllowedTools.resolve(raw),
-				authTokenRequired.resolve(raw));
+				authTokenRequired.resolve(raw),
+				slackDefaultEnabled.resolve(raw));
 		cache = built;
 		return built;
 	}

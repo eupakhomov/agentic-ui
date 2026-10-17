@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
-import { assetStub, pickDefaultBranch, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type PrInfo, type ProviderView, type ServicesResponse, type SessionSummary, type SessionType, type Settings, type Template } from '../protocol';
+import { assetStub, pickDefaultBranch, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type PrInfo, type ProviderView, type ServicesResponse, type SessionSummary, type SessionType, type Settings, type SlackStatus, type Template } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
 import ModelSelect from './ModelSelect';
 import { MODE_CYCLE, MODE_LABEL } from './SessionWidget';
@@ -65,6 +65,9 @@ export default function CreateSessionDialog({
   const [instructions, setInstructions] = useState('');
   const [ecosystemPath, setEcosystemPath] = useState('');
   const [reflectionEnabled, setReflectionEnabled] = useState(false);
+  /** phase 18: mirror this session into Slack; the checkbox shows only when the server has Slack enabled */
+  const [slackEnabled, setSlackEnabled] = useState(false);
+  const [slackStatus, setSlackStatus] = useState<SlackStatus | null>(null);
   /** phase 13: one flag; which tool it attaches is the global Settings selector (`settings.codeIntel`) */
   const [codeIntelEnabled, setCodeIntelEnabled] = useState(false);
   const [selectedSkillAssets, setSelectedSkillAssets] = useState<Map<string, LibraryAsset>>(new Map());
@@ -116,7 +119,9 @@ export default function CreateSessionDialog({
       setSettings(s);
       setProvider(s.defaultProvider);
       setReflectionEnabled(s.memoryReflectionDefault);
+      setSlackEnabled(s.slackDefaultEnabled);
     }).catch(() => setSettings(null));
+    api.slackStatus().then(setSlackStatus).catch(() => setSlackStatus(null));
     api.ticketImportEnabled().then((r) => { setTicketImportEnabled(r.enabled); setTicketImportWarm(r.warm); })
       .catch(() => setTicketImportEnabled(false));
   }, []);
@@ -294,6 +299,7 @@ export default function CreateSessionDialog({
       if (instructions.trim()) overrides['instructions'] = instructions.trim();
       overrides['ecosystemPath'] = ecosystemPath.trim() || null;
       overrides['reflectionEnabled'] = reflectionEnabled;
+      if (slackStatus?.enabled) overrides['slackEnabled'] = slackEnabled;
       overrides['codeIntelEnabled'] = codeIntelEnabled;
       if (promptFromTicket && resolvedTicketRef) overrides['ticketRef'] = resolvedTicketRef;
       const sniffSource = (raw: string) =>
@@ -561,6 +567,16 @@ export default function CreateSessionDialog({
               <input type="checkbox" checked={reflectionEnabled} onChange={(e) => setReflectionEnabled(e.target.checked)} />
               distill this session into long-term memory when it closes (or via the widget's brain button anytime)
             </label>
+
+            {slackStatus?.enabled && (
+              <>
+                <label>Slack</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                  <input type="checkbox" checked={slackEnabled} onChange={(e) => setSlackEnabled(e.target.checked)} />
+                  mirror this session into a Slack thread (prompts, tool commands and plans are posted there)
+                </label>
+              </>
+            )}
 
             {settings && settings.codeIntel !== 'none' && (
               <>

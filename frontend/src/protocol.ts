@@ -58,10 +58,18 @@ export interface Envelope {
   payload: Record<string, unknown> & { [k: string]: unknown };
 }
 
+/** GET /api/slack/status — whether the server has Slack on and its socket is connected (phase 18). */
+export interface SlackStatus {
+  enabled: boolean;
+  connected: boolean;
+}
+
 export interface SessionEntity {
   id: string;
   name: string;
   provider: string;
+  /** phase 18: this session is mirrored into a Slack thread */
+  slackEnabled?: boolean;
   repoPath: string;
   /** The service identity — a folder inside repoPath's git repo; equals repoPath for a polyrepo session (phase 11) */
   servicePath: string;
@@ -239,6 +247,8 @@ export interface Settings {
   codeIntel: CodeIntel;
   /** phase 17: stored "require the access token" choice — read once at backend startup, so it applies on restart */
   authTokenRequired: boolean;
+  /** phase 18: new sessions start with Slack mirroring on (only meaningful when the server has Slack enabled) */
+  slackDefaultEnabled: boolean;
 }
 
 /** phase 17 C: one row of the changes panel (working tree vs merge-base, plus untracked) */

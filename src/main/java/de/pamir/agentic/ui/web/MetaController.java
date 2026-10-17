@@ -3,6 +3,7 @@ package de.pamir.agentic.ui.web;
 import de.pamir.agentic.ui.config.AppProperties;
 import de.pamir.agentic.ui.config.SettingsService;
 import de.pamir.agentic.ui.git.GitOpsService;
+import de.pamir.agentic.ui.git.ServiceCatalog;
 import de.pamir.agentic.ui.git.GitWorktreeService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +24,7 @@ public class MetaController {
 	private final SettingsService settings;
 	private final GitWorktreeService worktrees;
 	private final GitOpsService gitOps;
+	private final ServiceCatalog catalog;
 
 	public MetaController(AppProperties props, SettingsService settings, GitWorktreeService worktrees,
 						   GitOpsService gitOps) {
@@ -30,6 +32,7 @@ public class MetaController {
 		this.settings = settings;
 		this.worktrees = worktrees;
 		this.gitOps = gitOps;
+		this.catalog = new ServiceCatalog(props, settings, worktrees);
 	}
 
 	public record ServiceInfo(String name, String path, String repoPath, boolean monorepo) {
@@ -46,35 +49,9 @@ public class MetaController {
 	 */
 	@GetMapping("/repo/services")
 	public ServicesResponse services() {
-		List<String> globs = monorepoGlobs();
-		boolean monorepoDetectionEnabled = settings.current().monorepoDetectionEnabled();
-		List<ServiceInfo> services = new ArrayList<>();
-		String ecosystemRoot = settings.current().ecosystemRoot();
-		if (!ecosystemRoot.isBlank()) {
-			worktrees.findServices(Path.of(ecosystemRoot), globs, monorepoDetectionEnabled)
-					.forEach(svc -> services.add(toServiceInfo(svc)));
-		}
-		Path configured = Path.of(props.repoPath());
-		// The configured default repo goes through the same detection as everything else — a
-		// monorepo default repo lists its packages too, not just the repo as one service — but only
-		// as a fallback: if the ecosystem scan above already surfaced it (its repoPath, not its own
-		// path, since a monorepo's packages never equal the repo root), don't duplicate it.
-		if (services.stream().noneMatch(s -> s.repoPath().equals(configured.toString()))
-				&& Files.exists(configured.resolve(".git"))) {
-			List<ServiceInfo> defaults = worktrees.findServices(configured, globs, monorepoDetectionEnabled).stream()
-					.map(this::toServiceInfo).toList();
-			services.addAll(0, defaults);
-		}
-		return new ServicesResponse(ecosystemRoot, props.repoPath(), services);
-	}
-
-	private ServiceInfo toServiceInfo(GitWorktreeService.ServiceInfo svc) {
-		return new ServiceInfo(svc.name(), svc.servicePath(), svc.repoPath(), !svc.servicePath().equals(svc.repoPath()));
-	}
-
-	private List<String> monorepoGlobs() {
-		return Arrays.stream(settings.current().monorepoServiceGlobs().split(","))
-				.map(String::strip).filter(g -> !g.isEmpty()).toList();
+		List<ServiceInfo> services = catalog.services().stream()
+				.map(svc -> new ServiceInfo(svc.name(), svc.path(), svc.repoPath(), svc.monorepo())).toList();
+		return new ServicesResponse(catalog.ecosystemRoot(), catalog.defaultRepoPath(), services);
 	}
 
 	/**

@@ -260,6 +260,62 @@ public class GitOpsService {
 		return new PrRef(m.group(1), m.group(2), Integer.parseInt(m.group(3)));
 	}
 
+	/**
+	 * One PR in full, for starting a review from outside the dashboard: {@code state} is GitHub's
+	 * OPEN/CLOSED/MERGED, {@code crossRepository} is true for a PR from a fork (whose head branch does
+	 * not exist on {@code origin}), {@code files} the changed paths (GitHub returns at most the first
+	 * 100, which is enough to pick a monorepo package but not a complete list).
+	 */
+	public record PrDetails(PrInfo pr, String state, boolean crossRepository, List<String> files) {
+	}
+
+	private static final String PR_VIEW_FIELDS = PR_LIST_FIELDS + ",state,isCrossRepository,files";
+
+	/** {@code gh pr view} for a PR in {@code ref}'s repository, run from any directory (the repo is named explicitly). */
+	public PrDetails viewPr(Path cwd, PrRef ref) {
+		GhResult result = runGh(cwd, Duration.ofSeconds(30), "pr", "view", String.valueOf(ref.number()),
+				"--repo", ref.owner() + "/" + ref.repo(), "--json", PR_VIEW_FIELDS);
+		if (!result.ok()) {
+			String why = result.stderr().isBlank() ? result.stdout() : result.stderr();
+			throw new IllegalStateException("gh pr view failed: " + why.strip());
+		}
+		try {
+			return parsePrDetails(mapper.readTree(result.stdout()));
+		} catch (JacksonException e) {
+			throw new IllegalStateException("could not parse gh pr view output: " + e.getMessage());
+		}
+	}
+
+	PrDetails parsePrDetails(JsonNode n) {
+		List<String> files = new ArrayList<>();
+		for (JsonNode f : n.path("files")) {
+			String path = f.path("path").asText("");
+			if (!path.isBlank()) {
+				files.add(path);
+			}
+		}
+		return new PrDetails(toPrInfo(n), n.path("state").asText(""), n.path("isCrossRepository").asBoolean(false), files);
+	}
+
+	private static final Pattern REMOTE_SLUG = Pattern.compile(
+			"^(?:[a-z][a-z0-9+.-]*://)?(?:[^@/\\s]+@)?[^/:\\s]+(?::\\d+)?[:/]([^/\\s]+)/([^/\\s]+?)(?:\\.git)?/?$",
+			Pattern.CASE_INSENSITIVE);
+
+	/**
+	 * {@code owner/repo} of a clone's {@code origin} (SSH {@code git@host:o/r.git}, HTTPS, with or
+	 * without {@code .git}), or empty when there is no origin or it is not shaped like that. Used to
+	 * match a PR's repository to a local checkout; compare the result case-insensitively.
+	 */
+	public Optional<String> originSlug(Path repo) {
+		GitCommandRunner.GitResult result = git.run(repo, "remote", "get-url", "origin");
+		return result.ok() ? slugOf(result.stdout().strip()) : Optional.empty();
+	}
+
+	static Optional<String> slugOf(String remoteUrl) {
+		Matcher m = REMOTE_SLUG.matcher(remoteUrl == null ? "" : remoteUrl);
+		return m.matches() ? Optional.of(m.group(1) + "/" + m.group(2)) : Optional.empty();
+	}
+
 	public record ReviewComment(String path, int line, String side, Integer startLine, String body) {
 	}
 

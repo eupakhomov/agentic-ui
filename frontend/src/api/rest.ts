@@ -1,4 +1,4 @@
-import type { AssetKind, AuthStatus, ChangeList, ChangedFileView, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, PrInfo, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketList, TurnUsage } from '../protocol';
+import type { AssetKind, AuthStatus, ChangeList, ChangedFileView, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, PrInfo, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, SlackStatus, StaleSession, Template, TicketList, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('agentic-ui.token');
 
@@ -102,6 +102,7 @@ export const api = {
   sessionChangedFile: (sessionId: string, path: string) =>
     request<ChangedFileView>('GET', `/api/sessions/${sessionId}/changes/file?path=${encodeURIComponent(path)}`),
   authStatus: () => request<AuthStatus>('GET', '/api/auth/status'),
+  slackStatus: () => request<SlackStatus>('GET', '/api/slack/status'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
     | 'monorepoServiceGlobs' | 'monorepoDetectionEnabled'
     | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
@@ -110,7 +111,7 @@ export const api = {
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
     | 'memoryReflectionApprovalRequired' | 'serviceDiscoveryEnabled' | 'serviceDiscoveryStalenessDays'
     | 'serviceDiscoveryModel' | 'contextWarnPercent' | 'mcpSerenaRoot' | 'mcpUvPath' | 'mcpGraphifyRoot'
-    | 'mcpCodegraphRoot' | 'codeIntel' | 'linearAllowedTools' | 'authTokenRequired'>>) =>
+    | 'mcpCodegraphRoot' | 'codeIntel' | 'linearAllowedTools' | 'authTokenRequired' | 'slackDefaultEnabled'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
   listProviders: () => request<ProviderView[]>('GET', '/api/providers'),
   libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>

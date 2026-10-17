@@ -52,6 +52,19 @@ agentic-ui:
   #   allowed-origins: []
   linear-api-key: ${AGENTIC_UI_LINEAR_API_KEY:${CLAUDE_UI_LINEAR_API_KEY:}}
   voyage-api-key: ${AGENTIC_UI_VOYAGE_API_KEY:${CLAUDE_UI_VOYAGE_API_KEY:}}
+  # Slack mirror (phase 18). Secrets and the allowlist are env vars only (or application-local.yaml
+  # with SPRING_PROFILES_ACTIVE=local). Setup: docs/SLACK.md.
+  # allowed-users is a comma-separated list of Slack member IDs; empty = every message and click is ignored.
+  slack:
+    enabled: ${AGENTIC_UI_SLACK_ENABLED:false}
+    bot-token: ${AGENTIC_UI_SLACK_BOT_TOKEN:}
+    app-token: ${AGENTIC_UI_SLACK_APP_TOKEN:}
+    channel: ${AGENTIC_UI_SLACK_CHANNEL:}
+    allowed-users: ${AGENTIC_UI_SLACK_ALLOWED_USERS:}
+    verbose: ${AGENTIC_UI_SLACK_VERBOSE:false}
+    public-url: ${AGENTIC_UI_PUBLIC_URL:}
+    # allowlisted users may start review/development sessions by mentioning the bot (see docs/SLACK.md)
+    start-enabled: ${AGENTIC_UI_SLACK_START_ENABLED:false}
   providers:
     claude:
       command: ["node", "sidecar/dist/index.js"]

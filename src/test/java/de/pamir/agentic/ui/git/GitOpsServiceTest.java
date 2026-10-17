@@ -136,4 +136,49 @@ class GitOpsServiceTest {
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("422");
 	}
+
+	// --- originSlug parsing / PR detail parsing (Slack-started reviews) ---
+
+	@Test
+	void slugOfReadsOwnerAndRepoFromEveryCommonRemoteShape() {
+		assertThat(GitOpsService.slugOf("git@github.com:acme/api.git")).contains("acme/api");
+		assertThat(GitOpsService.slugOf("https://github.com/acme/api")).contains("acme/api");
+		assertThat(GitOpsService.slugOf("https://github.com/acme/api.git")).contains("acme/api");
+		assertThat(GitOpsService.slugOf("https://x-access-token:abc@github.com/acme/api.git/")).contains("acme/api");
+		assertThat(GitOpsService.slugOf("ssh://git@github.com/acme/my-repo.name.git")).contains("acme/my-repo.name");
+		assertThat(GitOpsService.slugOf("https://github.com:443/acme/api")).contains("acme/api");
+	}
+
+	@Test
+	void slugOfRejectsWhatIsNotARemoteOfThatShape() {
+		assertThat(GitOpsService.slugOf("")).isEmpty();
+		assertThat(GitOpsService.slugOf(null)).isEmpty();
+		assertThat(GitOpsService.slugOf("/local/path/to/repo")).isEmpty();
+		assertThat(GitOpsService.slugOf("https://github.com/only-owner")).isEmpty();
+	}
+
+	@Test
+	void parsePrDetailsCarriesStateForkFlagAndChangedFiles() throws Exception {
+		GitOpsService svc = new GitOpsService(null, null, new JsonMapper());
+		GitOpsService.PrDetails d = svc.parsePrDetails(new JsonMapper().readTree("""
+				{"number":7,"title":"T","headRefName":"feat/x","baseRefName":"main","url":"https://github.com/a/b/pull/7",
+				 "author":{"login":"bob"},"isDraft":true,"state":"OPEN","isCrossRepository":true,
+				 "files":[{"path":"packages/api/A.java","additions":1},{"path":"README.md"},{"path":""}]}"""));
+		assertThat(d.pr().number()).isEqualTo(7);
+		assertThat(d.pr().headRefName()).isEqualTo("feat/x");
+		assertThat(d.pr().author()).isEqualTo("bob");
+		assertThat(d.pr().isDraft()).isTrue();
+		assertThat(d.state()).isEqualTo("OPEN");
+		assertThat(d.crossRepository()).isTrue();
+		assertThat(d.files()).containsExactly("packages/api/A.java", "README.md");
+	}
+
+	@Test
+	void parsePrDetailsToleratesMissingOptionalFields() throws Exception {
+		GitOpsService svc = new GitOpsService(null, null, new JsonMapper());
+		GitOpsService.PrDetails d = svc.parsePrDetails(new JsonMapper().readTree("{\"number\":1}"));
+		assertThat(d.files()).isEmpty();
+		assertThat(d.crossRepository()).isFalse();
+		assertThat(d.state()).isEmpty();
+	}
 }

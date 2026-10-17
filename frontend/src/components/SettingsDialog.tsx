@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/rest';
 import { getFontSize, getTheme, setFontSize, setTheme, type FontSize, type Theme } from '../prefs';
-import type { AuthStatus, CodeIntel, ProviderView, Settings } from '../protocol';
+import type { AuthStatus, CodeIntel, ProviderView, Settings, SlackStatus } from '../protocol';
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
@@ -30,6 +30,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [mcpCodegraphRootDraft, setMcpCodegraphRootDraft] = useState('');
   const [mcpSerenaError, setMcpSerenaError] = useState('');
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [slackStatus, setSlackStatus] = useState<SlackStatus | null>(null);
   /** the graphify root save doubles as its first `uv` env sync (up to 180 s) — pulse the input meanwhile */
   const [mcpGraphifySaving, setMcpGraphifySaving] = useState(false);
 
@@ -57,6 +58,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     }).catch(() => setSettings(null));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
     api.authStatus().then(setAuthStatus).catch(() => setAuthStatus(null));
+    api.slackStatus().then(setSlackStatus).catch(() => setSlackStatus(null));
   }, []);
 
   const toggleOAuth = () => {
@@ -251,6 +253,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     const next = { ...settings, memoryReflectionDefault: !settings.memoryReflectionDefault };
     setSettings(next);
     void api.updateSettings({ memoryReflectionDefault: next.memoryReflectionDefault }).catch(() => setSettings(settings));
+  };
+
+  const toggleSlackDefault = () => {
+    if (!settings) return;
+    const next = { ...settings, slackDefaultEnabled: !settings.slackDefaultEnabled };
+    setSettings(next);
+    void api.updateSettings({ slackDefaultEnabled: next.slackDefaultEnabled }).catch(() => setSettings(settings));
   };
 
   const toggleApprovalRequired = () => {
@@ -544,6 +553,22 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 />
                 minutes (minimum 5)
               </span>
+            </div>
+
+            <h3 style={{ margin: '18px 0 10px' }}>Slack</h3>
+            <div className="form-grid">
+              <label>Mirror by default</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                <input type="checkbox" checked={settings.slackDefaultEnabled} onChange={toggleSlackDefault} disabled={!slackStatus?.enabled} />
+                new sessions start mirrored into a Slack thread (always overridable per session)
+              </label>
+              <div style={{ gridColumn: '1 / -1', color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                {slackStatus === null
+                  ? 'Checking Slack…'
+                  : !slackStatus.enabled
+                    ? 'Slack is not enabled on the server — set AGENTIC_UI_SLACK_ENABLED and the Slack tokens, then restart (see docs/SLACK.md).'
+                    : slackStatus.connected ? 'Slack is connected.' : 'Slack is enabled but not connected — check the backend log.'}
+              </div>
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>Memory</h3>

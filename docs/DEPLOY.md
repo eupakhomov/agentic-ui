@@ -278,6 +278,64 @@ git hooks on this Mac — they rewrite `~/.claude/settings.json`, `~/.claude.jso
 checkout, with telemetry and update checks off. The index (`.codegraph/`) lives inside
 the session's worktree, git-excluded, and disappears with it.
 
+## 8e. Optional: Slack (mirror sessions, approve from your phone)
+
+Each session you opt in becomes a thread in one private Slack channel — permission, plan and
+question prompts with buttons, turn summaries, errors, PR changes — and the people on an allowlist
+can **Allow/Deny, approve a plan, answer a question, reply to prompt the session, Stop, Status or Close**
+it from Slack. Behind a separate switch, they can also **start review and development sessions** (optionally
+from a template) by mentioning the bot. It uses Socket Mode, so there is no public URL and no inbound port.
+
+**Read first:** a Slack account on the allowlist can approve commands on this Mac. Use a private
+channel with only you in it, an allowlist of only you, and two-factor/SSO on that Slack account.
+The full setup, the security posture, token rotation, the emergency stop and troubleshooting are in
+**[SLACK.md](SLACK.md)**; this section is the short path.
+
+1. **Create the app** — api.slack.com/apps → *Create New App* → *From a manifest* → your workspace →
+   JSON, paste (least privilege for a **private** channel; for a public one swap
+   `groups:history`/`message.groups` for `channels:history`/`message.channels`):
+
+   ```json
+   {
+     "display_information": { "name": "agentic-ui" },
+     "features": { "bot_user": { "display_name": "agentic-ui", "always_online": false } },
+     "oauth_config": { "scopes": { "bot": ["chat:write", "groups:history", "reactions:write", "files:write", "app_mentions:read"] } },
+     "settings": {
+       "event_subscriptions": { "bot_events": ["message.groups", "app_mention"] },
+       "interactivity": { "is_enabled": true },
+       "socket_mode_enabled": true,
+       "org_deploy_enabled": false,
+       "token_rotation_enabled": false
+     }
+   }
+   ```
+
+2. **Tokens** — *Basic Information → App-Level Tokens → Generate* with the `connections:write` scope
+   (`xapp-…`), and *OAuth & Permissions → Install to Workspace* for the bot token (`xoxb-…`).
+3. **Channel** — create a private channel, `/invite @agentic-ui`, and note its channel **ID** (channel
+   details → About, starts with `C`) and your member ID (profile → ⋯ → Copy member ID, `U…`).
+4. **Configure** — add to `~/.zshrc` (the macOS default shell; for bash use `~/.bashrc`, see SLACK.md
+   for the launchd and non-interactive cases), then open a new terminal:
+
+   ```bash
+   export AGENTIC_UI_SLACK_ENABLED=true
+   export AGENTIC_UI_SLACK_BOT_TOKEN='xoxb-…'      # prefer the Keychain, see SLACK.md
+   export AGENTIC_UI_SLACK_APP_TOKEN='xapp-…'
+   export AGENTIC_UI_SLACK_CHANNEL=C0123456789     # the channel ID, not its name
+   export AGENTIC_UI_SLACK_ALLOWED_USERS=U0123456789   # comma-separated; empty = nobody can act
+   # export AGENTIC_UI_SLACK_START_ENABLED=true     # optional: start review/dev sessions by mentioning the bot (SLACK.md)
+   # export AGENTIC_UI_PUBLIC_URL=https://mac.tailnet.ts.net:8080   # optional: the "Open" button
+   ```
+
+5. **Restart** (`./start.sh`) and check the log for `slack: bot '…' in workspace '…'` then
+   `slack socket: ready`. Tick **Slack** in the new-session dialog (default for new sessions:
+   Settings → Slack). The first start also applies Flyway migration `V19` (three nullable/defaulted
+   columns on `session`, plus an index).
+
+Slack is off unless `AGENTIC_UI_SLACK_ENABLED=true`; with it off no Slack code runs. One backend per
+Slack app (two on the same app steal each other's events). Emergency stop: delete the app-level
+token in the Slack app (cuts inbound immediately), then unset the variable and restart.
+
 ## 9. Updating
 
 ```bash

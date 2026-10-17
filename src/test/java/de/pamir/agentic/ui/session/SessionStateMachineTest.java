@@ -700,4 +700,123 @@ class SessionStateMachineTest {
 
 		sessionService.onSidecarExit(unknown, 1, List.of(), false); // must not throw
 	}
+
+	// ------------------------------------------------------------------ pending permissions (phase 18)
+
+	private SessionEntity runningWithSidecar() {
+		SessionEntity s = session(SessionState.RUNNING);
+		sidecars.spawn(s, null, false, null, e -> {
+		}, (h, c) -> {
+		});
+		return s;
+	}
+
+	private void permissionRequest(SessionEntity s, String requestId) {
+		sessionService.onSidecarEvent(s.id(), mapper.readTree("{\"type\":\"permission_request\",\"requestId\":\"" + requestId
+				+ "\",\"toolName\":\"Bash\",\"input\":{\"command\":\"ls\"}}"));
+	}
+
+	private tools.jackson.databind.node.ObjectNode decision(String requestId, String behavior) {
+		return mapper.createObjectNode().put("type", "permission_response").put("requestId", requestId)
+				.put("behavior", behavior).put("source", "slack").put("slackUser", "U1");
+	}
+
+	@Test
+	void aPermissionRequestIsTrackedAsPendingAndMovesTheSessionToWaiting() {
+		SessionEntity s = runningWithSidecar();
+		permissionRequest(s, "p1");
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.WAITING_INPUT);
+		assertThat(sessionService.pendingPermissions().peek(s.id(), "p1")).isPresent();
+		assertThat(sessionService.pendingPermissions().peek(s.id(), "p1").get().toolName()).isEqualTo("Bash");
+	}
+
+	@Test
+	void theFirstDecisionWinsAndTheSecondIsToldItIsTooLate() {
+		SessionEntity s = runningWithSidecar();
+		permissionRequest(s, "p1");
+
+		assertThat(sessionService.respondPermissionIfPending(s.id(), decision("p1", "allow"))).isTrue();
+		assertThat(sessionService.respondPermissionIfPending(s.id(), decision("p1", "deny"))).isFalse();
+
+		assertThat(sessions.get(s.id()).state()).isEqualTo(SessionState.RUNNING);
+		assertThat(sidecars.sentTo(s.id()).stream().filter(l -> l.contains("permission_response"))).hasSize(1);
+	}
+
+	@Test
+	void theAuditFieldsAreJournaledButNeverSentToTheSidecar() {
+		SessionEntity s = runningWithSidecar();
+		permissionRequest(s, "p1");
+
+		sessionService.respondPermissionIfPending(s.id(), decision("p1", "allow"));
+
+		String sent = sidecars.sentTo(s.id()).stream().filter(l -> l.contains("permission_response")).findFirst().orElseThrow();
+		assertThat(sent).contains("\"requestId\":\"p1\"").contains("\"behavior\":\"allow\"")
+				.doesNotContain("slackUser").doesNotContain("source");
+		JsonNode journaled = journal.firstEventOfType(s.id(), "permission_response").orElseThrow().payload();
+		assertThat(journaled.path("slackUser").asText()).isEqualTo("U1");
+		assertThat(journaled.path("source").asText()).isEqualTo("slack");
+	}
+
+	@Test
+	void aDashboardDecisionSettlesTheRequestSoALaterSlackClickIsRejected() {
+		SessionEntity s = runningWithSidecar();
+		permissionRequest(s, "p1");
+
+		sessionService.respondPermission(s.id(), mapper.createObjectNode().put("type", "permission_response")
+				.put("requestId", "p1").put("behavior", "deny"));
+
+		assertThat(sessionService.pendingPermissions().peek(s.id(), "p1")).isEmpty();
+		assertThat(sessionService.respondPermissionIfPending(s.id(), decision("p1", "allow"))).isFalse();
+		assertThat(sidecars.sentTo(s.id()).stream().filter(l -> l.contains("permission_response"))).hasSize(1);
+	}
+
+	@Test
+	void severalRequestsArePendingIndependently() {
+		SessionEntity s = runningWithSidecar();
+		permissionRequest(s, "p1");
+		permissionRequest(s, "p2");
+
+		assertThat(sessionService.respondPermissionIfPending(s.id(), decision("p2", "allow"))).isTrue();
+
+		assertThat(sessionService.pendingPermissions().list(s.id())).extracting(p -> p.requestId()).containsExactly("p1");
+	}
+
+	@Test
+	void aTurnEndingOrTheSidecarExitingClearsWhatWasPending() {
+		SessionEntity s = runningWithSidecar();
+		permissionRequest(s, "p1");
+		try {
+			sessionService.onSidecarEvent(s.id(), mapper.readTree("{\"type\":\"turn_complete\",\"stopReason\":\"interrupted\"}"));
+		} catch (NullPointerException noProviderCatalogInThisHarness) {
+			// the cost-estimation step that follows the code under test needs a ProviderCatalog this harness doesn't wire
+		}
+		assertThat(sessionService.pendingPermissions().list(s.id())).isEmpty();
+
+		permissionRequest(s, "p2");
+		sessionService.onSidecarExit(s.id(), 1, List.of(), false);
+		assertThat(sessionService.pendingPermissions().list(s.id())).isEmpty();
+		assertThat(sessionService.respondPermissionIfPending(s.id(), decision("p2", "allow"))).isFalse();
+	}
+
+	@Test
+	void aDecisionThatCannotBeDeliveredLeavesTheRequestPending() {
+		SessionEntity s = runningWithSidecar();
+		permissionRequest(s, "p1");
+		sidecars.brokenHandles.add(s.id());
+
+		assertThatThrownBy(() -> sessionService.respondPermissionIfPending(s.id(), decision("p1", "allow")))
+				.isInstanceOf(IllegalStateException.class);
+
+		assertThat(sessionService.pendingPermissions().peek(s.id(), "p1")).isPresent();
+	}
+
+	@Test
+	void externalInputIsJournaledAsAnAuditEvent() {
+		SessionEntity s = runningWithSidecar();
+
+		sessionService.recordExternalInput(s.id(), mapper.createObjectNode().put("source", "slack").put("slackUser", "U1").put("kind", "stop"));
+
+		assertThat(journal.firstEventOfType(s.id(), "slack_input").orElseThrow().payload().path("kind").asText()).isEqualTo("stop");
+	}
 }

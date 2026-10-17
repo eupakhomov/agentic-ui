@@ -20,7 +20,8 @@ else (config prefix, package, DB name, file names) uses the new name only.
 │  ├─ plan/                # Phase plans; README.md holds the AUTHORITATIVE decision log
 │  ├─ PROTOCOL.md          # Sidecar/WS message contracts
 │  ├─ ARCHITECTURE.md      # As-built architecture + backlog implementation sketches
-│  └─ DEPLOY.md            # Deploying on macOS — prereqs, run, update, optional integrations
+│  ├─ DEPLOY.md            # Deploying on macOS — prereqs, run, update, optional integrations
+│  └─ SLACK.md             # Slack app setup, tokens, env vars, troubleshooting (phase 18)
 └─ CLAUDE.md               # this file
 ```
 
@@ -199,6 +200,9 @@ npm run drive -- --cwd /path/to/dir           # manual REPL driver for the NDJSO
 One sidecar process per session; stdout is protocol NDJSON only, logs go to stderr.
 The NDJSON contract is the provider adapter interface — keep it provider-neutral
 (`providerSessionId`, capabilities handshake), Claude specifics stay inside the sidecar.
+Once the backend has asked a sidecar to stop (`shutdown` or stdin closed), an error from the agent stream is
+only logged to stderr and the sidecar exits 0 (`classifyStreamFailure`): the Claude Agent SDK otherwise throws the
+text of the last turn that ended in an error result — an interrupt, max turns — when the process exits.
 
 ## Codex provider adapter (Phase 5.13)
 
@@ -327,6 +331,7 @@ the backend's environment):
 | `AGENTIC_UI_SKILLS_ROOT` | `~/agentic-skills` | *Default* for the managed skills root, which is now a persisted setting (`library.skills-root`) — the create-dialog picker, provisioning's repo cache, and library imports all read the setting |
 | `AGENTIC_UI_MEMORY_ROOT` | `~/agentic-memory` | *Default* for the managed semantic-memory root (`memory.root` persisted setting) — an Obsidian-compatible vault of Markdown files with YAML frontmatter; the DB is a rebuildable search index over it, not the source of truth |
 | `AGENTIC_UI_VOYAGE_API_KEY` | — | Voyage AI API key (a secret — env var only); enables the library's "vectorize" setting + semantic search (`VoyageEmbeddingClient`, voyage-3.5-lite, pgvector) **and** memory's dense-search arm. Unset = those features fall back to sparse-only (Postgres FTS + trigram for memory), everything else works |
+| `AGENTIC_UI_SLACK_ENABLED` (+ `_BOT_TOKEN`, `_APP_TOKEN`, `_CHANNEL`, `_ALLOWED_USERS`, `_VERBOSE`, `AGENTIC_UI_PUBLIC_URL`) | off | Slack mirroring (phase 18, `docs/SLACK.md`). Off = no Slack beans at all. Tokens are secrets (env only); `_CHANNEL` is a channel **ID**; `_ALLOWED_USERS` is a comma-separated allowlist of Slack member IDs, **empty = every inbound message and click is ignored**. `AGENTIC_UI_SLACK_START_ENABLED` (default off) additionally lets those users start review/development sessions by mentioning the bot (`@bot review <PR>`, `@bot dev <service> <branch> [prompt]`, and `review-with`/`dev-with <template> …` to start from a session template; the new session inherits the last session's settings incl. permission mode, exactly like the dashboard quick start). Per session it is opt-in (`slackEnabled`; create-dialog checkbox, default from Settings → Slack); a child follows its parent; the system session never posts. Tool inputs are secret-masked unless `_VERBOSE`. |
 | `AGENTIC_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (fetches a ticket via Linear's MCP server on the singleton system session, generates branch name + kickoff prompt via Haiku). When configured (or the OAuth toggle is on), the Linear MCP server is also layered by default into every regular session's `mcpConfig` (`SessionService.linearMcpServer()`/`withDefaultLinearMcp()`), restricted to the **Linear allowed tools** list (Settings dialog → "Linear integration", `linear.allowed-tools`, default `get_issue,list_issues,list_comments,get_attachment,extract_images,save_comment`; snapshotted into each session at creation, so edits apply to new sessions only) — unless the session's own `mcpConfig` already declares its own `linear` entry, which wins and is unrestricted. The list is carried as our own `enabledTools` key on the entry: the Claude sidecar strips it and enforces it with a `PreToolUse` hook (the SDK has no allow-only control for MCP tools; the hook fires in every permission mode, bypass included), the Codex sidecar maps it to Codex's per-server `enabled_tools`. The system session's Linear entry is unrestricted. Regular sessions go through the normal permission-approval flow for its tools (the system session always gets it and pre-approves them instead, since backend-initiated turns have nobody to answer a prompt). |
 
 **Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
@@ -478,6 +483,14 @@ effect on the next use with no backend restart.
   first and compacted once it reports ready); the button is hidden, chip-only, for a
   provider whose capabilities report `compact: false` (both shipped providers report
   `true`). See docs/plan/phase-12-linear-cache-serena-context.md track C.
+- **Slack** (Settings dialog -> "Slack", `slack.default-enabled`, default off; phase 18, setup and
+  operations in `docs/SLACK.md`, as-built design in `docs/ARCHITECTURE.md` section 3i) — mirrors opted-in
+  sessions into one private channel and lets allowlisted Slack users Allow/Deny, approve a plan, answer a
+  question, reply to prompt the session, or Stop/Status/Close it (Close only when the worktree is clean, no turn is running and no child session is live). The default only seeds the create dialog's
+  **Slack** checkbox (shown when `GET /api/slack/status` reports the server has Slack on); the per-session choice is
+  the `slackEnabled` override. Server switch, tokens, channel ID, `ALLOWED_USERS` (empty = nobody can act) and
+  masking are env-only (see the env table). A child session follows its parent's choice; the system session
+  never posts. Decisions are first-wins between the dashboard and Slack (`PendingPermissions`).
 - **OAuth toggle** (Settings dialog → "Linear integration") — alternative to
   `AGENTIC_UI_LINEAR_API_KEY` for SSO-gated Linear accounts (e.g. Google identity): omits
   the Authorization header, relying on the ambient `claude` CLI's own cached OAuth

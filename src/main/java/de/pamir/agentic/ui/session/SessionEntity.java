@@ -79,6 +79,11 @@ public record SessionEntity(
 		 * decision 9); null until the sidecar's first context_usage event. Both null or both set. */
 		Integer contextTokens,
 		Integer contextWindow,
+		/** Phase 18 opt-in: mirror this session into Slack (docs/plan/phase-18-slack.md). */
+		boolean slackEnabled,
+		/** Channel and parent-message {@code ts} of this session's Slack thread; null until the first post succeeds. */
+		String slackChannel,
+		String slackThreadTs,
 		Instant createdAt,
 		Instant updatedAt
 ) {
@@ -133,6 +138,7 @@ public record SessionEntity(
 				.parentSessionId(parentSessionId).prUrl(prUrl).prHeadSha(prHeadSha).prCheckStatus(prCheckStatus)
 				.prCheckedAt(prCheckedAt).reflectionEnabled(reflectionEnabled).reflectedSeq(reflectedSeq)
 				.codeIntel(codeIntel).contextTokens(contextTokens).contextWindow(contextWindow)
+				.slackEnabled(slackEnabled).slackChannel(slackChannel).slackThreadTs(slackThreadTs)
 				.createdAt(createdAt).updatedAt(updatedAt);
 	}
 
@@ -191,6 +197,9 @@ public record SessionEntity(
 		private String codeIntel;
 		private Integer contextTokens;
 		private Integer contextWindow;
+		private boolean slackEnabled;
+		private String slackChannel;
+		private String slackThreadTs;
 		private Instant createdAt;
 		private Instant updatedAt;
 
@@ -240,6 +249,9 @@ public record SessionEntity(
 		public Builder codeIntel(String v) { this.codeIntel = v; return this; }
 		public Builder contextTokens(Integer v) { this.contextTokens = v; return this; }
 		public Builder contextWindow(Integer v) { this.contextWindow = v; return this; }
+		public Builder slackEnabled(boolean v) { this.slackEnabled = v; return this; }
+		public Builder slackChannel(String v) { this.slackChannel = v; return this; }
+		public Builder slackThreadTs(String v) { this.slackThreadTs = v; return this; }
 		public Builder createdAt(Instant v) { this.createdAt = v; return this; }
 		public Builder updatedAt(Instant v) { this.updatedAt = v; return this; }
 
@@ -249,7 +261,7 @@ public record SessionEntity(
 					allowedTools, disallowedTools, mcpConfig, envVars, skillSources, agentSources, instructions,
 					thinking, effort, maxTurns, fallbackModel, costBudgetUsd, kickoffPrompt, state, kind, sessionType,
 					ticketRef, continuedFromId, parentSessionId, prUrl, prHeadSha, prCheckStatus, prCheckedAt,
-					reflectionEnabled, reflectedSeq, codeIntel, contextTokens, contextWindow, createdAt, updatedAt);
+					reflectionEnabled, reflectedSeq, codeIntel, contextTokens, contextWindow, slackEnabled, slackChannel, slackThreadTs, createdAt, updatedAt);
 		}
 	}
 }

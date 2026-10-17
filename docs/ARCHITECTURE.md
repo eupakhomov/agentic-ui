@@ -461,6 +461,67 @@ through `gh`).
   `lastSessionConfig`. `duplicate()` and a template's own `sessionType` config key both
   carry it explicitly instead.
 
+## 3i. Slack mirror (Phase 18)
+
+Opt-in per session (`session.slack_enabled`, merged-config key `slackEnabled`, default from the
+`slack.default-enabled` setting). Everything lives in `de.pamir.agentic.ui.slack`; with
+`agentic-ui.slack.enabled=false` (default) none of these beans exist. Setup and operations:
+`docs/SLACK.md`; decisions and the live-test log: `docs/plan/phase-18-slack.md`.
+
+```
+Slack  <==Socket Mode (JDK WebSocket)==>  SlackSocket -> SlackEnvelopeProcessor -> SlackInbound -> SlackSessionControl -> SessionService
+                                                          (ack, dedupe, order)      (allowlist,                              (same ops as
+Slack  <==Web API (RestClient)==  SlackWebApi <- SlackOutbox <- SlackSessionMirror <- SessionEventBus (all sessions)        the dashboard)
+                                       (rate limit, retry)   (journal events -> posts)
+```
+
+- **Outbound.** `SessionEventBus.subscribeAll` feeds `SlackSessionMirror`, which drops everything but ten
+  event types and handles the rest on one thread, so a session's posts are enqueued in journal order. The
+  parent message is created lazily on a session's first event (retried by the next event after a 30 s
+  cooldown if the post failed), its `(channel, ts)` persisted via `SessionRepository.attachSlackThread`,
+  and edited in place at most every 10 s. Replies are a curated set, not the transcript. Children post into
+  their *parent's* thread and follow the parent's opt-in; the system session never posts. `SlackOutbox` is the
+  only thing that talks to Slack: one worker, >= 1.1 s between calls, retry with `Retry-After`, a bounded FIFO
+  that sheds the oldest non-critical post first (permission/plan/question prompts are never dropped) and
+  per-session coalesced parent updates that render at send time.
+- **Inbound.** `SlackSocket` keeps one Socket Mode connection (backoff reconnect, own pings, silence
+  watchdog). `SlackEnvelopeProcessor` acks first, de-duplicates on `event_id` / `trigger_id + action_ts` (it outlives
+  connections, so a redelivery after a reconnect is still a duplicate) and hands events over one at a time, in order.
+  `SlackInbound` applies the allowlist to messages **and** clicks (empty = nobody; WARN with the user ID only),
+  requires the configured channel, a plain user reply in a known thread, and a mirrored session, then calls the
+  same operations as the dashboard through `SlackSessionControl` (answer/approve/deny, prompt, interrupt).
+- **Starting sessions** (`AGENTIC_UI_SLACK_START_ENABLED`). `SlackInbound` turns an `app_mention` from an allowlisted
+  user in the configured channel into a `SlackStartCommand` (`review <PR>` / `dev <service> <branch> <prompt…>`) and hands
+  it to `SlackCommandHandler` on its own virtual thread (creating a session takes seconds; the single inbound thread must
+  not wait). The handler decides — which clone a PR belongs to (`origin` slug via `GitOpsService.originSlug`, matched
+  case-insensitively against `ServiceCatalog`, the same service list the dashboard uses; in a monorepo the changed files pick
+  exactly one package or the command errors), open and not-from-a-fork, service-name matching, branch sanity — and calls
+  `SlackSessionStarter` (adapter: `SessionServiceSlackStarter`), which creates the session like the dashboard quick start
+  (inherits `lastSessionConfig`, `slackEnabled` forced on, base branch synced) and sends the prompt at once. The mention is
+  de-duplicated twice (envelope id, message ts), and a thread reply that mentions the bot is a command, never a session prompt.
+  `review-with` / `dev-with <template> …` start the same way from a session template (unique name, exact or unique prefix,
+  quoted when it has spaces): the template wins over the inherited last-session settings key by key and brings its own
+  skills/agents and base branch (the PR's base for a review), and its kickoff prompt is blanked — exactly the dashboard quick
+  start (`SessionServiceSlackStarter.buildOverrides`). A `dev` request without a prompt is remembered in `SlackPendingStarts`
+  (15 min, asker only) and the next reply in that thread answers it.
+- **Close.** The parent card's **Close** button (with a confirmation) calls `SlackSessionControl.closeClean` = `SessionService.close(id, "fail", null)`:
+  it only ever closes a clean worktree (`DirtyWorktreeException` leaves everything untouched and the files are listed in the thread) and never
+  commits, stashes or discards. `SlackInbound` refuses first — while a turn runs or waits, or live children exist — and says so privately and
+  in the thread; the close itself runs on the command handler's executor because it takes seconds.
+- **Who decides first.** `session/PendingPermissions` (in memory, owned by `SessionService`) records each open
+  permission/plan/question request *before* it is journaled; `respondPermissionIfPending` delivers a decision only if
+  the request is still open, so a Slack click after a dashboard decision (or a second click) gets a private
+  "already decided" instead of a second response. The reverse direction is the mirror: the `permission_response`
+  event rewrites the Slack prompt ("Allowed on the dashboard" / "Allowed by @user"). `source`/`slackUser` are
+  journaled with the response and stripped before it reaches the adapter; prompts and Stop add a `slack_input`
+  audit event.
+- **Secrets.** `SlackRedactor` masks token shapes, `Authorization`/`Bearer`, URL credentials and `NAME=value`
+  pairs in Bash commands and message excerpts; `SlackToolSummary` shows a file edit as its path only and never
+  content or `envVars`. `slack.verbose` turns masking off. Tokens never appear in logs, exceptions or `toString`.
+- **Failure model.** Slack failures never reach a session: everything is queued and every handler swallows and
+  logs. Events missed while disconnected are not replayed (Slack does not replay them); the parent's **Status**
+  button is the recovery path.
+
 ## 4. Backlog implementation sketches (remaining: 5.4, 5.6–5.8, 5.10–5.11)
 
 ### 5.4 Templates v2 — remaining gap

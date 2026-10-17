@@ -199,6 +199,7 @@ public class SessionConfigFactory {
 				.continuedFromId(options.continuedFromId()).parentSessionId(options.parentSessionId())
 				.reflectionEnabled(config.path("reflectionEnabled").asBoolean(s.memoryReflectionDefault()))
 				.codeIntel(codeIntel)
+				.slackEnabled(config.path("slackEnabled").asBoolean(s.slackDefaultEnabled()))
 				.build();
 		return new Prepared(entity, warnings);
 	}

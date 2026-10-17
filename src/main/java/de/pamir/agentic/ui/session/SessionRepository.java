@@ -38,9 +38,9 @@ public class SessionRepository {
 							allowed_tools, disallowed_tools, mcp_config, env_vars, skill_sources, agent_sources,
 							instructions, thinking, effort, max_turns, fallback_model, cost_budget_usd,
 							kickoff_prompt, state, kind, session_type, ticket_ref, continued_from_id, parent_session_id,
-							reflection_enabled, code_intel)
+							reflection_enabled, code_intel, slack_enabled)
 						VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb,
-							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+							?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(s.id(), s.name(), s.provider(), json(s.providerConfig()), s.repoPath(), s.rawServicePath(),
 						s.ecosystemPath(), json(s.contextDirs()), s.branch(), s.baseBranch(), s.worktreePath(),
@@ -48,7 +48,7 @@ public class SessionRepository {
 						json(s.mcpConfig()), json(s.envVars()), json(s.skillSources()), json(s.agentSources()),
 						s.instructions(), s.thinking(), s.effort(), s.maxTurns(), s.fallbackModel(), s.costBudgetUsd(),
 						s.kickoffPrompt(), s.state().name(), s.kind(), s.sessionType(), s.ticketRef(), s.continuedFromId(),
-						s.parentSessionId(), s.reflectionEnabled(), s.codeIntel())
+						s.parentSessionId(), s.reflectionEnabled(), s.codeIntel(), s.slackEnabled())
 				.update();
 	}
 
@@ -153,6 +153,18 @@ public class SessionRepository {
 	public void updateContextUsage(UUID id, int tokens, int window) {
 		jdbc.sql("UPDATE session SET context_tokens = ?, context_window = ?, updated_at = now() WHERE id = ?")
 				.params(tokens, window, id).update();
+	}
+
+	/** Records where this session's Slack thread lives, once its parent message has been posted. */
+	public void attachSlackThread(UUID id, String channel, String threadTs) {
+		jdbc.sql("UPDATE session SET slack_channel = ?, slack_thread_ts = ? WHERE id = ?")
+				.params(channel, threadTs, id).update();
+	}
+
+	/** The session whose Slack thread is {@code threadTs} in {@code channel} (a thread reply's {@code thread_ts}). */
+	public Optional<SessionEntity> findBySlackThread(String channel, String threadTs) {
+		return jdbc.sql("SELECT * FROM session WHERE slack_channel = ? AND slack_thread_ts = ? LIMIT 1")
+				.params(channel, threadTs).query(rowMapper).optional();
 	}
 
 	/** Sessions with an open PR whose status is still PENDING and due for another check. */
@@ -289,6 +301,9 @@ public class SessionRepository {
 				rs.getString("code_intel"),
 				(Integer) rs.getObject("context_tokens"),
 				(Integer) rs.getObject("context_window"),
+				rs.getBoolean("slack_enabled"),
+				rs.getString("slack_channel"),
+				rs.getString("slack_thread_ts"),
 				rs.getTimestamp("created_at").toInstant(),
 				rs.getTimestamp("updated_at").toInstant());
 	}
