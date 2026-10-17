@@ -389,12 +389,13 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   return (
     <>
       <div className="topbar" ref={topbarRef}>
+        <h1 className="brand" title="Artus"><img src="/logo.svg" alt="Artus" className="brand-logo" /></h1>
         <button
           className={`icon-btn${fold === 'expanded' ? ' active' : ''}`}
           title={`Sidebar: ${fold} — click to toggle (b)`}
           onClick={cycleFold}
         ><SidebarToggle /></button>
-        <h1 className="brand"><img src="/logo.svg" alt="" className="brand-logo" />Artus</h1>
+        <span className="topbar-spacer" />
         <NotifyToggle />
         <button className="icon-btn" title="Refresh session list" onClick={() => void refresh()}><Refresh /></button>
         <button className="icon-btn" title="Templates (t)" onClick={() => setShowTemplates(true)}><Templates /></button>

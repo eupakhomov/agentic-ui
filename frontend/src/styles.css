@@ -156,9 +156,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(12.5px * var(--font-scale)); }
 
 .topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
-.topbar h1 { font-size: calc(16px * var(--font-scale)); margin: 0; flex: 1; }
+.topbar h1 { font-size: calc(16px * var(--font-scale)); margin: 0; }
+.topbar-spacer { flex: 1; }
 .brand { display: flex; align-items: center; gap: 8px; }
-.brand-logo { height: 1.7em; width: 1.7em; flex: none; }
+.brand-logo { height: 28px; width: 28px; flex: none; display: block; }
 .brand-gate { justify-content: center; }
 .brand-gate h2 { margin: 0; }
 .brand-gate .brand-logo { height: 56px; width: 56px; }
