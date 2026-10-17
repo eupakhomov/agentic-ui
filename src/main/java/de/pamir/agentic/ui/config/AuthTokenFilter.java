@@ -23,14 +23,14 @@ public class AuthTokenFilter extends OncePerRequestFilter {
 
 	@Override
 	protected boolean shouldNotFilter(HttpServletRequest request) {
-		String uri = request.getRequestURI();
-		if (uri.startsWith("/actuator/")) {
-			return uri.startsWith("/actuator/health"); // health stays open; the rest needs the token
+		String path = RequestPaths.normalized(request);
+		if (RequestPaths.isActuator(path)) {
+			return RequestPaths.isHealth(path); // health stays open; the rest needs the token
 		}
-		if (uri.equals("/api/auth/status")) {
+		if (path.equals("/api/auth/status")) {
 			return true; // always open: two booleans, lets the UI explain its own state
 		}
-		return !uri.startsWith("/api/");
+		return !RequestPaths.isApi(path);
 	}
 
 	@Override

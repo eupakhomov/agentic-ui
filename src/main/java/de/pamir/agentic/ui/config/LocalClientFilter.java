@@ -50,11 +50,11 @@ public class LocalClientFilter extends OncePerRequestFilter {
 		if (auth.required()) {
 			return true;
 		}
-		String uri = request.getRequestURI();
-		if (uri.startsWith("/actuator/")) {
-			return uri.startsWith("/actuator/health");
+		String path = RequestPaths.normalized(request);
+		if (RequestPaths.isActuator(path)) {
+			return RequestPaths.isHealth(path);
 		}
-		return !(uri.startsWith("/api/") || uri.startsWith("/ws/"));
+		return !(RequestPaths.isApi(path) || RequestPaths.isWebSocket(path));
 	}
 
 	@Override

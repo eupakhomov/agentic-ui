@@ -383,6 +383,19 @@ hotkeys, focus-mode layout and grid overlay.
 Test sessions, worktrees and branches created for this were removed; the `auth.token-required` setting
 the test flipped was set back to `true`.
 
+### Security fix after the landing commit (2026-10-17)
+
+An automated security review of `LocalClientFilter` flagged that both auth filters decided on the raw
+`getRequestURI()` (`startsWith("/api/")`), while Spring routes on the decoded, normalized path. Confirmed
+live against the landed code, **with the token required and none sent**: `/%61pi/sessions` and
+`/api;a=b/sessions` returned 200 (`//api/…` and `/x/../api/…` only 404'd because Spring doesn't route
+them). So the bearer-token gate — `AuthTokenFilter`, which predates this phase — and the new
+`LocalClientFilter` could both be bypassed. Fixed by a shared `RequestPaths` helper (decode via
+`UrlPathHelper`, drop `;` params, collapse slashes, resolve `.`/`..`, lower-case); only
+`/actuator/health[/…]`, `/api/auth/status` and non-`/api`/`/ws`/`/actuator` paths are skipped. After the
+fix every variant above returns 401 without a token and 200 with one; health, `/api/auth/status` and
+the static pages stay open. Tests: two new `LocalClientFilterTest` cases covering both filters.
+
 ### Follow-ups
 
 - **A Windows-browser run against the WSL relay** (see step 3) — confirm which client address it shows

@@ -126,6 +126,28 @@ class LocalClientFilterTest {
 		assertThat(chain.getRequest()).isNotNull();
 	}
 
+	@Test
+	void encodedAndDotSegmentTricksDoNotEscapeTheFilter() {
+		for (String sneaky : new String[] {"/%61pi/sessions", "/%41PI/sessions", "//api/sessions", "/./api/sessions",
+				"/x/../api/sessions", "/api;a=b/sessions", "/API/sessions", "/actuator/health/../metrics",
+				"/actuator/%6detrics", "/%77s/sessions/x", "/actuator/health/%2e%2e/metrics"}) {
+			assertThat(shouldSkip(sneaky)).as(sneaky).isFalse();
+		}
+		assertThat(shouldSkip("/actuator/health/liveness")).isTrue();
+		assertThat(shouldSkip("/actuator/%68ealth")).isTrue(); // decodes to /actuator/health
+	}
+
+	@Test
+	void tokenFilterAppliesTheSameNormalization() {
+		AuthTokenFilter token = new AuthTokenFilter(new AuthTokenService("secret", true));
+		for (String sneaky : new String[] {"/%61pi/sessions", "//api/sessions", "/x/../api/sessions",
+				"/api;a=b/sessions", "/actuator/health/../metrics"}) {
+			assertThat(token.shouldNotFilter(new MockHttpServletRequest("GET", sneaky))).as(sneaky).isFalse();
+		}
+		assertThat(token.shouldNotFilter(new MockHttpServletRequest("GET", "/api/auth/status"))).isTrue();
+		assertThat(token.shouldNotFilter(new MockHttpServletRequest("GET", "/index.html"))).isTrue();
+	}
+
 	private boolean shouldSkip(String uri) {
 		return f.shouldNotFilter(new MockHttpServletRequest("GET", uri));
 	}
