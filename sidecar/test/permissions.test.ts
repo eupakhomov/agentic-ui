@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readOnlyDenial } from '../src/permissions.js';
+import { PermissionBridge, readOnlyDenial } from '../src/permissions.js';
 import { enabledToolsHook, extractEnabledTools } from '../src/session.js';
 
 const CWD = '/work/session1';
@@ -105,5 +105,17 @@ describe('MCP enabledTools allowlist', () => {
     const h = enabledToolsHook(new Map([['my_srv', new Set(['do_it'])]]));
     expect(await h({ hook_event_name: 'PreToolUse', tool_name: 'mcp__my_srv__do_it' })).toEqual({ continue: true });
     expect(JSON.stringify(await h({ hook_event_name: 'PreToolUse', tool_name: 'mcp__my_srv__other_thing' }))).toContain('deny');
+  });
+});
+
+describe('PermissionBridge.allowAll (emulated bypass)', () => {
+  it('approves every pending request with its original input', async () => {
+    const bridge = new PermissionBridge();
+    const input = { command: 'ls' };
+    const pending = bridge.request('Bash', input, []);
+    expect(bridge.pendingCount).toBe(1);
+    bridge.allowAll();
+    await expect(pending).resolves.toEqual({ behavior: 'allow', updatedInput: input });
+    expect(bridge.pendingCount).toBe(0);
   });
 });

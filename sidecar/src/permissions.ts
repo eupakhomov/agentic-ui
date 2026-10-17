@@ -84,6 +84,12 @@ export class PermissionBridge {
     this.pending.clear();
   }
 
+  /** Approve every outstanding request as-is (switching into emulated bypass mode). */
+  allowAll(): void {
+    for (const [, entry] of this.pending) entry.resolver({ behavior: 'allow', updatedInput: entry.input });
+    this.pending.clear();
+  }
+
   get pendingCount(): number {
     return this.pending.size;
   }

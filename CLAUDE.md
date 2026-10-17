@@ -358,7 +358,9 @@ no per-session safety net of our own (the worktree-only `readOnlyDenial` check i
 `sidecar/src/permissions.ts` lives inside the `canUseTool` callback, which the
 underlying CLI does not invoke at all in this mode — `allowDangerouslySkipPermissions`
 is its own explicit opt-in, set in `sidecar/src/session.ts` only when this mode is
-selected). Use only for sessions you already fully trust.
+selected). A Claude session **not** launched in bypass can still be cycled
+into it at runtime: the SDK can't switch in, so the sidecar emulates it — SDK stays in `default`,
+`canUseTool` auto-allows (readOnlyDenial still applies) and pending prompts are approved. Use only for sessions you already fully trust.
 
 **Persisted settings** (Settings dialog; `app_setting` table, `SettingsService`/
 `SettingsController` — `GET`/`PATCH /api/settings`): non-secret, UI-editable, take

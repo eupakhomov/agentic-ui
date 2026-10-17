@@ -364,12 +364,13 @@ export async function runSession(config: SidecarConfig): Promise<never> {
   const inputQueue = new AsyncQueue<SDKUserMessage>();
   let exiting: 'shutdown' | 'stdin_closed' | undefined;
 
-  // bypassPermissions requires --dangerously-skip-permissions at launch (see allowDangerouslySkipPermissions
-  // below) and can't be granted to an already-running process — advertising it as switchable for a
-  // session that wasn't launched with it would let the UI cycle into a transition that always fails.
-  const permissionModes = config.permissionMode === 'bypassPermissions'
-    ? CLAUDE_CAPABILITIES.permissionModes
-    : CLAUDE_CAPABILITIES.permissionModes.filter((m) => m !== 'bypassPermissions');
+  // The SDK only honours bypassPermissions when the process was launched with
+  // allowDangerouslySkipPermissions, so it can't be switched to at runtime. For a session that
+  // wasn't launched with it we emulate: the SDK stays in `default` (every tool call reaches
+  // canUseTool) and `emulatedBypass` makes canUseTool allow it without a UI round trip.
+  const launchedWithBypass = config.permissionMode === 'bypassPermissions';
+  let emulatedBypass = false;
+  const permissionModes = CLAUDE_CAPABILITIES.permissionModes;
 
   writeEvent({
     type: 'ready',
@@ -431,6 +432,7 @@ export async function runSession(config: SidecarConfig): Promise<never> {
         writeEvent({ type: 'error', message: denial, fatal: false });
         return { behavior: 'deny', message: denial };
       }
+      if (emulatedBypass) return { behavior: 'allow', updatedInput: input };
       return bridge.request(toolName, input, suggestions ?? []);
     },
   };
@@ -493,9 +495,26 @@ export async function runSession(config: SidecarConfig): Promise<never> {
         });
         break;
       case 'set_permission_mode':
+        if (cmd.mode === 'bypassPermissions' && !launchedWithBypass) {
+          // emulate: drop the SDK to `default` first (plan/acceptEdits would otherwise still apply)
+          void q
+            .setPermissionMode('default')
+            .then(() => {
+              emulatedBypass = true;
+              bridge.allowAll();
+              writeEvent({ type: 'permission_mode_changed', mode: cmd.mode });
+            })
+            .catch((e: unknown) =>
+              writeEvent({ type: 'error', message: `set_permission_mode failed: ${String(e)}`, fatal: false }),
+            );
+          break;
+        }
         void q
           .setPermissionMode(cmd.mode)
-          .then(() => writeEvent({ type: 'permission_mode_changed', mode: cmd.mode }))
+          .then(() => {
+            emulatedBypass = false;
+            writeEvent({ type: 'permission_mode_changed', mode: cmd.mode });
+          })
           .catch((e: unknown) =>
             writeEvent({ type: 'error', message: `set_permission_mode failed: ${String(e)}`, fatal: false }),
           );
