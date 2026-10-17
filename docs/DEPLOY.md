@@ -361,31 +361,3 @@ kill "$(cat /tmp/artus.pid)"   # a live JVM holds the jar; install.sh refuses to
 | PR button → 409 | `gh` missing or not authenticated, or repo has no GitHub remote — the message says which |
 | Widgets empty after update | Hard-refresh the browser (cached JS) |
 | Ticket import: "needs auth" / "cannot run the OAuth flow" | OAuth mode only: the `claude mcp add` step in §8 wasn't done on this Mac — check `logs/sidecar/<system-session-id>.log` |
-
-## 11. Renaming from agentic-ui (one-time)
-
-The system was called `agentic-ui` until 2026-10. Old names are not read as fallbacks, so an existing
-install needs these steps once (the browser migrates its own stored token/layout on first load):
-
-1. Stop the backend: `kill "$(cat /tmp/agentic-ui.pid)"`.
-2. Rename every `AGENTIC_UI_*` export in your shell profile to `ARTUS_*` (same suffixes).
-3. Database and volume. Compose now pins the project name to `artus`, so the data volume is `artus_pgdata`
-   (it was `agentic-ui_pgdata`). Easiest, keeping the old DB/user names inside the data:
-   ```bash
-   docker compose down
-   docker volume create artus_pgdata
-   docker run --rm -v agentic-ui_pgdata:/from -v artus_pgdata:/to alpine cp -a /from/. /to/
-   docker compose up -d
-   docker compose exec postgres psql -U agentic_ui -d postgres -c \
-     "ALTER DATABASE agentic_ui RENAME TO artus; ALTER ROLE agentic_ui RENAME TO artus; ALTER ROLE artus PASSWORD '<ARTUS_DB_PASSWORD or artus>';"
-   ```
-   (Postgres will refuse to rename the DB you are connected to — hence `-d postgres`; if it complains about the
-   role being the current user, connect as another superuser or recreate the role.) Remove `agentic-ui_pgdata`
-   once everything works.
-4. Slack: rename the app/bot display name to Artus and upload `docs/images/artus-logo.svg` (as PNG) as the icon;
-   rename Keychain items `agentic-ui-slack-*` → `artus-slack-*` and `~/.config/agentic-ui` → `~/.config/artus`.
-5. Move the folder and git remote: `mv agentic-ui artus && git remote set-url origin https://github.com/eupakhomov/artus.git`.
-6. Worktrees created before the rename only exclude `.agentic-ui.pid`; the session pid file is now `.artus.pid`.
-   Add `.artus.pid` to their `.git/info/exclude` (or close and recreate the session) so `git status` stays clean.
-7. `./install.sh && ./start.sh`.
-

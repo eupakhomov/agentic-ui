@@ -4,7 +4,7 @@ services:
     image: pgvector/pgvector:pg17
     environment:
       # POSTGRES_* only apply when the pgdata volume is first initialised — a volume
-      # created under an older name keeps its old DB/user — see docs/DEPLOY.md (Renaming from agentic-ui).
+      # created under an older name keeps its old DB/user (the pre-rename volume was `agentic-ui_pgdata`).
       POSTGRES_DB: artus
       POSTGRES_USER: artus
       POSTGRES_PASSWORD: ${ARTUS_DB_PASSWORD:-artus}

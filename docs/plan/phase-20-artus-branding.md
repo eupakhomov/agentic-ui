@@ -1,6 +1,6 @@
 # Phase 20 — Artus: product rename and bear logo
 
-Status: **in progress (2026-10-17)** — Steps 1–4 implemented; Step 5 is the owner's manual migration (DEPLOY §11). Mostly mechanical rename plus one design asset. No schema change;
+Status: **in progress (2026-10-17)** — Steps 1–4 implemented; Step 5 is the owner's manual migration. Mostly mechanical rename plus one design asset. No schema change;
 one manual data migration for the Postgres container (Step 5).
 
 ## Background
@@ -55,8 +55,8 @@ Docker volume) once.
   server name `agentic-ui-memory` → `artus-memory` changes. `toolLabel` is prefix-agnostic; a test pins an old-prefix label anyway.
 - **Default data dirs keep their old names** (`~/agentic-worktrees|skills|memory`): existing sessions' worktrees live there and
   skills/memory are persisted settings. Only the env var names changed.
-- **`.agentic-ui.pid` → `.artus.pid`** (per-worktree pid file); old worktrees need the exclude line added (DEPLOY §11).
-- **docker-compose** pins `name: artus`, so the volume is `artus_pgdata` regardless of folder name (migration in DEPLOY §11).
+- **`.agentic-ui.pid` → `.artus.pid`** (per-worktree pid file); old worktrees need the exclude line added.
+- **docker-compose** pins `name: artus`, so the volume is `artus_pgdata` regardless of folder name.
 
 ## Steps
 
@@ -90,7 +90,7 @@ Docker volume) once.
 - [ ] New sessions expose `mcp__artus__*` tools; a pre-existing session still renders its old tool labels.
 - [ ] Slack notices and the sidecar hook denial say Artus.
 - [ ] Backend, frontend and sidecar test suites pass; grep sweep shows only the allowed leftovers.
-- [ ] DEPLOY has the migration checklist; README has the logo and tagline.
+- [ ] README has the logo and tagline (DEPLOY migration section intentionally dropped — two users, the other is notified directly).
 
 ## Manual test script
 1. `grep -rIn "agentic-ui\|agentic_ui\|AGENTIC_UI" --exclude-dir={node_modules,target,.git,logs,dist} .` → only allowed leftovers.
@@ -105,7 +105,7 @@ Docker volume) once.
 - Logo: `frontend/public/{logo,favicon}.svg` (hand-built symmetric facets; `docs/images/artus-logo.svg` is a copy), raster set via
   `node scripts/gen-icons.mjs` (resvg, frontend devDependency). Checked in the browser on the login gate (light theme).
 - Frontend, backend, sidecars, scripts, compose and the six docs renamed; `grep` sweep for the old names is clean outside
-  DEPLOY §11, the storage-migration code and this folder's history.
+  the storage-migration code and this folder's history.
 - Tests: frontend 80/80, sidecar typechecks, protocol-sync ok. Backend 640 run, 0 failures, 35 errors — all in the 7 DB-backed
   test classes (`ApplicationTests`, `*RepositoryDbTest`), `password authentication failed for user "artus"`: the dev Postgres
   still has the old `agentic_ui` role until Step 5 is done. Re-run after the DB migration.
