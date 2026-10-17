@@ -5,6 +5,9 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +36,16 @@ public class EventJournal {
 
 	public record JournalEvent(long seq, Instant ts, String type, JsonNode payload) {
 	}
+
+	private static final Logger log = LoggerFactory.getLogger(EventJournal.class);
+
+	/**
+	 * A real NUL character serializes to the six-character JSON escape (backslash, u, 0, 0, 0, 0), which
+	 * Postgres jsonb refuses ("cannot be converted to text"). Matches only an escape that starts a new
+	 * escape sequence, so a backslash in the data followed by u0000 (e.g. source code quoted by the
+	 * agent) is left alone.
+	 */
+	private static final Pattern NUL_ESCAPE = Pattern.compile("(?<!\\\\)((?:\\\\\\\\)*)\\\\u0000");
 
 	private static final int FLUSH_THRESHOLD = 50;
 	private static final long FLUSH_INTERVAL_MS = 250;
@@ -165,6 +179,13 @@ public class EventJournal {
 	/** Defense in depth: no single journal row grows beyond the cap. */
 	private JsonNode cap(JsonNode payload) {
 		String serialized = write(payload);
+		if (serialized.contains("\\u0000")) {
+			String replaced = NUL_ESCAPE.matcher(serialized).replaceAll("$1\\\\uFFFD");
+			if (!replaced.equals(serialized)) {
+				serialized = replaced;
+				payload = readNode(serialized);
+			}
+		}
 		if (serialized.length() <= payloadCapBytes) {
 			return payload;
 		}
@@ -242,13 +263,21 @@ public class EventJournal {
 		if (ps.buffer.isEmpty()) {
 			return;
 		}
-		// row-by-row inside one loop; volume is bounded by FLUSH_THRESHOLD
-		for (JournalEvent e : ps.buffer) {
-			jdbc.sql("INSERT INTO session_event (session_id, seq, ts, type, payload) VALUES (?, ?, ?, ?, ?::jsonb)")
-					.params(sessionId, e.seq(), Timestamp.from(e.ts()), e.type(), write(e.payload()))
-					.update();
+		// row-by-row inside one loop; volume is bounded by FLUSH_THRESHOLD. Each event leaves the buffer
+		// as soon as it is dealt with, so a failure part-way never re-inserts the rows before it.
+		for (var it = ps.buffer.iterator(); it.hasNext(); ) {
+			JournalEvent e = it.next();
+			try {
+				jdbc.sql("INSERT INTO session_event (session_id, seq, ts, type, payload) VALUES (?, ?, ?, ?, ?::jsonb)")
+						.params(sessionId, e.seq(), Timestamp.from(e.ts()), e.type(), write(e.payload()))
+						.update();
+			} catch (DataIntegrityViolationException ex) {
+				// retrying can never succeed; dropping the one event beats wedging every later flush
+				log.error("session {}: dropping journal event seq {} ({}): {}", sessionId, e.seq(), e.type(),
+						ex.getMostSpecificCause().getMessage());
+			}
+			it.remove();
 		}
-		ps.buffer.clear();
 	}
 
 	private PerSession load(UUID sessionId) {

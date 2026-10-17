@@ -159,4 +159,28 @@ class EventJournalDbTest {
 				.containsExactly("user_message", "stream_delta");
 		assertThat(journal.lastSeq(sessionId)).isEqualTo(2L);
 	}
+
+	@Test
+	void nulCharacterInAPayloadIsReplacedAndDoesNotBlockLaterEvents() {
+		UUID sessionId = newSession();
+		journal.append(sessionId, "tool_result", mapper.createObjectNode()
+				.put("text", "a\0b")
+				.set("nested", mapper.createArrayNode().add("x\0y")));
+		journal.append(sessionId, "turn_complete", turnComplete(1.0));
+
+		var events = journal.readAfter(sessionId, 0);
+		assertThat(events).extracting(EventJournal.JournalEvent::seq).containsExactly(1L, 2L);
+		assertThat(events.get(0).payload().path("text").asText()).isEqualTo("a\uFFFDb");
+		assertThat(events.get(0).payload().path("nested").get(0).asText()).isEqualTo("x\uFFFDy");
+		assertThat(journal.costToDate(sessionId)).isEqualByComparingTo(new BigDecimal("1.0"));
+	}
+
+	@Test
+	void backslashFollowedByU0000TextIsKeptVerbatim() {
+		UUID sessionId = newSession();
+		String source = "const SYSTEM_KEY = '\\u0000system';"; // backslash, u, 0000 as plain characters
+		journal.append(sessionId, "tool_result", mapper.createObjectNode().put("text", source));
+
+		assertThat(journal.readAfter(sessionId, 0).get(0).payload().path("text").asText()).isEqualTo(source);
+	}
 }
