@@ -1,4 +1,5 @@
-<h1><img src="docs/images/artus-logo.svg" alt="" width="32" height="32"> Artus</h1>
+<h1><img src="docs/images/artus-logo.svg" alt="Artus Logo" width="32" style="vertical-align: middle;">&nbsp; Artus</h1>
+
 
 **Multi-session manager for Claude Code and Codex.**
 
