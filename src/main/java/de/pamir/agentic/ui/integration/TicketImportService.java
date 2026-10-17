@@ -93,7 +93,7 @@ public class TicketImportService {
 	public TicketImportResult importTicket(String ticketRef) {
 		if (!enabled()) {
 			throw new IllegalStateException(
-					"Linear integration is not configured (set AGENTIC_UI_LINEAR_API_KEY, or enable OAuth in Settings)");
+					"Linear integration is not configured (set ARTUS_LINEAR_API_KEY, or enable OAuth in Settings)");
 		}
 		if (ticketRef == null || ticketRef.isBlank()) {
 			throw new IllegalArgumentException("ticketRef is required");
@@ -201,7 +201,7 @@ public class TicketImportService {
 	public TicketList listMyTickets(boolean refresh) {
 		if (!enabled()) {
 			throw new IllegalStateException(
-					"Linear integration is not configured (set AGENTIC_UI_LINEAR_API_KEY, or enable OAuth in Settings)");
+					"Linear integration is not configured (set ARTUS_LINEAR_API_KEY, or enable OAuth in Settings)");
 		}
 		boolean oauthMode = settings.current().linearOAuthEnabled();
 		if (!refresh) {

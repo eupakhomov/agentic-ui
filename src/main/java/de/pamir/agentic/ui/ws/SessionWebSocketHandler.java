@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 @Component
 public class SessionWebSocketHandler extends TextWebSocketHandler implements SubProtocolCapable {
 
-	public static final String SUBPROTOCOL = "agentic-ui.v1";
+	public static final String SUBPROTOCOL = "artus.v1";
 
 	private static final Logger log = LoggerFactory.getLogger(SessionWebSocketHandler.class);
 	private static final int SEND_TIME_LIMIT_MS = 10_000;

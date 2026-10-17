@@ -23,10 +23,10 @@ import {
   SettingsIcon, Shortcuts, SidebarToggle, SkillLibrary, SystemSession, Templates, Usage,
 } from '../icons';
 
-const LAYOUT_KEY = 'agentic-ui.layout';
-const MINIMIZED_KEY = 'agentic-ui.minimized';
-const SIDEBAR_KEY = 'agentic-ui.sidebar';
-const LAYOUT_MODE_KEY = 'agentic-ui.layoutMode';
+const LAYOUT_KEY = 'artus.layout';
+const MINIMIZED_KEY = 'artus.minimized';
+const SIDEBAR_KEY = 'artus.sidebar';
+const LAYOUT_MODE_KEY = 'artus.layoutMode';
 const COLS = 12;
 const FOLD_CYCLE: SidebarFold[] = ['expanded', 'rail'];
 
@@ -81,7 +81,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
   const [systemSessions, setSystemSessions] = useState<SessionSummary[]>(
     initialSessions.filter((s) => s.state !== 'CLOSED' && s.kind === 'system'),
   );
-  const [showSystem, setShowSystem] = useState(() => localStorage.getItem('agentic-ui.showSystem') === '1');
+  const [showSystem, setShowSystem] = useState(() => localStorage.getItem('artus.showSystem') === '1');
   const [layout, setLayout] = useState<Layout[]>(loadLayout());
   const [showCreate, setShowCreate] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -394,7 +394,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
           title={`Sidebar: ${fold} — click to toggle (b)`}
           onClick={cycleFold}
         ><SidebarToggle /></button>
-        <h1>agentic-ui</h1>
+        <h1 className="brand"><img src="/logo.svg" alt="" className="brand-logo" />Artus</h1>
         <NotifyToggle />
         <button className="icon-btn" title="Refresh session list" onClick={() => void refresh()}><Refresh /></button>
         <button className="icon-btn" title="Templates (t)" onClick={() => setShowTemplates(true)}><Templates /></button>
@@ -408,7 +408,7 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
           }
           onClick={() => setShowSystem((v) => {
             const next = !v;
-            localStorage.setItem('agentic-ui.showSystem', next ? '1' : '0');
+            localStorage.setItem('artus.showSystem', next ? '1' : '0');
             return next;
           })}
         >

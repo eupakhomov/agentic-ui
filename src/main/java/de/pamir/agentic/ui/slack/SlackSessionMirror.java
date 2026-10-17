@@ -51,7 +51,7 @@ import java.util.function.Function;
  * <p>All event handling runs on one thread, so a session's posts are enqueued in journal order.
  */
 @Component
-@ConditionalOnProperty(prefix = "agentic-ui.slack", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "artus.slack", name = "enabled", havingValue = "true")
 public class SlackSessionMirror {
 
 	private static final Logger log = LoggerFactory.getLogger(SlackSessionMirror.class);

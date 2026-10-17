@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /** {@link SlackSessionControl} on the real {@link SessionService}. */
 @Component
-@ConditionalOnProperty(prefix = "agentic-ui.slack", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "artus.slack", name = "enabled", havingValue = "true")
 class SessionServiceSlackControl implements SlackSessionControl {
 
 	private final SessionService sessions;

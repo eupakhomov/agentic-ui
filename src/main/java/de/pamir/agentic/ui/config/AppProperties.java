@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 import java.util.List;
 import java.util.Map;
 
-@ConfigurationProperties(prefix = "agentic-ui")
+@ConfigurationProperties(prefix = "artus")
 public record AppProperties(
 		String repoPath,
 		String worktreeRoot,

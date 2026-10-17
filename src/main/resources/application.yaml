@@ -2,13 +2,13 @@ spring:
   application:
     name: agentic.ui
   datasource:
-    url: jdbc:postgresql://localhost:5432/agentic_ui
-    username: agentic_ui
-    password: ${AGENTIC_UI_DB_PASSWORD:${CLAUDE_UI_DB_PASSWORD:agentic_ui}}
+    url: jdbc:postgresql://localhost:5432/artus
+    username: artus
+    password: ${ARTUS_DB_PASSWORD:artus}
   ai:
     mcp:
       server:
-        name: agentic-ui-memory
+        name: artus-memory
         version: 1.0.0
         protocol: STREAMABLE
         # mounted under /api/** so the existing bearer-token AuthTokenFilter gates it —
@@ -17,7 +17,7 @@ spring:
           mcp-endpoint: /api/mcp/memory
 
 server:
-  address: 127.0.0.1   # LAN use: set a real address; with the token off, agentic-ui.auth.trusted-cidrs decides who may connect
+  address: 127.0.0.1   # LAN use: set a real address; with the token off, artus.auth.trusted-cidrs decides who may connect
   port: 8080
 
 management:
@@ -29,20 +29,20 @@ management:
     health:
       show-components: always
 
-# Every env var below reads AGENTIC_UI_* first and falls back to the pre-rename
-# CLAUDE_UI_* name (the app was called claude-ui until 2026-09), so an existing shell
-# profile keeps working. New docs/scripts use only the AGENTIC_UI_* names.
-agentic-ui:
-  repo-path: ${AGENTIC_UI_REPO:${CLAUDE_UI_REPO:/mnt/d/projects/agentic-ui}}
-  worktree-root: ${AGENTIC_UI_WORKTREE_ROOT:${CLAUDE_UI_WORKTREE_ROOT:${HOME}/agentic-worktrees}}
-  skills-root: ${AGENTIC_UI_SKILLS_ROOT:${CLAUDE_UI_SKILLS_ROOT:${HOME}/agentic-skills}}
-  memory-root: ${AGENTIC_UI_MEMORY_ROOT:${CLAUDE_UI_MEMORY_ROOT:${HOME}/agentic-memory}}
-  max-sessions: ${AGENTIC_UI_MAX_SESSIONS:${CLAUDE_UI_MAX_SESSIONS:4}}
-  idle-park-minutes: ${AGENTIC_UI_IDLE_PARK_MINUTES:${CLAUDE_UI_IDLE_PARK_MINUTES:30}}
-  log-dir: ${AGENTIC_UI_LOG_DIR:${CLAUDE_UI_LOG_DIR:logs}}
-  journal-payload-cap-bytes: ${AGENTIC_UI_JOURNAL_PAYLOAD_CAP:${CLAUDE_UI_JOURNAL_PAYLOAD_CAP:65536}}
-  ws-send-buffer-bytes: ${AGENTIC_UI_WS_BUFFER_LIMIT:${CLAUDE_UI_WS_BUFFER_LIMIT:1048576}}
-  auth-token: ${AGENTIC_UI_TOKEN:${CLAUDE_UI_TOKEN:}}
+# Env vars are ARTUS_* only (the app was agentic-ui until 2026-10, claude-ui before that;
+# no fallbacks to the old names). The default data dirs below keep their pre-rename names
+# so existing worktrees/skills/memory stay where they are.
+artus:
+  repo-path: ${ARTUS_REPO:/mnt/d/projects/artus}
+  worktree-root: ${ARTUS_WORKTREE_ROOT:${HOME}/agentic-worktrees}
+  skills-root: ${ARTUS_SKILLS_ROOT:${HOME}/agentic-skills}
+  memory-root: ${ARTUS_MEMORY_ROOT:${HOME}/agentic-memory}
+  max-sessions: ${ARTUS_MAX_SESSIONS:4}
+  idle-park-minutes: ${ARTUS_IDLE_PARK_MINUTES:30}
+  log-dir: ${ARTUS_LOG_DIR:logs}
+  journal-payload-cap-bytes: ${ARTUS_JOURNAL_PAYLOAD_CAP:65536}
+  ws-send-buffer-bytes: ${ARTUS_WS_BUFFER_LIMIT:1048576}
+  auth-token: ${ARTUS_TOKEN:}
   # Applies only while the token is NOT enforced (Settings → Access → "Require access token", read at startup).
   # Defaults are loopback-only; WSL needs the vEthernet range added to trusted-cidrs, and a reverse
   # proxy's external hostname belongs in allowed-hosts. Docs: docs/plan/phase-17-*.md section B.
@@ -50,21 +50,21 @@ agentic-ui:
   #   trusted-cidrs: ["127.0.0.0/8", "::1/128"]
   #   allowed-hosts: ["localhost", "127.0.0.1", "[::1]"]
   #   allowed-origins: []
-  linear-api-key: ${AGENTIC_UI_LINEAR_API_KEY:${CLAUDE_UI_LINEAR_API_KEY:}}
-  voyage-api-key: ${AGENTIC_UI_VOYAGE_API_KEY:${CLAUDE_UI_VOYAGE_API_KEY:}}
+  linear-api-key: ${ARTUS_LINEAR_API_KEY:}
+  voyage-api-key: ${ARTUS_VOYAGE_API_KEY:}
   # Slack mirror (phase 18). Secrets and the allowlist are env vars only (or application-local.yaml
   # with SPRING_PROFILES_ACTIVE=local). Setup: docs/SLACK.md.
   # allowed-users is a comma-separated list of Slack member IDs; empty = every message and click is ignored.
   slack:
-    enabled: ${AGENTIC_UI_SLACK_ENABLED:false}
-    bot-token: ${AGENTIC_UI_SLACK_BOT_TOKEN:}
-    app-token: ${AGENTIC_UI_SLACK_APP_TOKEN:}
-    channel: ${AGENTIC_UI_SLACK_CHANNEL:}
-    allowed-users: ${AGENTIC_UI_SLACK_ALLOWED_USERS:}
-    verbose: ${AGENTIC_UI_SLACK_VERBOSE:false}
-    public-url: ${AGENTIC_UI_PUBLIC_URL:}
+    enabled: ${ARTUS_SLACK_ENABLED:false}
+    bot-token: ${ARTUS_SLACK_BOT_TOKEN:}
+    app-token: ${ARTUS_SLACK_APP_TOKEN:}
+    channel: ${ARTUS_SLACK_CHANNEL:}
+    allowed-users: ${ARTUS_SLACK_ALLOWED_USERS:}
+    verbose: ${ARTUS_SLACK_VERBOSE:false}
+    public-url: ${ARTUS_PUBLIC_URL:}
     # allowlisted users may start review/development sessions by mentioning the bot (see docs/SLACK.md)
-    start-enabled: ${AGENTIC_UI_SLACK_START_ENABLED:false}
+    start-enabled: ${ARTUS_SLACK_START_ENABLED:false}
   providers:
     claude:
       command: ["node", "sidecar/dist/index.js"]

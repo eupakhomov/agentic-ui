@@ -31,7 +31,7 @@ import java.util.Optional;
  * the inherited settings, exactly as in the dashboard (see {@link #buildOverrides}).
  */
 @Component
-@ConditionalOnProperty(prefix = "agentic-ui.slack", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "artus.slack", name = "enabled", havingValue = "true")
 class SessionServiceSlackStarter implements SlackSessionStarter {
 
 	private final ServiceCatalog catalog;

@@ -1,4 +1,4 @@
-# Deploying agentic-ui on macOS
+# Deploying Artus on macOS
 
 How to get the dashboard running on a Mac: install the prerequisites, clone, configure
 a few paths, build, run. Optionally reach it from other devices on your LAN and set up
@@ -30,8 +30,8 @@ claude --version      # and `claude` opens logged-in
 ## 2. Get the code
 
 ```bash
-git clone https://github.com/eupakhomov/agentic-ui.git
-cd agentic-ui
+git clone https://github.com/eupakhomov/artus.git
+cd artus
 ```
 
 ## 3. Configure
@@ -42,18 +42,18 @@ Add these to `~/.zshrc` (then open a new terminal):
 # REQUIRED — the repo shown as the default service when creating a session.
 # The built-in default points at a path that doesn't exist on your machine.
 # Any git checkout works; you can pick a different repo per session in the UI.
-export AGENTIC_UI_REPO="$HOME/projects/<some-repo>"
+export ARTUS_REPO="$HOME/projects/<some-repo>"
 
 # Optional — defaults shown; the folders are created on demand.
-export AGENTIC_UI_WORKTREE_ROOT="$HOME/agentic-worktrees"   # one git worktree per session
-export AGENTIC_UI_SKILLS_ROOT="$HOME/agentic-skills"        # managed skill library
-export AGENTIC_UI_MEMORY_ROOT="$HOME/agentic-memory"        # long-term memory vault (Markdown)
+export ARTUS_WORKTREE_ROOT="$HOME/agentic-worktrees"   # one git worktree per session
+export ARTUS_SKILLS_ROOT="$HOME/agentic-skills"        # managed skill library
+export ARTUS_MEMORY_ROOT="$HOME/agentic-memory"        # long-term memory vault (Markdown)
 
 # Optional — a fixed dashboard token. Unset = a new random token on every start.
-export AGENTIC_UI_TOKEN="<pick-a-long-random-string>"
+export ARTUS_TOKEN="<pick-a-long-random-string>"
 ```
 
-`AGENTIC_UI_SKILLS_ROOT` and `AGENTIC_UI_MEMORY_ROOT` only seed the first boot — after
+`ARTUS_SKILLS_ROOT` and `ARTUS_MEMORY_ROOT` only seed the first boot — after
 that both are editable in the Settings dialog ("Skill library" / "Memory").
 
 The **ecosystem root** (the parent folder of your repos, used for the service picker and
@@ -66,11 +66,11 @@ changing for a default install.
 ## 4. Database
 
 ```bash
-docker compose up -d          # pgvector/pg17; DB/user/password agentic_ui, port 127.0.0.1:5432
+docker compose up -d          # pgvector/pg17; DB/user/password artus, port 127.0.0.1:5432
 ```
 
-Data persists in the `agentic-ui_pgdata` Docker volume. To use a non-default DB
-password, set `AGENTIC_UI_DB_PASSWORD` in `~/.zshrc` — both compose and the backend
+Data persists in the `artus_pgdata` Docker volume. To use a non-default DB
+password, set `ARTUS_DB_PASSWORD` in `~/.zshrc` — both compose and the backend
 read it.
 
 ## 5. Build
@@ -105,16 +105,16 @@ Day to day:
 | `./install.sh` | build sidecars, frontend and backend (stop the backend first) |
 | `./install.sh --backend-only` | rebuild the backend jar only (fast) |
 | `./update.sh` | `git pull --ff-only` + `./install.sh` |
-| `kill "$(cat /tmp/agentic-ui.pid)"` | stop (graceful; shuts sessions down) |
-| `cat /tmp/agentic-ui.token` | show the current token |
+| `kill "$(cat /tmp/artus.pid)"` | stop (graceful; shuts sessions down) |
+| `cat /tmp/artus.token` | show the current token |
 
-Logs: `/tmp/agentic-ui.log` (raw stdout), `logs/agentic-ui.log` (application),
+Logs: `/tmp/artus.log` (raw stdout), `logs/artus.log` (application),
 `logs/error.log`, `logs/sidecar/<session-id>.log` (one per session).
 
 If `./mvnw` complains "permission denied", ignore it — the scripts use the system `mvn`
 on macOS; `./mvnw` sometimes loses its executable bit in git checkouts.
 
-**Token**: with `AGENTIC_UI_TOKEN` exported (§3) the same token is reused on every
+**Token**: with `ARTUS_TOKEN` exported (§3) the same token is reused on every
 restart, so the browser stays logged in. Unset, a fresh one is generated each start.
 The in-process `memory` MCP server authenticates with the same token; its entry in a
 session's `mcpConfig` is re-stamped with the live token whenever the config is written
@@ -128,12 +128,12 @@ in front of a loopback-only backend).
 
 **Token on or off** (Settings → Access → "Require access token"): the choice is stored in the
 database but **read once at startup, so it applies on the next restart** (the dialog shows
-what the running process actually enforces). The default is on when `AGENTIC_UI_TOKEN` is
+what the running process actually enforces). The default is on when `ARTUS_TOKEN` is
 set, off otherwise. With the token **off**, the backend accepts only trusted local clients:
-the client address must be in `agentic-ui.auth.trusted-cidrs` (default: loopback), the `Host`
-header in `agentic-ui.auth.allowed-hosts` (default: `localhost`, `127.0.0.1`, `[::1]`; any
+the client address must be in `artus.auth.trusted-cidrs` (default: loopback), the `Host`
+header in `artus.auth.allowed-hosts` (default: `localhost`, `127.0.0.1`, `[::1]`; any
 port), and a browser `Origin` must belong to an allowed host or be listed in
-`agentic-ui.auth.allowed-origins`. Anything else gets a 403, which also stops a web page you
+`artus.auth.allowed-origins`. Anything else gets a 403, which also stops a web page you
 visit from driving the backend on localhost. This works whatever address the socket is bound to:
 - **WSL**: the backend must bind `0.0.0.0` for the Windows browser to reach it, so add the WSL
   virtual-network range to `trusted-cidrs` (or use mirrored networking, where Windows clients
@@ -144,7 +144,7 @@ visit from driving the backend on localhost. This works whatever address the soc
 
 ### Start at login (optional)
 
-Create a `launchd` agent (`~/Library/LaunchAgents/de.pamir.agentic-ui.plist`) whose
+Create a `launchd` agent (`~/Library/LaunchAgents/de.pamir.artus.plist`) whose
 program is `<repo>/start.sh`, with `RunAtLoad` and your env vars from §3 in
 `EnvironmentVariables` — or simply add `start.sh` to Login Items. Set Docker Desktop to
 start at login too, so Postgres is up first (the backend fails fast without it and
@@ -179,7 +179,7 @@ initial prompt. Pick one auth mode:
 **Personal API key** — simplest; works unless your Linear account is SSO-only:
 
 ```bash
-export AGENTIC_UI_LINEAR_API_KEY="lin_api_..."   # Linear → Settings → Security & Access
+export ARTUS_LINEAR_API_KEY="lin_api_..."   # Linear → Settings → Security & Access
 ```
 
 With a key set, the ticket list is fetched straight from Linear's GraphQL API (about a second,
@@ -194,10 +194,10 @@ authorize once interactively:
    (the `--scope` flag doesn't matter — only the OAuth consent it records is used).
 2. Complete the browser OAuth flow through your org's SSO login.
 3. In the dashboard: **Settings → Linear integration**, turn on "use the ambient
-   `claude` CLI's cached OAuth credential". Leave `AGENTIC_UI_LINEAR_API_KEY` unset —
+   `claude` CLI's cached OAuth credential". Leave `ARTUS_LINEAR_API_KEY` unset —
    an explicit key always wins over OAuth.
 4. Try an import from the create-session dialog. No Linear token is stored in
-   agentic-ui; it reuses the `claude` CLI's cached credential.
+   Artus; it reuses the `claude` CLI's cached credential.
 
 **Branch-naming guidance** (either mode): the same Settings panel has a free-text field
 that steers generated branch names, e.g. "keep the ticket number uppercase" or "format
@@ -209,7 +209,7 @@ One key adds semantic (embedding-based) search to the skill library, long-term m
 and service discovery. Without it all three still work with Postgres full-text search:
 
 ```bash
-export AGENTIC_UI_VOYAGE_API_KEY="pa-..."   # Voyage AI dashboard → API keys
+export ARTUS_VOYAGE_API_KEY="pa-..."   # Voyage AI dashboard → API keys
 ```
 
 - **Skill library**: also turn on "vectorize" in Settings → "Skill library" (off by
@@ -252,7 +252,7 @@ Then in Settings → "MCP servers": set **Graphify root** to the checkout path a
 command the error message shows once by hand, then save again.
 
 Do **not** run graphify's own `graphify install`, `hook install` or the `/graphify`
-skill on this Mac — they rewrite `~/.claude/settings.json` and git hooks. agentic-ui
+skill on this Mac — they rewrite `~/.claude/settings.json` and git hooks. Artus
 only uses the checkout's CLI and MCP server; graphs live under
 `<worktree-root>/.graphify/<session-id>/`, never inside a worktree.
 
@@ -278,7 +278,7 @@ fails).
 
 Do **not** run codegraph's own `codegraph install`, `upgrade`, `codegraph ui` or its
 git hooks on this Mac — they rewrite `~/.claude/settings.json`, `~/.claude.json` and
-`~/.claude/CLAUDE.md`. agentic-ui only runs `init`, `serve --mcp` and `version` from the
+`~/.claude/CLAUDE.md`. Artus only runs `init`, `serve --mcp` and `version` from the
 checkout, with telemetry and update checks off. The index (`.codegraph/`) lives inside
 the session's worktree, git-excluded, and disappears with it.
 
@@ -301,8 +301,8 @@ The full setup, the security posture, token rotation, the emergency stop and tro
 
    ```json
    {
-     "display_information": { "name": "agentic-ui" },
-     "features": { "bot_user": { "display_name": "agentic-ui", "always_online": false } },
+     "display_information": { "name": "Artus" },
+     "features": { "bot_user": { "display_name": "Artus", "always_online": false } },
      "oauth_config": { "scopes": { "bot": ["chat:write", "groups:history", "reactions:write", "files:write", "app_mentions:read"] } },
      "settings": {
        "event_subscriptions": { "bot_events": ["message.groups", "app_mention"] },
@@ -316,19 +316,19 @@ The full setup, the security posture, token rotation, the emergency stop and tro
 
 2. **Tokens** — *Basic Information → App-Level Tokens → Generate* with the `connections:write` scope
    (`xapp-…`), and *OAuth & Permissions → Install to Workspace* for the bot token (`xoxb-…`).
-3. **Channel** — create a private channel, `/invite @agentic-ui`, and note its channel **ID** (channel
+3. **Channel** — create a private channel, `/invite @Artus`, and note its channel **ID** (channel
    details → About, starts with `C`) and your member ID (profile → ⋯ → Copy member ID, `U…`).
 4. **Configure** — add to `~/.zshrc` (the macOS default shell; for bash use `~/.bashrc`, see SLACK.md
    for the launchd and non-interactive cases), then open a new terminal:
 
    ```bash
-   export AGENTIC_UI_SLACK_ENABLED=true
-   export AGENTIC_UI_SLACK_BOT_TOKEN='xoxb-…'      # prefer the Keychain, see SLACK.md
-   export AGENTIC_UI_SLACK_APP_TOKEN='xapp-…'
-   export AGENTIC_UI_SLACK_CHANNEL=C0123456789     # the channel ID, not its name
-   export AGENTIC_UI_SLACK_ALLOWED_USERS=U0123456789   # comma-separated; empty = nobody can act
-   # export AGENTIC_UI_SLACK_START_ENABLED=true     # optional: start review/dev sessions by mentioning the bot (SLACK.md)
-   # export AGENTIC_UI_PUBLIC_URL=https://mac.tailnet.ts.net:8080   # optional: the "Open" button
+   export ARTUS_SLACK_ENABLED=true
+   export ARTUS_SLACK_BOT_TOKEN='xoxb-…'      # prefer the Keychain, see SLACK.md
+   export ARTUS_SLACK_APP_TOKEN='xapp-…'
+   export ARTUS_SLACK_CHANNEL=C0123456789     # the channel ID, not its name
+   export ARTUS_SLACK_ALLOWED_USERS=U0123456789   # comma-separated; empty = nobody can act
+   # export ARTUS_SLACK_START_ENABLED=true     # optional: start review/dev sessions by mentioning the bot (SLACK.md)
+   # export ARTUS_PUBLIC_URL=https://mac.tailnet.ts.net:8080   # optional: the "Open" button
    ```
 
 5. **Restart** (`./start.sh`) and check the log for `slack: bot '…' in workspace '…'` then
@@ -336,14 +336,14 @@ The full setup, the security posture, token rotation, the emergency stop and tro
    Settings → Slack). The first start also applies Flyway migration `V19` (three nullable/defaulted
    columns on `session`, plus an index).
 
-Slack is off unless `AGENTIC_UI_SLACK_ENABLED=true`; with it off no Slack code runs. One backend per
+Slack is off unless `ARTUS_SLACK_ENABLED=true`; with it off no Slack code runs. One backend per
 Slack app (two on the same app steal each other's events). Emergency stop: delete the app-level
 token in the Slack app (cuts inbound immediately), then unset the variable and restart.
 
 ## 9. Updating
 
 ```bash
-kill "$(cat /tmp/agentic-ui.pid)"   # a live JVM holds the jar; install.sh refuses to run over it
+kill "$(cat /tmp/artus.pid)"   # a live JVM holds the jar; install.sh refuses to run over it
 ./update.sh                         # git pull --ff-only, then install.sh (sidecars, frontend, backend)
 ./start.sh                          # DB migrates on boot
 ```
@@ -352,7 +352,7 @@ kill "$(cat /tmp/agentic-ui.pid)"   # a live JVM holds the jar; install.sh refus
 
 | Symptom | Cause / fix |
 |---|---|
-| 403 "auth disabled; only trusted local clients are accepted (…)" | The token is off and the request failed the local-client check; the parenthesis names which one (client address, Host, Origin, cross-site). Add the client's range to `agentic-ui.auth.trusted-cidrs` or the hostname to `allowed-hosts`, or turn the token on (Settings → Access, then restart) |
+| 403 "auth disabled; only trusted local clients are accepted (…)" | The token is off and the request failed the local-client check; the parenthesis names which one (client address, Host, Origin, cross-site). Add the client's range to `artus.auth.trusted-cidrs` or the hostname to `allowed-hosts`, or turn the token on (Settings → Access, then restart) |
 | Session stuck in STARTING, then CRASHED | `node` not on the backend's `PATH`, sidecar not built (§5), or `claude` never logged in — check `logs/sidecar/<id>.log` |
 | Same, only for `provider: codex` sessions | `sidecar-codex` not built (§5), or `codex login` never done — check `logs/sidecar/<id>.log` |
 | Sidecar build fails with a `TS1010`/syntax error inside `node_modules/@types/...` | A truncated/corrupt `node_modules` (interrupted install, bad npm cache, synced folder) — `rm -rf node_modules && npm cache verify && npm ci` in that package |
@@ -361,3 +361,31 @@ kill "$(cat /tmp/agentic-ui.pid)"   # a live JVM holds the jar; install.sh refus
 | PR button → 409 | `gh` missing or not authenticated, or repo has no GitHub remote — the message says which |
 | Widgets empty after update | Hard-refresh the browser (cached JS) |
 | Ticket import: "needs auth" / "cannot run the OAuth flow" | OAuth mode only: the `claude mcp add` step in §8 wasn't done on this Mac — check `logs/sidecar/<system-session-id>.log` |
+
+## 11. Renaming from agentic-ui (one-time)
+
+The system was called `agentic-ui` until 2026-10. Old names are not read as fallbacks, so an existing
+install needs these steps once (the browser migrates its own stored token/layout on first load):
+
+1. Stop the backend: `kill "$(cat /tmp/agentic-ui.pid)"`.
+2. Rename every `AGENTIC_UI_*` export in your shell profile to `ARTUS_*` (same suffixes).
+3. Database and volume. Compose now pins the project name to `artus`, so the data volume is `artus_pgdata`
+   (it was `agentic-ui_pgdata`). Easiest, keeping the old DB/user names inside the data:
+   ```bash
+   docker compose down
+   docker volume create artus_pgdata
+   docker run --rm -v agentic-ui_pgdata:/from -v artus_pgdata:/to alpine cp -a /from/. /to/
+   docker compose up -d
+   docker compose exec postgres psql -U agentic_ui -d postgres -c \
+     "ALTER DATABASE agentic_ui RENAME TO artus; ALTER ROLE agentic_ui RENAME TO artus; ALTER ROLE artus PASSWORD '<ARTUS_DB_PASSWORD or artus>';"
+   ```
+   (Postgres will refuse to rename the DB you are connected to — hence `-d postgres`; if it complains about the
+   role being the current user, connect as another superuser or recreate the role.) Remove `agentic-ui_pgdata`
+   once everything works.
+4. Slack: rename the app/bot display name to Artus and upload `docs/images/artus-logo.svg` (as PNG) as the icon;
+   rename Keychain items `agentic-ui-slack-*` → `artus-slack-*` and `~/.config/agentic-ui` → `~/.config/artus`.
+5. Move the folder and git remote: `mv agentic-ui artus && git remote set-url origin https://github.com/eupakhomov/artus.git`.
+6. Worktrees created before the rename only exclude `.agentic-ui.pid`; the session pid file is now `.artus.pid`.
+   Add `.artus.pid` to their `.git/info/exclude` (or close and recreate the session) so `git status` stays clean.
+7. `./install.sh && ./start.sh`.
+

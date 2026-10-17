@@ -529,7 +529,7 @@ class SlackInboundTest {
 				new SlackCommandHandler(starter, Runnable::run));
 		disabled.onEvent(mention("U1", REVIEW_12, "202.1"));
 		FakeSlack.await(() -> !slack.of("post").isEmpty());
-		assertThat(slack.of("post").get(0).message().blocks().toString()).contains("turned off").contains("AGENTIC_UI_SLACK_START_ENABLED");
+		assertThat(slack.of("post").get(0).message().blocks().toString()).contains("turned off").contains("ARTUS_SLACK_START_ENABLED");
 		assertThat(starter.started).isEmpty();
 		assertThat(slack.of("react")).isEmpty();
 	}

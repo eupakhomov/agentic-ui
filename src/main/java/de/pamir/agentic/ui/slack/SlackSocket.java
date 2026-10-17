@@ -37,7 +37,7 @@ import java.util.concurrent.TimeUnit;
  * connections so a redelivery after a reconnect is still recognised as a duplicate.
  */
 @Component
-@ConditionalOnProperty(prefix = "agentic-ui.slack", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "artus.slack", name = "enabled", havingValue = "true")
 public class SlackSocket {
 
 	private static final Logger log = LoggerFactory.getLogger(SlackSocket.class);
@@ -82,12 +82,12 @@ public class SlackSocket {
 	@EventListener(ApplicationReadyEvent.class)
 	void start() {
 		if (!props.hasTokens()) {
-			log.warn("slack: enabled but bot-token/app-token are not both set (AGENTIC_UI_SLACK_BOT_TOKEN / "
-					+ "AGENTIC_UI_SLACK_APP_TOKEN) — not connecting");
+			log.warn("slack: enabled but bot-token/app-token are not both set (ARTUS_SLACK_BOT_TOKEN / "
+					+ "ARTUS_SLACK_APP_TOKEN) — not connecting");
 			return;
 		}
 		if (props.channel().isBlank()) {
-			log.warn("slack: no channel configured (AGENTIC_UI_SLACK_CHANNEL) — nothing can be posted");
+			log.warn("slack: no channel configured (ARTUS_SLACK_CHANNEL) — nothing can be posted");
 		}
 		if (props.allowedUsers().isEmpty()) {
 			log.warn("slack: allowed-users is empty — every Slack message and button click will be ignored");

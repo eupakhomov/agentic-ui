@@ -1,18 +1,19 @@
+name: artus   # pins the compose project (and so the volume name `artus_pgdata`) independent of the folder name
 services:
   postgres:
     image: pgvector/pgvector:pg17
     environment:
       # POSTGRES_* only apply when the pgdata volume is first initialised — a volume
-      # created under the old claude_ui name needs `docker compose down -v` first.
-      POSTGRES_DB: agentic_ui
-      POSTGRES_USER: agentic_ui
-      POSTGRES_PASSWORD: ${AGENTIC_UI_DB_PASSWORD:-${CLAUDE_UI_DB_PASSWORD:-agentic_ui}}
+      # created under an older name keeps its old DB/user — see docs/DEPLOY.md (Renaming from agentic-ui).
+      POSTGRES_DB: artus
+      POSTGRES_USER: artus
+      POSTGRES_PASSWORD: ${ARTUS_DB_PASSWORD:-artus}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agentic_ui -d agentic_ui"]
+      test: ["CMD-SHELL", "pg_isready -U artus -d artus"]
       interval: 5s
       timeout: 3s
       retries: 10

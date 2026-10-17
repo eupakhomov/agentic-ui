@@ -1,6 +1,10 @@
-# Agentic Code Multi-Session Manager
+<p align="center"><img src="docs/images/artus-logo.svg" alt="Artus" width="128"></p>
 
-[![CI](https://github.com/eupakhomov/agentic-ui/actions/workflows/ci.yml/badge.svg)](https://github.com/eupakhomov/agentic-ui/actions/workflows/ci.yml)
+# Artus
+
+**Multi-session manager for Claude Code and Codex.**
+
+[![CI](https://github.com/eupakhomov/artus/actions/workflows/ci.yml/badge.svg)](https://github.com/eupakhomov/artus/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 Run parallel AI coding-agent sessions — Claude Code and Codex — from one browser
@@ -116,8 +120,8 @@ Prerequisites:
 | gh CLI | logged in (optional) | PR creation, PR-check polling, review sessions, GitHub library imports |
 
 ```bash
-git clone https://github.com/eupakhomov/agentic-ui.git
-cd agentic-ui
+git clone https://github.com/eupakhomov/artus.git
+cd artus
 docker compose up -d     # PostgreSQL (schema applied via Flyway on first start)
 ./install.sh             # build sidecars, frontend and backend
 ./start.sh               # start, print URL + access token
@@ -144,15 +148,15 @@ links go to the phase doc with the rationale and decisions:
 | Review sessions | none — pick type **Review** in the create dialog (needs `gh`, logged in) | [`phase-15-review-sessions.md`](docs/plan/phase-15-review-sessions.md) |
 | Codex provider | `codex login` once; select provider `codex` per session/template, or make it the default in Settings → Sessions. Codex-only installs: the `claude` CLI isn't needed, but backend-initiated helper turns that need MCP tools (Linear ticket import, memory-tool flows) can't answer approval prompts on a Codex system session and will time out; plain helper tasks (auto-titles, commit-message drafts) work fine | [`phase-5.13-codex-provider.md`](docs/plan/phase-5.13-codex-provider.md) |
 | Skill library | Settings → Skill library (roots, sync, optional vectorize) | [`phase-6-skill-library.md`](docs/plan/phase-6-skill-library.md) |
-| Long-term memory & reflection | Settings → Memory; vault root via `AGENTIC_UI_MEMORY_ROOT` | [`phase-5.3-memory-reflection.md`](docs/plan/phase-5.3-memory-reflection.md) |
-| Semantic search (memory + library) | `AGENTIC_UI_VOYAGE_API_KEY` env var; unset = sparse-only search, everything else works — [DEPLOY §8a](docs/DEPLOY.md#8a-optional-semantic-search-voyage-embeddings) | `docs/ARCHITECTURE.md` §3a/§3b |
-| Linear integration | `AGENTIC_UI_LINEAR_API_KEY` env var, or the OAuth toggle in Settings → Linear for SSO-gated accounts — [DEPLOY §8](docs/DEPLOY.md#8-optional-linear-ticket-import) | [`phase-12-linear-cache-serena-context.md`](docs/plan/phase-12-linear-cache-serena-context.md) |
+| Long-term memory & reflection | Settings → Memory; vault root via `ARTUS_MEMORY_ROOT` | [`phase-5.3-memory-reflection.md`](docs/plan/phase-5.3-memory-reflection.md) |
+| Semantic search (memory + library) | `ARTUS_VOYAGE_API_KEY` env var; unset = sparse-only search, everything else works — [DEPLOY §8a](docs/DEPLOY.md#8a-optional-semantic-search-voyage-embeddings) | `docs/ARCHITECTURE.md` §3a/§3b |
+| Linear integration | `ARTUS_LINEAR_API_KEY` env var, or the OAuth toggle in Settings → Linear for SSO-gated accounts — [DEPLOY §8](docs/DEPLOY.md#8-optional-linear-ticket-import) | [`phase-12-linear-cache-serena-context.md`](docs/plan/phase-12-linear-cache-serena-context.md) |
 | Code intelligence: Serena | `uv` + a local Serena checkout; Settings → MCP servers → Serena root, pick `Serena` in the selector; tick **Code intelligence** per session — [DEPLOY §8b](docs/DEPLOY.md#8b-optional-serena-symbolic-code-tools) | [`phase-12-…`](docs/plan/phase-12-linear-cache-serena-context.md) track B |
 | Code intelligence: graphify | `uv` + a graphify checkout at the reviewed commit; Settings → MCP servers → Graphify root (first save syncs the env), pick `Graphify`; tick **Code intelligence** per session. One tool per install — the selector picks Serena, graphify or CodeGraph, never more than one — [DEPLOY §8c](docs/DEPLOY.md#8c-optional-graphify-knowledge-graph-code-tools) | [`phase-13-graphify.md`](docs/plan/phase-13-graphify.md) |
 | Code intelligence: CodeGraph | Node (no `uv`) + a codegraph checkout at the reviewed commit, built once; Settings → MCP servers → CodeGraph root, pick `CodeGraph`; tick **Code intelligence** per session. Index builds synchronously at session start, then stays fresh on its own (no background refresh) — [DEPLOY §8d](docs/DEPLOY.md#8d-optional-codegraph-code-graph-self-refreshing) | [`phase-14-codegraph.md`](docs/plan/phase-14-codegraph.md) |
 | PR checks polling | on by default; Settings → PR checks (interval); uses ambient `gh` auth | `docs/ARCHITECTURE.md` |
 | Ecosystem / service discovery | Settings → Sessions → Ecosystem root; monorepo detection is a separate toggle | [`phase-8-service-discovery.md`](docs/plan/phase-8-service-discovery.md), [`phase-11-monorepo.md`](docs/plan/phase-11-monorepo.md) |
-| Slack | a Slack app (Socket Mode), `AGENTIC_UI_SLACK_ENABLED` + tokens + channel ID + an allowlist; starting sessions from Slack has its own switch — [DEPLOY §8e](docs/DEPLOY.md#8e-optional-slack-mirror-sessions-approve-from-your-phone), full guide [`docs/SLACK.md`](docs/SLACK.md) | [`phase-18-slack.md`](docs/plan/phase-18-slack.md) |
+| Slack | a Slack app (Socket Mode), `ARTUS_SLACK_ENABLED` + tokens + channel ID + an allowlist; starting sessions from Slack has its own switch — [DEPLOY §8e](docs/DEPLOY.md#8e-optional-slack-mirror-sessions-approve-from-your-phone), full guide [`docs/SLACK.md`](docs/SLACK.md) | [`phase-18-slack.md`](docs/plan/phase-18-slack.md) |
 | Orchestration (child sessions) | none — agents get a `spawn_child_session` tool | [`phase-7-ux-and-orchestration.md`](docs/plan/phase-7-ux-and-orchestration.md) |
 
 ## Configuration
@@ -161,15 +165,15 @@ The most common knobs (all env vars are read at backend startup):
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `AGENTIC_UI_TOKEN` | — | dashboard/API token (required for non-loopback binds); `start.sh` generates a random one each run if unset, or reuses a pre-exported value so it stays stable across restarts |
-| `AGENTIC_UI_REPO` | this repo | default service repo (per-session selectable) |
-| `AGENTIC_UI_WORKTREE_ROOT` | `~/agentic-worktrees` | where session worktrees live |
-| `AGENTIC_UI_MAX_SESSIONS` | `4` | concurrent live sidecars (parked sessions don't count) |
-| `AGENTIC_UI_IDLE_PARK_MINUTES` | `30` | idle minutes before a session parks |
-| `AGENTIC_UI_DB_PASSWORD` | `agentic_ui` | Postgres password override |
-| `AGENTIC_UI_VOYAGE_API_KEY` | — | enables dense/semantic search (secret — env only) |
-| `AGENTIC_UI_LINEAR_API_KEY` | — | enables Linear import + MCP (secret — env only) |
-| `AGENTIC_UI_SLACK_ENABLED` | `false` | Slack mirroring and control; needs `AGENTIC_UI_SLACK_BOT_TOKEN`, `_APP_TOKEN` (secrets — env only), `_CHANNEL` and `_ALLOWED_USERS` (empty = nobody can act); `_START_ENABLED` additionally allows starting sessions from Slack — see [`docs/SLACK.md`](docs/SLACK.md) |
+| `ARTUS_TOKEN` | — | dashboard/API token (required for non-loopback binds); `start.sh` generates a random one each run if unset, or reuses a pre-exported value so it stays stable across restarts |
+| `ARTUS_REPO` | this repo | default service repo (per-session selectable) |
+| `ARTUS_WORKTREE_ROOT` | `~/agentic-worktrees` | where session worktrees live |
+| `ARTUS_MAX_SESSIONS` | `4` | concurrent live sidecars (parked sessions don't count) |
+| `ARTUS_IDLE_PARK_MINUTES` | `30` | idle minutes before a session parks |
+| `ARTUS_DB_PASSWORD` | `artus` | Postgres password override |
+| `ARTUS_VOYAGE_API_KEY` | — | enables dense/semantic search (secret — env only) |
+| `ARTUS_LINEAR_API_KEY` | — | enables Linear import + MCP (secret — env only) |
+| `ARTUS_SLACK_ENABLED` | `false` | Slack mirroring and control; needs `ARTUS_SLACK_BOT_TOKEN`, `_APP_TOKEN` (secrets — env only), `_CHANNEL` and `_ALLOWED_USERS` (empty = nobody can act); `_START_ENABLED` additionally allows starting sessions from Slack — see [`docs/SLACK.md`](docs/SLACK.md) |
 
 The full list of limits, persisted settings, and operational notes is in
 [`CLAUDE.md`](CLAUDE.md) — which doubles as the contributor/agent handbook for this

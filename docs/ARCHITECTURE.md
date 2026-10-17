@@ -1,4 +1,4 @@
-# agentic-ui — Architecture (as built)
+# Artus — Architecture (as built)
 
 Status: Phases 0–4 complete plus git panel (5.1), PR creation (5.2), long-term memory &
 reflection (5.3), desktop notifications (5.14), model switching mid-session (5.5),
@@ -56,7 +56,7 @@ decision log in `docs/plan/README.md` remains the authority on *why*; this file 
   from `afterSeq=0`; reconnects resume losslessly from the last seen seq.
 - **The adapter contract is provider-neutral.** The backend/UI never reference
   Claude specifics; capabilities announced in `ready` gate which controls render.
-  A second provider = a new adapter binary + a `agentic-ui.providers.<id>` entry.
+  A second provider = a new adapter binary + a `artus.providers.<id>` entry.
 - **Sessions outlive processes.** `providerSessionId` (persisted from `system_init`)
   makes sidecars disposable: crash → CRASHED + Resume; idle timeout → PARKED with
   transparent wake; backend restart → sweep marks CRASHED, PID files reap orphans.
@@ -97,7 +97,7 @@ Curated library on top of per-session skill sources (`de.pamir.agentic.ui.librar
   create-dialog picker and provisioning read), never overwrites different content
   (`-2` suffix + warning), dedupes identical content, writes asset+tags, best-effort
   embeds (`VoyageEmbeddingClient` behind `EmbeddingClient`, key
-  `AGENTIC_UI_VOYAGE_API_KEY`, model voyage-3.5-lite).
+  `ARTUS_VOYAGE_API_KEY`, model voyage-3.5-lite).
 - **AI-fill** (`LibraryAiService`): batches ≤5 file contents per Haiku system-session
   turn (`SystemSessionService.runSystemTurn`, via `SystemTurnClient`), returns name/description/tags per path.
 - **Sync** (`LibrarySyncService`): 60s tick, interval as `last_synced_at` cutoff
@@ -161,7 +161,7 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   no new auth code. Every session's `mcpConfig.memory` entry is the same static
   `{type: "http", headers: {Authorization}}` block `SessionConfigFactory.
   memoryMcpServer()` builds (same shape as `linearMcpServer()`, same reused
-  `AGENTIC_UI_TOKEN` — not a new secret). Since MCP transport context doesn't
+  `ARTUS_TOKEN` — not a new secret). Since MCP transport context doesn't
   cleanly expose the inbound session identity to a WebMVC tool method, each tool
   takes an explicit `sessionId` argument instead (resolved server-side to that
   session's `repoPath` for the scope filter); the session learns its own id from
@@ -214,8 +214,8 @@ Full design + decisions: `docs/plan/phase-7-ux-and-orchestration.md`.
   past minimized sessions) and pins that one into the main column with the same
   `!important` override trick as maximize — every widget stays mounted, and
   `onLayoutChange` is ignored while in focus mode so the saved grid layout survives
-  the round trip. Fold state (`agentic-ui.sidebar`) and layout mode
-  (`agentic-ui.layoutMode`) persist in localStorage.
+  the round trip. Fold state (`artus.sidebar`) and layout mode
+  (`artus.layoutMode`) persist in localStorage.
 - **7.3 continuation**: `session.continued_from_id` (V11). `HandoffService`
   (mirrors `GitAssistService`'s digest→system-turn shape) runs one system-session
   turn over `TranscriptDigest.render()` — the same capped digest reflection uses —
@@ -315,7 +315,7 @@ skipping the ticket-driven fields is the whole point of the shortcut.
 The proof of provider-agnosticism: `sidecar-codex/` speaks `codex app-server`'s
 JSON-RPC-over-stdio protocol (not `codex exec`, which is non-interactive and can't do
 the approval round-trip), translated to the same adapter protocol v1 `sidecar/` speaks —
-registered under `agentic-ui.providers.codex`, with the dashboard needing zero code that
+registered under `artus.providers.codex`, with the dashboard needing zero code that
 branches on the provider name, only on announced capabilities. As of Phase 10's R1, the
 **backend** doesn't either: `SidecarManager.buildArgs`, `SessionConfigFactory.prepare`,
 and `SessionService.applyEstimatedCost` all branch on a `ProviderCapabilities` record
@@ -465,7 +465,7 @@ through `gh`).
 
 Opt-in per session (`session.slack_enabled`, merged-config key `slackEnabled`, default from the
 `slack.default-enabled` setting). Everything lives in `de.pamir.agentic.ui.slack`; with
-`agentic-ui.slack.enabled=false` (default) none of these beans exist. Setup and operations:
+`artus.slack.enabled=false` (default) none of these beans exist. Setup and operations:
 `docs/SLACK.md`; decisions and the live-test log: `docs/plan/phase-18-slack.md`.
 
 ```
@@ -490,7 +490,7 @@ Slack  <==Web API (RestClient)==  SlackWebApi <- SlackOutbox <- SlackSessionMirr
   `SlackInbound` applies the allowlist to messages **and** clicks (empty = nobody; WARN with the user ID only),
   requires the configured channel, a plain user reply in a known thread, and a mirrored session, then calls the
   same operations as the dashboard through `SlackSessionControl` (answer/approve/deny, prompt, interrupt).
-- **Starting sessions** (`AGENTIC_UI_SLACK_START_ENABLED`). `SlackInbound` turns an `app_mention` from an allowlisted
+- **Starting sessions** (`ARTUS_SLACK_START_ENABLED`). `SlackInbound` turns an `app_mention` from an allowlisted
   user in the configured channel into a `SlackStartCommand` (`review <PR>` / `dev <service> <branch> <prompt…>`) and hands
   it to `SlackCommandHandler` on its own virtual thread (creating a session takes seconds; the single inbound thread must
   not wait). The handler decides — which clone a PR belongs to (`origin` slug via `GitOpsService.originSlug`, matched
@@ -552,7 +552,7 @@ project settings. Guard: refuse if the repo tracks `settings.local.json`.
 
 ### 5.10 Turn checkpoints & rewind
 On `turn_complete`, if the worktree is dirty: `git add -A && git commit` onto a
-ref `refs/agentic-ui/<session>/turn-<n>` (commit on the branch, then update-ref;
+ref `refs/artus/<session>/turn-<n>` (commit on the branch, then update-ref;
 or plain branch commits with a tag-like ref). "Rewind" = `git reset --hard <ref>`
 (refuse while RUNNING). The transcript's turn footers become rewind anchors
 (`checkpoint` event carries the ref). Interacts with close-dirty flow: checkpointed
@@ -567,8 +567,8 @@ diff-compare grid; a "fan out" checkbox in the create dialog + naming convention
 
 ## 5. Operational notes
 
-Limits/caps and env vars: see CLAUDE.md "Limits & caps". Logs: `logs/agentic-ui.log`,
+Limits/caps and env vars: see CLAUDE.md "Limits & caps". Logs: `logs/artus.log`,
 `logs/error.log`, `logs/sidecar/<sessionId>.log`. Auth: bearer token everywhere
 (REST header, WS subprotocol) unless switched off in Settings (read at startup); with it off,
 `LocalClientFilter` accepts only trusted client addresses / allowed Host / Origin (phase 17 B).
-Metrics: `claudeui.sessions.active|parked` via `/actuator/metrics` (token-gated).
+Metrics: `artus.sessions.active|parked` via `/actuator/metrics` (token-gated).

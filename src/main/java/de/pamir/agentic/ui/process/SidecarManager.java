@@ -120,7 +120,7 @@ public class SidecarManager {
 	}
 
 	public static Path pidFile(SessionEntity session) {
-		return Path.of(session.worktreePath(), ".agentic-ui.pid");
+		return Path.of(session.worktreePath(), ".artus.pid");
 	}
 
 	public SidecarHandle handle(UUID sessionId) {

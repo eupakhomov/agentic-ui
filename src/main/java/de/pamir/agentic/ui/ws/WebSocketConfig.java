@@ -38,8 +38,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
 	/**
 	 * Token travels as a Sec-WebSocket-Protocol entry: the client requests
-	 * ["agentic-ui.v1", "bearer.<token>"]; the server validates the bearer entry and
-	 * echoes agentic-ui.v1 (via SubProtocolCapable) per RFC 6455.
+	 * ["artus.v1", "bearer.<token>"]; the server validates the bearer entry and
+	 * echoes artus.v1 (via SubProtocolCapable) per RFC 6455.
 	 */
 	private HandshakeInterceptor authInterceptor() {
 		return new HandshakeInterceptor() {

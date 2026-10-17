@@ -39,7 +39,7 @@ import java.util.function.Supplier;
  * </ul>
  */
 @Component
-@ConditionalOnProperty(prefix = "agentic-ui.slack", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "artus.slack", name = "enabled", havingValue = "true")
 public class SlackOutbox {
 
 	private static final Logger log = LoggerFactory.getLogger(SlackOutbox.class);
@@ -236,8 +236,8 @@ public class SlackOutbox {
 	private static String hint(String code) {
 		return switch (code) {
 			case "not_in_channel" -> " — invite the bot to the channel (/invite @<bot>)";
-			case "channel_not_found" -> " — check AGENTIC_UI_SLACK_CHANNEL (the channel ID, not its name)";
-			case "invalid_auth", "token_revoked", "account_inactive" -> " — check AGENTIC_UI_SLACK_BOT_TOKEN";
+			case "channel_not_found" -> " — check ARTUS_SLACK_CHANNEL (the channel ID, not its name)";
+			case "invalid_auth", "token_revoked", "account_inactive" -> " — check ARTUS_SLACK_BOT_TOKEN";
 			case "missing_scope" -> " — add the scope in the Slack app and reinstall it";
 			case "is_archived" -> " — the channel is archived";
 			default -> "";

@@ -19,7 +19,7 @@ import java.util.Locale;
  * The gate that replaces the token when it is off (phase 17 B). This service executes commands, so
  * "no token" must still mean "only the local user":
  * <ul>
- *   <li>the client address must be in {@code agentic-ui.auth.trusted-cidrs} (loopback by default);</li>
+ *   <li>the client address must be in {@code artus.auth.trusted-cidrs} (loopback by default);</li>
  *   <li>the {@code Host} header must be an allowed name (port-agnostic) — blocks DNS rebinding;</li>
  *   <li>a browser {@code Origin}, when present, must belong to an allowed host or be listed — blocks
  *       cross-site requests and WebSocket hijacking from any page the user visits;</li>

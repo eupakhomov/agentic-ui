@@ -429,8 +429,8 @@ public class SessionService {
 			if (!dirty.isEmpty()) {
 				switch (dirtyMode) {
 					case "commit" -> worktrees.commitAll(worktree,
-							commitMessage != null && !commitMessage.isBlank() ? commitMessage : "WIP from agentic-ui session " + session.name());
-					case "stash" -> worktrees.stashAll(worktree, "agentic-ui close: " + session.name());
+							commitMessage != null && !commitMessage.isBlank() ? commitMessage : "WIP from Artus session " + session.name());
+					case "stash" -> worktrees.stashAll(worktree, "Artus close: " + session.name());
 					case "discard" -> { /* worktree remove --force discards */ }
 					default -> throw new IllegalArgumentException("unknown dirty mode: " + dirtyMode);
 				}
@@ -778,7 +778,7 @@ public class SessionService {
 				String prefix = rel.isEmpty() ? "" : rel + "/";
 				Files.writeString(exclude,
 						"\n" + prefix + ".claude/skills/\n" + prefix + ".claude/agents/\n" + prefix + ".serena/\n"
-								+ prefix + ".codegraph/\n.agentic-ui.pid\n",
+								+ prefix + ".codegraph/\n.artus.pid\n",
 						StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 			}
 		} catch (IOException e) {

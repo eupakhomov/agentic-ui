@@ -5,7 +5,7 @@ import { Close, Refresh } from '../icons';
 import DiffView, { type DiffMode } from '../changes/DiffView';
 import { buildAskPrompt, changeSignature, type LineSelection } from '../changes/selection';
 
-const WIDTH_KEY = 'agentic-ui.changesWidth';
+const WIDTH_KEY = 'artus.changesWidth';
 const DEFAULT_WIDTH = 520;
 const MIN_WIDTH = 340;
 /** panel width from which "auto" shows the two-sided diff */

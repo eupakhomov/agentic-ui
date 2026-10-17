@@ -46,7 +46,7 @@ function thinkingConfig(
   return { type: 'enabled', budgetTokens: setting, display: 'summarized' };
 }
 
-const TOOL_OUTPUT_LIMIT = Number(process.env['AGENTIC_UI_TOOL_OUTPUT_LIMIT'] ?? process.env['CLAUDE_UI_TOOL_OUTPUT_LIMIT'] ?? 16 * 1024);
+const TOOL_OUTPUT_LIMIT = Number(process.env['ARTUS_TOOL_OUTPUT_LIMIT'] ?? 16 * 1024);
 
 /** Unbounded async FIFO bridging stdin commands to the SDK's streaming input. */
 class AsyncQueue<T> {
@@ -132,7 +132,7 @@ export function enabledToolsHook(enabled: Map<string, Set<string>>) {
         hookSpecificOutput: {
           hookEventName: 'PreToolUse' as const,
           permissionDecision: 'deny' as const,
-          permissionDecisionReason: `The ${m[1]} tool ${m[2]} is not enabled for agentic-ui sessions (allowed: ${[...allowed].join(', ') || 'none'}).`,
+          permissionDecisionReason: `The ${m[1]} tool ${m[2]} is not enabled for Artus sessions (allowed: ${[...allowed].join(', ') || 'none'}).`,
         },
       };
     }

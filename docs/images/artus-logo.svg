@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+<title>Artus</title>
+<polygon fill="#1f3f94" stroke="#1f3f94" stroke-width="1.2" stroke-linejoin="round" points="34,62 52,36 80,38 94,62 80,86 48,86"/>
+<polygon fill="#1f3f94" stroke="#1f3f94" stroke-width="1.2" stroke-linejoin="round" points="208,86 176,86 162,62 176,38 204,36 222,62"/>
+<polygon fill="#6c9fff" stroke="#6c9fff" stroke-width="1.2" stroke-linejoin="round" points="50,62 60,48 76,52 80,66 70,76 54,74"/>
+<polygon fill="#6c9fff" stroke="#6c9fff" stroke-width="1.2" stroke-linejoin="round" points="202,74 186,76 176,66 180,52 196,48 206,62"/>
+<polygon fill="#3b6fe0" stroke="#3b6fe0" stroke-width="1.2" stroke-linejoin="round" points="128,56 84,62 96,98 128,104"/>
+<polygon fill="#3b6fe0" stroke="#3b6fe0" stroke-width="1.2" stroke-linejoin="round" points="128,104 160,98 172,62 128,56"/>
+<polygon fill="#6c9fff" stroke="#6c9fff" stroke-width="1.2" stroke-linejoin="round" points="84,62 52,92 70,118 96,98"/>
+<polygon fill="#6c9fff" stroke="#6c9fff" stroke-width="1.2" stroke-linejoin="round" points="160,98 186,118 204,92 172,62"/>
+<polygon fill="#1f3f94" stroke="#1f3f94" stroke-width="1.2" stroke-linejoin="round" points="52,92 40,140 70,150 70,118"/>
+<polygon fill="#1f3f94" stroke="#1f3f94" stroke-width="1.2" stroke-linejoin="round" points="186,118 186,150 216,140 204,92"/>
+<polygon fill="#3b6fe0" stroke="#3b6fe0" stroke-width="1.2" stroke-linejoin="round" points="40,140 56,188 84,176 70,150"/>
+<polygon fill="#3b6fe0" stroke="#3b6fe0" stroke-width="1.2" stroke-linejoin="round" points="186,150 172,176 200,188 216,140"/>
+<polygon fill="#6c9fff" stroke="#6c9fff" stroke-width="1.2" stroke-linejoin="round" points="56,188 92,222 104,190 84,176"/>
+<polygon fill="#6c9fff" stroke="#6c9fff" stroke-width="1.2" stroke-linejoin="round" points="172,176 152,190 164,222 200,188"/>
+<polygon fill="#1f3f94" stroke="#1f3f94" stroke-width="1.2" stroke-linejoin="round" points="92,222 128,232 128,200 104,190"/>
+<polygon fill="#1f3f94" stroke="#1f3f94" stroke-width="1.2" stroke-linejoin="round" points="152,190 128,200 128,232 164,222"/>
+<polygon fill="#3b6fe0" stroke="#3b6fe0" stroke-width="1.2" stroke-linejoin="round" points="70,118 96,98 100,136 70,150"/>
+<polygon fill="#3b6fe0" stroke="#3b6fe0" stroke-width="1.2" stroke-linejoin="round" points="186,150 156,136 160,98 186,118"/>
+<polygon fill="#6c9fff" stroke="#6c9fff" stroke-width="1.2" stroke-linejoin="round" points="96,98 128,104 128,142 100,136"/>
+<polygon fill="#6c9fff" stroke="#6c9fff" stroke-width="1.2" stroke-linejoin="round" points="156,136 128,142 128,104 160,98"/>
+<polygon fill="#a9c4ff" stroke="#a9c4ff" stroke-width="1.2" stroke-linejoin="round" points="70,150 100,136 128,142 128,200 104,190 84,176"/>
+<polygon fill="#a9c4ff" stroke="#a9c4ff" stroke-width="1.2" stroke-linejoin="round" points="172,176 152,190 128,200 128,142 156,136 186,150"/>
+<polygon fill="#0f1e45" stroke="#0f1e45" stroke-width="0" stroke-linejoin="round" points="74,115 88,110 95,118 84,125"/>
+<polygon fill="#0f1e45" stroke="#0f1e45" stroke-width="0" stroke-linejoin="round" points="172,125 161,118 168,110 182,115"/>
+<polygon fill="#0f1e45" stroke="#0f1e45" stroke-width="0" stroke-linejoin="round" points="108,150 148,150 128,174"/>
+</svg>

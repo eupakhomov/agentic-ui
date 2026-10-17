@@ -25,7 +25,7 @@ public class Application {
 	CommandLineRunner logConfig(AppProperties props) {
 		return args -> {
 			log.info(
-					"agentic-ui config: repoPath={}, worktreeRoot={}, skillsRoot={}, maxSessions={}, authToken={}, providers={}",
+					"Artus config: repoPath={}, worktreeRoot={}, skillsRoot={}, maxSessions={}, authToken={}, providers={}",
 					props.repoPath(), props.worktreeRoot(), props.skillsRoot(),
 					props.maxSessions(),
 					props.authToken() == null || props.authToken().isBlank() ? "<unset>" : "****",
@@ -43,11 +43,11 @@ public class Application {
 						}));
 			}
 			// Printed in full (not masked, unlike the summary line above) so the dashboard login
-			// token is discoverable from the log alone — no separate `cat /tmp/agentic-ui.token`
+			// token is discoverable from the log alone — no separate `cat /tmp/artus.token`
 			// step needed. Same exposure as that token file already sitting in plaintext on disk;
-			// this just adds the rolling log file (logs/agentic-ui.log, 14 days kept) to where it lives.
+			// this just adds the rolling log file (logs/artus.log, 14 days kept) to where it lives.
 			if (props.authToken() != null && !props.authToken().isBlank()) {
-				log.info("agentic-ui auth token (dashboard login): {}", props.authToken());
+				log.info("Artus auth token (dashboard login): {}", props.authToken());
 			}
 		};
 	}

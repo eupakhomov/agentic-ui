@@ -19,7 +19,7 @@ import java.util.List;
  * @param startEnabled whether an allowlisted user may start review/development sessions by mentioning the bot
  *                     (a bigger power than approving, so it has its own switch); off by default
  */
-@ConfigurationProperties(prefix = "agentic-ui.slack")
+@ConfigurationProperties(prefix = "artus.slack")
 public record SlackProperties(
 		@DefaultValue("false") boolean enabled,
 		@DefaultValue("") String botToken,

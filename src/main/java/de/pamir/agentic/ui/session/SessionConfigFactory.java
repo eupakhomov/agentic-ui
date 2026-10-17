@@ -439,7 +439,7 @@ public class SessionConfigFactory {
 
 	/**
 	 * The memory entry carries this backend's bearer token, which rotates on every restart (unless
-	 * AGENTIC_UI_TOKEN is pinned), so a persisted copy goes stale and the server then fails its 401
+	 * ARTUS_TOKEN is pinned), so a persisted copy goes stale and the server then fails its 401
 	 * handshake. Re-stamps the current token onto a managed entry; user-authored entries (any other
 	 * URL) and configs without one are returned untouched.
 	 */

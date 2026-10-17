@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
  * order (see {@link SlackEnvelopeProcessor}); handlers must stay quick.
  */
 @Component
-@ConditionalOnProperty(prefix = "agentic-ui.slack", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "artus.slack", name = "enabled", havingValue = "true")
 public class SlackInbound implements SlackEvent.Listener {
 
 	private static final Logger log = LoggerFactory.getLogger(SlackInbound.class);
@@ -214,7 +214,7 @@ public class SlackInbound implements SlackEvent.Listener {
 		String replyThread = ev.path("thread_ts").asText(ts);
 		if (!props.startEnabled()) {
 			reply(channel, replyThread, ":information_source: Starting sessions from Slack is turned off on this server "
-					+ "(set `AGENTIC_UI_SLACK_START_ENABLED=true` and restart).");
+					+ "(set `ARTUS_SLACK_START_ENABLED=true` and restart).");
 			return;
 		}
 		String text = withoutBotMention(fromSlack(ev.path("text").asText("")).strip());
@@ -533,7 +533,7 @@ public class SlackInbound implements SlackEvent.Listener {
 	}
 
 	private void reply(String channel, String threadTs, String mrkdwn) {
-		outbox.post(channel, threadTs, false, () -> SlackBlocks.notice("agentic-ui", mrkdwn));
+		outbox.post(channel, threadTs, false, () -> SlackBlocks.notice("Artus", mrkdwn));
 	}
 
 	private void ephemeral(String responseUrl, String text) {

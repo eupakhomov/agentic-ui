@@ -30,6 +30,8 @@ describe('needsFullCard', () => {
 describe('toolLabel', () => {
   it('shortens MCP tools, names plans and questions, leaves the rest', () => {
     expect(toolLabel('mcp__memory__spawn_child_session', false)).toBe('spawn_child_session');
+    expect(toolLabel('mcp__artus__report_result', false)).toBe('report_result');
+    // sessions created before the Artus rename keep their old server name
     expect(toolLabel('mcp__agentic-ui__report_result', false)).toBe('report_result');
     expect(toolLabel('ExitPlanMode', true)).toBe('Plan');
     expect(toolLabel('AskUserQuestion', false)).toBe('Question');

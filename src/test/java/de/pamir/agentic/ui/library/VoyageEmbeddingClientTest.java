@@ -57,7 +57,7 @@ class VoyageEmbeddingClientTest {
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("Voyage API key rejected")
 				.hasMessageContaining("401")
-				.hasMessageContaining("AGENTIC_UI_VOYAGE_API_KEY");
+				.hasMessageContaining("ARTUS_VOYAGE_API_KEY");
 	}
 
 	@Test

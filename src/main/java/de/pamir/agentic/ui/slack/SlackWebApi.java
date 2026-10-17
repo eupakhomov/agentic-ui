@@ -24,7 +24,7 @@ import java.time.Duration;
  * never appear in an exception message.
  */
 @Component
-@ConditionalOnProperty(prefix = "agentic-ui.slack", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "artus.slack", name = "enabled", havingValue = "true")
 public class SlackWebApi implements SlackMessaging {
 
 	private static final Duration DEFAULT_RETRY_AFTER = Duration.ofSeconds(5);

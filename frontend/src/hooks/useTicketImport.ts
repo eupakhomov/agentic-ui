@@ -37,11 +37,11 @@ export function useTicketImport(validModelIds: string[]) {
     // latest; this is a client-side safety net against a hung connection, not a UX timer, so it
     // sits above that worst case instead of firing before the backend's own deadlines
     const safetyNet = setTimeout(() => controller.abort('timeout'), 100_000);
-    if (import.meta.env.DEV) console.log('[agentic-ui] ticket import: fetching', ref);
+    if (import.meta.env.DEV) console.log('[artus] ticket import: fetching', ref);
     const started = performance.now();
     try {
       const result = await api.importTicket(ref, controller.signal);
-      if (import.meta.env.DEV) console.log('[agentic-ui] ticket import: succeeded in', Math.round(performance.now() - started), 'ms', result);
+      if (import.meta.env.DEV) console.log('[artus] ticket import: succeeded in', Math.round(performance.now() - started), 'ms', result);
       onResult({
         branchName: result.branchName,
         prompt: result.prompt,
@@ -52,10 +52,10 @@ export function useTicketImport(validModelIds: string[]) {
     } catch (e) {
       const elapsed = Math.round(performance.now() - started);
       if (controller.signal.aborted) {
-        console.error('[agentic-ui] ticket import: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
+        console.error('[artus] ticket import: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
         setImportError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (100s)');
       } else {
-        console.error('[agentic-ui] ticket import: failed after', elapsed, 'ms', e);
+        console.error('[artus] ticket import: failed after', elapsed, 'ms', e);
         setImportError(e instanceof ApiError ? e.message : String(e));
       }
     } finally {
@@ -72,19 +72,19 @@ export function useTicketImport(validModelIds: string[]) {
     const controller = new AbortController();
     pickerAbortRef.current = controller;
     const safetyNet = setTimeout(() => controller.abort('timeout'), 100_000);
-    if (import.meta.env.DEV) console.log('[agentic-ui] ticket browse: fetching recent tickets, refresh =', refresh);
+    if (import.meta.env.DEV) console.log('[artus] ticket browse: fetching recent tickets, refresh =', refresh);
     const started = performance.now();
     try {
       const list = await api.listRecentTickets(refresh, controller.signal);
-      if (import.meta.env.DEV) console.log('[agentic-ui] ticket browse: succeeded in', Math.round(performance.now() - started), 'ms', list);
+      if (import.meta.env.DEV) console.log('[artus] ticket browse: succeeded in', Math.round(performance.now() - started), 'ms', list);
       setRecentTickets(list);
     } catch (e) {
       const elapsed = Math.round(performance.now() - started);
       if (controller.signal.aborted) {
-        console.error('[agentic-ui] ticket browse: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
+        console.error('[artus] ticket browse: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
         setPickerError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (100s)');
       } else {
-        console.error('[agentic-ui] ticket browse: failed after', elapsed, 'ms', e);
+        console.error('[artus] ticket browse: failed after', elapsed, 'ms', e);
         setPickerError(e instanceof ApiError ? e.message : String(e));
       }
     } finally {

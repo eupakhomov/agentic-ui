@@ -38,7 +38,11 @@ export default function App() {
     return (
       <div className="gate">
         <div className="modal">
-          <h2>agentic-ui</h2>
+          <div className="brand brand-gate">
+            <img src="/logo.svg" alt="" className="brand-logo" />
+            <h2>Artus</h2>
+          </div>
+          <p className="brand-tagline">Multi-session manager for Claude Code and Codex</p>
           <p style={{ color: 'var(--muted)' }}>
             {token() === null ? 'Enter the access token for this dashboard.' : ''}
           </p>

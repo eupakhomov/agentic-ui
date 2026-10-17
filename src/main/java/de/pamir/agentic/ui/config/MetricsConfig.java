@@ -12,11 +12,11 @@ import java.util.List;
 public class MetricsConfig {
 
 	public MetricsConfig(MeterRegistry registry, SessionRepository sessions) {
-		Gauge.builder("claudeui.sessions.active",
+		Gauge.builder("artus.sessions.active",
 						() -> sessions.countByStates(List.copyOf(SessionState.LIVE)))
 				.description("sessions with a live sidecar process")
 				.register(registry);
-		Gauge.builder("claudeui.sessions.parked",
+		Gauge.builder("artus.sessions.parked",
 						() -> sessions.countByStates(List.of(SessionState.PARKED)))
 				.description("idle-parked sessions")
 				.register(registry);

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Stop any running agentic-ui backend and start it again from the existing jar.
+# Stop any running Artus backend and start it again from the existing jar.
 # Build first with ./install.sh. Linux and macOS only.
 # See CLAUDE.md "Run the project" / "Stop / kill" for background.
 #
@@ -11,9 +11,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-PID_FILE=/tmp/agentic-ui.pid
-TOKEN_FILE=/tmp/agentic-ui.token
-LOG_FILE=/tmp/agentic-ui.log
+PID_FILE=/tmp/artus.pid
+TOKEN_FILE=/tmp/artus.token
+LOG_FILE=/tmp/artus.log
 PORT=8080
 
 case "${1:-}" in
@@ -80,16 +80,16 @@ ensure_db() {
 
 start_app() {
   local jar
-  jar="$(ls target/agentic.ui-*.jar 2>/dev/null | grep -v '\.original$' | head -1 || true)"
+  jar="$(ls target/artus-*.jar 2>/dev/null | grep -v '\.original$' | head -1 || true)"
   if [ -z "$jar" ]; then
     echo "No jar found in target/ — run ./install.sh first." >&2
     exit 1
   fi
 
   local token
-  if [ -n "${AGENTIC_UI_TOKEN:-}" ]; then
-    token="$AGENTIC_UI_TOKEN"
-    log "Token: $token (from AGENTIC_UI_TOKEN env — reused, not regenerated)"
+  if [ -n "${ARTUS_TOKEN:-}" ]; then
+    token="$ARTUS_TOKEN"
+    log "Token: $token (from ARTUS_TOKEN env — reused, not regenerated)"
   else
     token="$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
     log "Token: $token"
@@ -97,7 +97,7 @@ start_app() {
   echo "$token" > "$TOKEN_FILE"
 
   log "Starting backend from $jar..."
-  AGENTIC_UI_TOKEN="$token" nohup java -jar "$jar" --server.address=0.0.0.0 > "$LOG_FILE" 2>&1 &
+  ARTUS_TOKEN="$token" nohup java -jar "$jar" --server.address=0.0.0.0 > "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
 
   log "Waiting for backend to become healthy..."

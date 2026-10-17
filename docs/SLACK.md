@@ -16,7 +16,7 @@ of the dashboard and Slack answers first wins, and the other side is told it was
 yet exercised: a non-allowlisted user, a Slack outage and a server-initiated socket refresh
 (unit-tested; the rest was verified against a real workspace and real agent sessions — see the phase 18 log).
 
-Off by default. With `AGENTIC_UI_SLACK_ENABLED` unset or `false`, no Slack code runs.
+Off by default. With `ARTUS_SLACK_ENABLED` unset or `false`, no Slack code runs.
 
 ## Read this first: what you are enabling
 
@@ -28,7 +28,7 @@ Slack becomes a **second remote control** for the machine the backend runs on.
 - Everything mirrored into the channel — prompts, tool commands, plan text, file paths — is stored
   by Slack under your workspace's retention and export rules, and is visible to everyone in the
   channel and to workspace owners/admins who can export data.
-- With `AGENTIC_UI_SLACK_START_ENABLED`, an allowlisted account can also **start sessions with an arbitrary prompt**. They
+- With `ARTUS_SLACK_START_ENABLED`, an allowlisted account can also **start sessions with an arbitrary prompt**. They
   inherit the settings of your last session — including `bypassPermissions` and pre-approved tools, on purpose — and then
   nothing is asked in the thread. A template that sets `permissionMode` pins a safer mode (see below).
 - Secret masking on tool inputs is best-effort. It is not a guarantee that no secret
@@ -44,7 +44,7 @@ before you need it.
 |---|---|
 | Which workspace | The one you actually work in, if you control it or your admin has approved the app. Check whether it requires **admin approval for custom apps** (Workspace settings → Apps); request it first, it can take days. |
 | Channel | A **private** channel created for this, with only you (and any other operator you deliberately trust) in it. No guests, no Slack Connect, no other bots or integrations added to it. |
-| App per environment | **One app per backend.** Create a separate `agentic-ui (dev)` app for testing. Slack spreads events across *all* open Socket Mode connections of one app, so a dev backend and a production backend sharing an app token randomly steal each other's messages and button clicks. |
+| App per environment | **One app per backend.** Create a separate `Artus (dev)` app for testing. Slack spreads events across *all* open Socket Mode connections of one app, so a dev backend and a production backend sharing an app token randomly steal each other's messages and button clicks. |
 | Who is on the allowlist | You, alone, to start. Each added person can approve commands on your machine. |
 | Where secrets live | Not in a committed file, a chat, or a screenshot. See [Secrets](#4-store-the-secrets). |
 | Distribution | **Never distribute the app** (leave *Manage Distribution* off / `org_deploy_enabled: false`). It is an internal app for one workspace. |
@@ -58,11 +58,11 @@ This manifest is the least-privilege setup for a **private channel** (the recomm
 ```json
 {
   "display_information": {
-    "name": "agentic-ui",
-    "description": "Mirrors agentic-ui coding sessions into a private channel and takes approvals back."
+    "name": "Artus",
+    "description": "Mirrors Artus coding sessions into a private channel and takes approvals back."
   },
   "features": {
-    "bot_user": { "display_name": "agentic-ui", "always_online": false }
+    "bot_user": { "display_name": "Artus", "always_online": false }
   },
   "oauth_config": {
     "scopes": {
@@ -115,15 +115,15 @@ For an app that already exists: left sidebar → **App Manifest** → paste → 
 
 | Token | Starts with | Env var | How |
 |---|---|---|---|
-| App-level token | `xapp-` | `AGENTIC_UI_SLACK_APP_TOKEN` | **Basic Information → App-Level Tokens → Generate Token and Scopes**, scope `connections:write` only. Opens the Socket Mode connection. |
-| Bot token | `xoxb-` | `AGENTIC_UI_SLACK_BOT_TOKEN` | **OAuth & Permissions → Install to Workspace**, approve, then copy **Bot User OAuth Token**. Posts and reacts. |
+| App-level token | `xapp-` | `ARTUS_SLACK_APP_TOKEN` | **Basic Information → App-Level Tokens → Generate Token and Scopes**, scope `connections:write` only. Opens the Socket Mode connection. |
+| Bot token | `xoxb-` | `ARTUS_SLACK_BOT_TOKEN` | **OAuth & Permissions → Install to Workspace**, approve, then copy **Bot User OAuth Token**. Posts and reacts. |
 
 Copy each one straight into your secret store (step 4). Do not paste a token into a chat, ticket,
 or terminal you are recording.
 
 ## 2. Create the channel and collect two IDs
 
-1. Create the private channel and invite the bot: `/invite @agentic-ui`. The bot must be a member,
+1. Create the private channel and invite the bot: `/invite @Artus`. The bot must be a member,
    or Slack sends it no message events and it cannot post.
 2. **Channel ID** — channel name at the top → **About** → bottom of the dialog. Starts with `C`
    (older private channels: `G`). Use the ID, not the name.
@@ -141,14 +141,14 @@ Mirror by default** (off). A session spawned by another session follows its pare
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `AGENTIC_UI_SLACK_ENABLED` | `false` | Master switch. Off = no Slack beans, no connection |
-| `AGENTIC_UI_SLACK_BOT_TOKEN` | — | `xoxb-…` bot token (**secret**) |
-| `AGENTIC_UI_SLACK_APP_TOKEN` | — | `xapp-…` app-level token (**secret**) |
-| `AGENTIC_UI_SLACK_CHANNEL` | — | Channel **ID** sessions are mirrored into |
-| `AGENTIC_UI_SLACK_ALLOWED_USERS` | empty | Comma-separated member IDs allowed to act. **Empty = nobody**; messages and clicks from anyone else are ignored and logged |
-| `AGENTIC_UI_SLACK_START_ENABLED` | `false` | `true` lets an allowlisted user start review/development sessions by mentioning the bot ([details](#starting-a-session-from-slack)). A bigger power than approving, so separate from the allowlist |
-| `AGENTIC_UI_SLACK_VERBOSE` | `false` | `true` posts tool inputs and message excerpts **unmasked** — leave off |
-| `AGENTIC_UI_PUBLIC_URL` | — | Base URL for the **Open** button on the parent message, e.g. your Tailscale hostname (the link opens the dashboard; there is no per-session deep link yet). Must be reachable only over a private network (Tailscale/VPN), never the open internet. Unset = no Open button |
+| `ARTUS_SLACK_ENABLED` | `false` | Master switch. Off = no Slack beans, no connection |
+| `ARTUS_SLACK_BOT_TOKEN` | — | `xoxb-…` bot token (**secret**) |
+| `ARTUS_SLACK_APP_TOKEN` | — | `xapp-…` app-level token (**secret**) |
+| `ARTUS_SLACK_CHANNEL` | — | Channel **ID** sessions are mirrored into |
+| `ARTUS_SLACK_ALLOWED_USERS` | empty | Comma-separated member IDs allowed to act. **Empty = nobody**; messages and clicks from anyone else are ignored and logged |
+| `ARTUS_SLACK_START_ENABLED` | `false` | `true` lets an allowlisted user start review/development sessions by mentioning the bot ([details](#starting-a-session-from-slack)). A bigger power than approving, so separate from the allowlist |
+| `ARTUS_SLACK_VERBOSE` | `false` | `true` posts tool inputs and message excerpts **unmasked** — leave off |
+| `ARTUS_PUBLIC_URL` | — | Base URL for the **Open** button on the parent message, e.g. your Tailscale hostname (the link opens the dashboard; there is no per-session deep link yet). Must be reachable only over a private network (Tailscale/VPN), never the open internet. Unset = no Open button |
 
 The allowlist is read at startup only, so adding or removing a person needs a restart.
 
@@ -159,24 +159,24 @@ The tokens must reach the backend's environment and nowhere else. Pick one:
 **A. Keychain (recommended on macOS).** Nothing readable on disk:
 
 ```bash
-security add-generic-password -U -a "$USER" -s agentic-ui-slack-bot -w   # prompts for the token
-security add-generic-password -U -a "$USER" -s agentic-ui-slack-app -w
+security add-generic-password -U -a "$USER" -s artus-slack-bot -w   # prompts for the token
+security add-generic-password -U -a "$USER" -s artus-slack-app -w
 ```
 
 Then in your shell's startup file (`~/.zshrc` for zsh, `~/.bashrc` for bash — see
 [Which startup file](#which-startup-file) below):
 
 ```bash
-export AGENTIC_UI_SLACK_ENABLED=true
-export AGENTIC_UI_SLACK_BOT_TOKEN="$(security find-generic-password -a "$USER" -s agentic-ui-slack-bot -w)"
-export AGENTIC_UI_SLACK_APP_TOKEN="$(security find-generic-password -a "$USER" -s agentic-ui-slack-app -w)"
-export AGENTIC_UI_SLACK_CHANNEL=C0123456789
-export AGENTIC_UI_SLACK_ALLOWED_USERS=U0123456789
+export ARTUS_SLACK_ENABLED=true
+export ARTUS_SLACK_BOT_TOKEN="$(security find-generic-password -a "$USER" -s artus-slack-bot -w)"
+export ARTUS_SLACK_APP_TOKEN="$(security find-generic-password -a "$USER" -s artus-slack-app -w)"
+export ARTUS_SLACK_CHANNEL=C0123456789
+export ARTUS_SLACK_ALLOWED_USERS=U0123456789
 ```
 
-**B. A locked-down env file.** Keep the secrets in `~/.config/agentic-ui/slack.env` (owner-only:
+**B. A locked-down env file.** Keep the secrets in `~/.config/artus/slack.env` (owner-only:
 `chmod 700` on the folder, `chmod 600` on the file, never inside a repository), containing the same
-`export …` lines, and add `source ~/.config/agentic-ui/slack.env` to your shell's startup file.
+`export …` lines, and add `source ~/.config/artus/slack.env` to your shell's startup file.
 
 **C. Plain `export` lines in your shell's startup file.** Acceptable on a single-user machine with
 disk encryption (FileVault); the tokens are then readable by anything that runs as you.
@@ -210,14 +210,14 @@ Apply with `source <your startup file>` (or a new terminal) and restart the back
 Check the environment without printing secrets:
 
 ```bash
-env | grep -c AGENTIC_UI_SLACK                                  # 5 (6 with START_ENABLED)
-env | grep AGENTIC_UI_SLACK_BOT_TOKEN | cut -c1-40              # starts with xoxb-
+env | grep -c ARTUS_SLACK                                  # 5 (6 with START_ENABLED)
+env | grep ARTUS_SLACK_BOT_TOKEN | cut -c1-40              # starts with xoxb-
 ```
 
-Start the backend and read the log (`logs/agentic-ui.log`, or `tail -f /tmp/agentic-ui.log`):
+Start the backend and read the log (`logs/artus.log`, or `tail -f /tmp/artus.log`):
 
 ```
-slack: bot 'agentic-ui' in workspace '<your workspace>'      ← bot token valid
+slack: bot 'Artus' in workspace '<your workspace>'      ← bot token valid
 slack socket: connected
 slack socket: ready                                          ← Slack accepted the app token
 ```
@@ -240,20 +240,20 @@ ask a **second, non-allowlisted** account to reply or click: it must be ignored,
 ## Starting a session from Slack
 
 An allowlisted user can start a session by **mentioning the bot** in the configured channel. This is a
-bigger power than approving something, so it has its own switch: `AGENTIC_UI_SLACK_START_ENABLED=true`
+bigger power than approving something, so it has its own switch: `ARTUS_SLACK_START_ENABLED=true`
 (off by default; while it is off a mention is answered with a note saying so). It also needs the
 `app_mentions:read` scope and the `app_mention` event on the Slack app (see the manifest above) and a
 reinstall.
 
 ```
-@agentic-ui review https://github.com/acme/api/pull/123
-@agentic-ui review acme/api#123 please focus on the auth changes
-@agentic-ui dev billing-service feat/rate-limit Add rate limiting to the login endpoint.
+@Artus review https://github.com/acme/api/pull/123
+@Artus review acme/api#123 please focus on the auth changes
+@Artus dev billing-service feat/rate-limit Add rate limiting to the login endpoint.
 Per user and per IP; tests included.
-@agentic-ui dev billing-service feat/rate-limit      <- no prompt: the bot asks for it in the thread
-@agentic-ui dev-with bugfix billing-service fix/npe Fix the NPE when the email is empty
-@agentic-ui review-with "Deep review" acme/api#123
-@agentic-ui help
+@Artus dev billing-service feat/rate-limit      <- no prompt: the bot asks for it in the thread
+@Artus dev-with bugfix billing-service fix/npe Fix the NPE when the email is empty
+@Artus review-with "Deep review" acme/api#123
+@Artus help
 ```
 
 **`review <PR>`** takes a full pull-request URL or `owner/repo#123`, and optionally extra instructions that
@@ -284,7 +284,7 @@ that session", so a missing prompt is an error there.
 Either command: the bot reacts with an eyes reaction, answers in a thread under your message once the session
 exists (or with the reason it could not be started), and the new session gets its own thread in the channel
 like any other mirrored session, starting with "Started from Slack by @you". Starting is refused with a clear
-message when `AGENTIC_UI_MAX_SESSIONS` is reached.
+message when `ARTUS_MAX_SESSIONS` is reached.
 
 **Starting from a template: `dev-with` and `review-with`.** The same two commands with the **template name first**
 (`dev-with <template> <service> <branch> [prompt…]`, `review-with <template> <PR> [extra instructions]`). They are
@@ -325,7 +325,7 @@ for some starts, use a template that sets `permissionMode` (`dev-with`, `review-
   (after 30 s), so a Slack outage at creation does not leave a session without a thread.
 - **One backend per app.** Two backends on one app split events at random (see the decision table).
   Multiple backends sharing a channel are out of scope.
-- **What to watch.** `grep -i slack logs/agentic-ui.log` for connection warnings, `invalid_auth`,
+- **What to watch.** `grep -i slack logs/artus.log` for connection warnings, `invalid_auth`,
   `missing_scope`, `not_in_channel`, and `ignoring … user` lines for people poking at the bot.
 - **Audit.** A decision made in Slack is journaled as a `permission_response` with `source: slack` and
   the Slack user ID; a prompt, a Stop, a Close, or the command that started a session adds a `slack_input` event (who and what, not the
@@ -355,8 +355,8 @@ If you suspect the Slack account, a token or the channel is compromised, in this
 1. **Slack → your app → Basic Information → App-Level Tokens → delete the token.** The socket drops
    and cannot reconnect: inbound control is cut immediately, no restart needed.
 2. **OAuth & Permissions → revoke the bot token** (or uninstall the app): outbound posting stops.
-3. On the machine: set `AGENTIC_UI_SLACK_ENABLED=false` and restart. (To keep approvals but stop remote *starts* only, set
-   `AGENTIC_UI_SLACK_START_ENABLED=false` and restart.)
+3. On the machine: set `ARTUS_SLACK_ENABLED=false` and restart. (To keep approvals but stop remote *starts* only, set
+   `ARTUS_SLACK_START_ENABLED=false` and restart.)
 4. Review the session journal for decisions with `source: slack` since the suspected time.
 5. Rotate everything before re-enabling.
 
@@ -378,7 +378,7 @@ shouldn't have been, and whenever someone who had access leaves.
 
 ### Adding or removing an operator
 
-Edit `AGENTIC_UI_SLACK_ALLOWED_USERS` and restart. Removing someone also means removing them from the
+Edit `ARTUS_SLACK_ALLOWED_USERS` and restart. Removing someone also means removing them from the
 private channel. Review the list whenever your team changes.
 
 ### Updating the app's permissions
@@ -395,16 +395,16 @@ feature relies on will show up as `missing_scope` in the log.
 | `bot token check failed (slack auth.test failed: invalid_auth)` | Wrong, revoked or truncated `xoxb-` token. Re-copy it from **OAuth & Permissions**. The socket still runs; posting will not work. |
 | `connection failed: slack apps.connections.open failed: invalid_auth` | The `xapp-` token is wrong, deleted, or lacks `connections:write`. |
 | `…: not_allowed_token_type` | Bot token and app token are swapped. |
-| `slack: no channel configured` | `AGENTIC_UI_SLACK_CHANNEL` is empty. |
-| `slack: allowed-users is empty — every Slack message and button click will be ignored` | Set `AGENTIC_UI_SLACK_ALLOWED_USERS` to your member ID. |
+| `slack: no channel configured` | `ARTUS_SLACK_CHANNEL` is empty. |
+| `slack: allowed-users is empty — every Slack message and button click will be ignored` | Set `ARTUS_SLACK_ALLOWED_USERS` to your member ID. |
 | Connected, but channel messages produce no events | The bot is not in the channel, or the `message.groups` / `message.channels` subscription doesn't match the channel type. Reinstall after changing events or scopes. |
 | A mention gets no reaction and no answer | The `app_mentions:read` scope or the `app_mention` event is missing from the Slack app (add both, **Reinstall to Workspace**); or the mention was in another channel, or from a user not on the allowlist (WARN in the log). The bot must be a member of the channel. |
-| A mention is answered "Starting sessions from Slack is turned off" | Set `AGENTIC_UI_SLACK_START_ENABLED=true` and restart. |
+| A mention is answered "Starting sessions from Slack is turned off" | Set `ARTUS_SLACK_START_ENABLED=true` and restart. |
 | `review` says no local service matches the pull request | The service's `origin` remote is not that GitHub repository (`git -C <service> remote get-url origin`), or it is not under the ecosystem root (Settings → Sessions). |
 | Stop says "nothing was running" / Close says "not closed" | Working as designed: Stop only interrupts a running turn; Close needs an idle session with a clean worktree and no live child sessions (the thread says which). Check the card — it shows the current state. |
 | I answered the bot's "what should the session do?" and nothing started | The question is forgotten after 15 minutes (and on a restart); only the person who asked can answer, in that thread; the reply must not mention the bot. Ask again with a new mention. |
 | Events arrive intermittently, buttons "do nothing" (no effect, no error) | A second process (a dev backend, an old instance) holds a connection with the same app token. One app per backend; check `pgrep -fl agentic` and the Slack app's Socket Mode connection count. |
-| `…: not_in_channel` *(when posting)* | `/invite @agentic-ui` in the channel. |
+| `…: not_in_channel` *(when posting)* | `/invite @Artus` in the channel. |
 | `…: channel_not_found` *(when posting)* | Wrong channel ID, or a private channel the bot was never invited to. |
 | `…: missing_scope` | Add the scope in **OAuth & Permissions**, then **Reinstall to Workspace**. |
 | `…: ratelimited` *(when posting)* | Normal under bursts; the queue retries with `Retry-After`. Persistent means something is looping — check the log. |
@@ -412,6 +412,6 @@ feature relies on will show up as `missing_scope` in the log.
 
 ## Turning it off
 
-Set `AGENTIC_UI_SLACK_ENABLED=false` (or unset it) and restart. To remove access entirely: delete the
+Set `ARTUS_SLACK_ENABLED=false` (or unset it) and restart. To remove access entirely: delete the
 app-level token, revoke or uninstall the bot, remove the Keychain items / env file, and delete the
 private channel if you no longer want the history in Slack.

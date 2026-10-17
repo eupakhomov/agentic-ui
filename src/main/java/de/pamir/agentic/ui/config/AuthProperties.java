@@ -14,7 +14,7 @@ import java.util.List;
  * @param allowedOrigins extra accepted {@code Origin}s (scheme://host[:port]); an Origin whose host
  *                       is in {@code allowedHosts} is accepted without being listed here
  */
-@ConfigurationProperties(prefix = "agentic-ui.auth")
+@ConfigurationProperties(prefix = "artus.auth")
 public record AuthProperties(
 		@DefaultValue({"127.0.0.0/8", "::1/128"}) List<String> trustedCidrs,
 		@DefaultValue({"localhost", "127.0.0.1", "[::1]"}) List<String> allowedHosts,

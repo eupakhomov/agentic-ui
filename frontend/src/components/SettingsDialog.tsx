@@ -532,7 +532,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 />
                 {settings.voyageConfigured
                   ? 'embed content on import & sync for semantic search (Voyage AI)'
-                  : 'requires AGENTIC_UI_VOYAGE_API_KEY (env var only)'}
+                  : 'requires ARTUS_VOYAGE_API_KEY (env var only)'}
               </label>
 
               <label>Source sync</label>
@@ -566,7 +566,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 {slackStatus === null
                   ? 'Checking Slack…'
                   : !slackStatus.enabled
-                    ? 'Slack is not enabled on the server — set AGENTIC_UI_SLACK_ENABLED and the Slack tokens, then restart (see docs/SLACK.md).'
+                    ? 'Slack is not enabled on the server — set ARTUS_SLACK_ENABLED and the Slack tokens, then restart (see docs/SLACK.md).'
                     : slackStatus.connected ? 'Slack is connected.' : 'Slack is enabled but not connected — check the backend log.'}
               </div>
             </div>
@@ -676,11 +676,11 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                   {authStatus === null
                     ? 'running state unknown'
                     : !authStatus.tokenConfigured
-                      ? 'No token is configured (AGENTIC_UI_TOKEN), so the token is off whatever this says.'
+                      ? 'No token is configured (ARTUS_TOKEN), so the token is off whatever this says.'
                       : authStatus.required === settings.authTokenRequired
                         ? `Running with the token ${authStatus.required ? 'required' : 'off'}.`
                         : `Currently running with the token ${authStatus.required ? 'required' : 'off'} — restart to apply.`}
-                  {' '}With the token off, only local clients are accepted (agentic-ui.auth.trusted-cidrs, allowed-hosts);
+                  {' '}With the token off, only local clients are accepted (artus.auth.trusted-cidrs, allowed-hosts);
                   for remote access use an SSH tunnel, Tailscale, or an authenticating reverse proxy.
                 </span>
               </span>
@@ -713,7 +713,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
               <label>API key</label>
               <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>
                 {settings.linearApiKeyConfigured
-                  ? 'configured via AGENTIC_UI_LINEAR_API_KEY'
+                  ? 'configured via ARTUS_LINEAR_API_KEY'
                   : 'not set (env var only — see docs/DEPLOY.md)'}
               </span>
 

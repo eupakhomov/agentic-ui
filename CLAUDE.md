@@ -1,10 +1,10 @@
-# agentic-ui — Multi-Session Manager for Claude Code and Codex
+# Artus — Multi-Session Manager for Claude Code and Codex
 
 Spring Boot backend + React dashboard for running parallel coding-agent sessions
 (Claude Code via the Claude Agent SDK, or Codex via `codex app-server`), each in its
 own git worktree, driven through per-session Node sidecar processes. Single user, LAN
 deployment, PostgreSQL persistence. Renamed from `claude-ui` in 2026-09 — the
-`CLAUDE_UI_*` env vars still work as fallbacks (see `application.yaml`), everything
+`ARTUS_*` env vars still work as fallbacks (see `application.yaml`), everything
 else (config prefix, package, DB name, file names) uses the new name only.
 
 ## Repository layout
@@ -90,16 +90,16 @@ local `mvn`/`mvnw test` or `verify` against the compose DB.
 ```bash
 docker compose up -d          # if WSL integration is enabled
 # Fallback when the docker CLI is unavailable in WSL (integration off):
-"/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe" compose -f 'D:\projects\agentic-ui\docker-compose.yaml' up -d
+"/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe" compose -f 'D:\projects\artus\docker-compose.yaml' up -d
 ```
 
-- DB `agentic_ui`, user `agentic_ui`, password `agentic_ui` (dev default), port
+- DB `artus`, user `artus`, password `artus` (dev default), port
   `127.0.0.1:5432`. Docker Desktop relays the published port into WSL, so
   `localhost:5432` works from both Windows and WSL.
 - A `pgdata` volume initialised before the 2026-09 rename still holds a `claude_ui`
   database/role — `POSTGRES_*` only apply on first init, so the backend fails to connect
   until you `docker compose down -v && docker compose up -d` once (wipes dev data).
-- Password override env var is `AGENTIC_UI_DB_PASSWORD` — deliberately namespaced:
+- Password override env var is `ARTUS_DB_PASSWORD` — deliberately namespaced:
   the user's `~/.bashrc` exports an unrelated `DB_PASSWORD`; never use that name.
 - **Schema changes go through Flyway only** (`src/main/resources/db/migration/V*__*.sql`,
   applied at startup). No manual DDL, no generated schema. Boot 4 note: Flyway needs
@@ -123,29 +123,29 @@ $mvnw package -DskipTests -Dskip.installnodenpm -Dskip.npm   # fast: reuses fron
 $mvnw package -DskipTests                                    # full: rebuilds frontend too
 # (run `cd frontend && npm run build` first if frontend sources changed and you use the fast form)
 
-# 2. Generate a token (or reuse AGENTIC_UI_TOKEN if already exported — see below),
+# 2. Generate a token (or reuse ARTUS_TOKEN if already exported — see below),
 #    start in background, print the token for the browser login:
-TOKEN="${AGENTIC_UI_TOKEN:-$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)}"
-echo "$TOKEN" > /tmp/agentic-ui.token
-AGENTIC_UI_TOKEN="$TOKEN" nohup java -jar target/agentic.ui-0.0.1-SNAPSHOT.jar \
-  --server.address=0.0.0.0 > /tmp/agentic-ui.log 2>&1 &
-echo $! > /tmp/agentic-ui.pid
+TOKEN="${ARTUS_TOKEN:-$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)}"
+echo "$TOKEN" > /tmp/artus.token
+ARTUS_TOKEN="$TOKEN" nohup java -jar target/artus-0.0.1-SNAPSHOT.jar \
+  --server.address=0.0.0.0 > /tmp/artus.log 2>&1 &
+echo $! > /tmp/artus.pid
 until curl -sf localhost:8080/actuator/health >/dev/null; do sleep 1; done
-echo "UI: http://localhost:8080  token: $(cat /tmp/agentic-ui.token)"
+echo "UI: http://localhost:8080  token: $(cat /tmp/artus.token)"
 ```
 
 - **WSL gotcha**: bind `0.0.0.0`, not `127.0.0.1` — the Windows→WSL localhost relay
   only forwards wildcard binds, so a loopback-bound server is invisible to the
   Windows browser (ERR_CONNECTION_REFUSED). With the token off the backend therefore checks the
-  client, not the bind: only addresses in `agentic-ui.auth.trusted-cidrs` (default loopback) with an
+  client, not the bind: only addresses in `artus.auth.trusted-cidrs` (default loopback) with an
   allowed `Host`/`Origin` are served — on WSL add the vEthernet range there (phase 17 B).
-- Logs: `tail -f /tmp/agentic-ui.log` for raw stdout; structured logs land in `logs/`
-  (override dir with env `AGENTIC_UI_LOG_DIR`):
-  - `logs/agentic-ui.log` — everything INFO+, rolled daily/10MB, 14 days kept
+- Logs: `tail -f /tmp/artus.log` for raw stdout; structured logs land in `logs/`
+  (override dir with env `ARTUS_LOG_DIR`):
+  - `logs/artus.log` — everything INFO+, rolled daily/10MB, 14 days kept
   - `logs/error.log` — ERROR only with full stack traces, 30 days kept
   - `logs/sidecar/<sessionId>.log` — each session's sidecar stderr (timestamped)
-- Token again: `cat /tmp/agentic-ui.token`.
-- **Stable token across restarts**: export `AGENTIC_UI_TOKEN` (e.g. in `~/.bashrc`)
+- Token again: `cat /tmp/artus.token`.
+- **Stable token across restarts**: export `ARTUS_TOKEN` (e.g. in `~/.bashrc`)
   before running `start.sh` — it reuses it instead of generating a new
   random token each time, so the browser doesn't need re-pasting it after every
   restart. Leave it unset to keep the old rotate-every-start behavior.
@@ -153,7 +153,7 @@ echo "UI: http://localhost:8080  token: $(cat /tmp/agentic-ui.token)"
 ### Stop / kill
 
 ```bash
-kill "$(cat /tmp/agentic-ui.pid)"          # graceful: @PreDestroy shuts sidecars down
+kill "$(cat /tmp/artus.pid)"          # graceful: @PreDestroy shuts sidecars down
 # fallback when the pid file is stale — kill whatever listens on 8080:
 kill "$(ss -tlnp | grep 8080 | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)"
 # orphaned sidecars, if any survive:
@@ -163,16 +163,16 @@ pkill -f "dist/index[.]js --cwd"
 Note the `[.]` in the pkill pattern: `pkill -f` matches its own shell's command line,
 so an unescaped pattern kills the shell that runs it (learned the hard way).
 
-Config lives in `application.yaml` under `agentic-ui.*` (default repo path, worktree
+Config lives in `application.yaml` under `artus.*` (default repo path, worktree
 root, skills root, max sessions, auth token, provider launch commands), bound by
 `de.pamir.agentic.ui.config.AppProperties` and logged at startup (token masked). Service
 repo and ecosystem path are selectable **per session** in the create dialog; the config
 values are only defaults (the ecosystem root default itself is a persisted setting, not
 env-based — see below). Local secrets belong in gitignored `application-local.yaml` or
-env vars — never commit them. Provider launch commands (`agentic-ui.providers.<id>.command`)
+env vars — never commit them. Provider launch commands (`artus.providers.<id>.command`)
 ship two entries out of the box:
 ```yaml
-agentic-ui:
+artus:
   providers:
     claude:
       command: ["node", "sidecar/dist/index.js"]
@@ -323,20 +323,20 @@ the backend's environment):
 
 | Env var | Default | What it caps |
 |---|---|---|
-| `AGENTIC_UI_MAX_SESSIONS` | `4` | Concurrent live sidecar processes; create/resume beyond it → 409 (including 7.4's `spawn_child_session`, surfaced to the parent as a tool error). PARKED sessions don't count, so a parent that parks after spawning fans out wider than the raw count suggests — raise this for wide fan-outs |
-| `AGENTIC_UI_IDLE_PARK_MINUTES` | `30` | Minutes a session may sit IDLE before its sidecar is shut down (PARKED); next message transparently wakes it |
-| `AGENTIC_UI_TOOL_OUTPUT_LIMIT` | `16384` | Bytes of tool output kept per result (sidecar truncates, `truncated` flag set) |
-| `AGENTIC_UI_JOURNAL_PAYLOAD_CAP` | `65536` | Max bytes for one journal event payload; larger payloads stored as a truncated preview |
-| `AGENTIC_UI_WS_BUFFER_LIMIT` | `1048576` | Per-client WS outbound buffer; a slow consumer overflowing it is disconnected (reconnects + replays losslessly) |
-| `AGENTIC_UI_LOG_DIR` | `logs` | Log directory (backend rolling logs + per-session sidecar stderr) |
-| `AGENTIC_UI_TOKEN` | — | Dashboard/API auth token. Enforced when set, unless Settings → Access → "Require access token" is switched off (read at startup, applies on restart); with the token off only trusted local clients are served (`agentic-ui.auth.*`, see DEPLOY.md). Pre-export a fixed value to keep the same token across restarts — `start.sh` reuses it instead of generating a random one; leave unset to keep the old behavior (a fresh random token printed on every start) |
-| `AGENTIC_UI_REPO` | `/mnt/d/projects/agentic-ui` | Default service repo (per-session selectable in the UI) |
-| `AGENTIC_UI_WORKTREE_ROOT` | `~/agentic-worktrees` | Where session worktrees live |
-| `AGENTIC_UI_SKILLS_ROOT` | `~/agentic-skills` | *Default* for the managed skills root, which is now a persisted setting (`library.skills-root`) — the create-dialog picker, provisioning's repo cache, and library imports all read the setting |
-| `AGENTIC_UI_MEMORY_ROOT` | `~/agentic-memory` | *Default* for the managed semantic-memory root (`memory.root` persisted setting) — an Obsidian-compatible vault of Markdown files with YAML frontmatter; the DB is a rebuildable search index over it, not the source of truth |
-| `AGENTIC_UI_VOYAGE_API_KEY` | — | Voyage AI API key (a secret — env var only); enables the library's "vectorize" setting + semantic search (`VoyageEmbeddingClient`, voyage-3.5-lite, pgvector) **and** memory's dense-search arm. Unset = those features fall back to sparse-only (Postgres FTS + trigram for memory), everything else works |
-| `AGENTIC_UI_SLACK_ENABLED` (+ `_BOT_TOKEN`, `_APP_TOKEN`, `_CHANNEL`, `_ALLOWED_USERS`, `_VERBOSE`, `AGENTIC_UI_PUBLIC_URL`) | off | Slack mirroring (phase 18, `docs/SLACK.md`). Off = no Slack beans at all. Tokens are secrets (env only); `_CHANNEL` is a channel **ID**; `_ALLOWED_USERS` is a comma-separated allowlist of Slack member IDs, **empty = every inbound message and click is ignored**. `AGENTIC_UI_SLACK_START_ENABLED` (default off) additionally lets those users start review/development sessions by mentioning the bot (`@bot review <PR>`, `@bot dev <service> <branch> [prompt]`, and `review-with`/`dev-with <template> …` to start from a session template; the new session inherits the last session's settings incl. permission mode, exactly like the dashboard quick start). Per session it is opt-in (`slackEnabled`; create-dialog checkbox, default from Settings → Slack); a child follows its parent; the system session never posts. Tool inputs are secret-masked unless `_VERBOSE`. |
-| `AGENTIC_UI_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (phase 19: with the key set, the ticket list comes straight from Linear's GraphQL API with no LLM turn and import inlines the issue + comments into a single no-tool Haiku turn — `LinearApiClient`, falling back to the MCP system-turn path with a WARN on any API failure; OAuth mode always uses the MCP path). When configured (or the OAuth toggle is on), the Linear MCP server is also layered by default into every regular session's `mcpConfig` (`SessionService.linearMcpServer()`/`withDefaultLinearMcp()`), restricted to the **Linear allowed tools** list (Settings dialog → "Linear integration", `linear.allowed-tools`, default `get_issue,list_issues,list_comments,get_attachment,extract_images,save_comment`; snapshotted into each session at creation, so edits apply to new sessions only) — unless the session's own `mcpConfig` already declares its own `linear` entry, which wins and is unrestricted. The list is carried as our own `enabledTools` key on the entry: the Claude sidecar strips it and enforces it with a `PreToolUse` hook (the SDK has no allow-only control for MCP tools; the hook fires in every permission mode, bypass included), the Codex sidecar maps it to Codex's per-server `enabled_tools`. The system session's Linear entry is unrestricted. Regular sessions go through the normal permission-approval flow for its tools (the system session always gets it and pre-approves them instead, since backend-initiated turns have nobody to answer a prompt). |
+| `ARTUS_MAX_SESSIONS` | `4` | Concurrent live sidecar processes; create/resume beyond it → 409 (including 7.4's `spawn_child_session`, surfaced to the parent as a tool error). PARKED sessions don't count, so a parent that parks after spawning fans out wider than the raw count suggests — raise this for wide fan-outs |
+| `ARTUS_IDLE_PARK_MINUTES` | `30` | Minutes a session may sit IDLE before its sidecar is shut down (PARKED); next message transparently wakes it |
+| `ARTUS_TOOL_OUTPUT_LIMIT` | `16384` | Bytes of tool output kept per result (sidecar truncates, `truncated` flag set) |
+| `ARTUS_JOURNAL_PAYLOAD_CAP` | `65536` | Max bytes for one journal event payload; larger payloads stored as a truncated preview |
+| `ARTUS_WS_BUFFER_LIMIT` | `1048576` | Per-client WS outbound buffer; a slow consumer overflowing it is disconnected (reconnects + replays losslessly) |
+| `ARTUS_LOG_DIR` | `logs` | Log directory (backend rolling logs + per-session sidecar stderr) |
+| `ARTUS_TOKEN` | — | Dashboard/API auth token. Enforced when set, unless Settings → Access → "Require access token" is switched off (read at startup, applies on restart); with the token off only trusted local clients are served (`artus.auth.*`, see DEPLOY.md). Pre-export a fixed value to keep the same token across restarts — `start.sh` reuses it instead of generating a random one; leave unset to keep the old behavior (a fresh random token printed on every start) |
+| `ARTUS_REPO` | `/mnt/d/projects/artus` | Default service repo (per-session selectable in the UI) |
+| `ARTUS_WORKTREE_ROOT` | `~/agentic-worktrees` | Where session worktrees live |
+| `ARTUS_SKILLS_ROOT` | `~/agentic-skills` | *Default* for the managed skills root, which is now a persisted setting (`library.skills-root`) — the create-dialog picker, provisioning's repo cache, and library imports all read the setting |
+| `ARTUS_MEMORY_ROOT` | `~/agentic-memory` | *Default* for the managed semantic-memory root (`memory.root` persisted setting) — an Obsidian-compatible vault of Markdown files with YAML frontmatter; the DB is a rebuildable search index over it, not the source of truth |
+| `ARTUS_VOYAGE_API_KEY` | — | Voyage AI API key (a secret — env var only); enables the library's "vectorize" setting + semantic search (`VoyageEmbeddingClient`, voyage-3.5-lite, pgvector) **and** memory's dense-search arm. Unset = those features fall back to sparse-only (Postgres FTS + trigram for memory), everything else works |
+| `ARTUS_SLACK_ENABLED` (+ `_BOT_TOKEN`, `_APP_TOKEN`, `_CHANNEL`, `_ALLOWED_USERS`, `_VERBOSE`, `ARTUS_PUBLIC_URL`) | off | Slack mirroring (phase 18, `docs/SLACK.md`). Off = no Slack beans at all. Tokens are secrets (env only); `_CHANNEL` is a channel **ID**; `_ALLOWED_USERS` is a comma-separated allowlist of Slack member IDs, **empty = every inbound message and click is ignored**. `ARTUS_SLACK_START_ENABLED` (default off) additionally lets those users start review/development sessions by mentioning the bot (`@bot review <PR>`, `@bot dev <service> <branch> [prompt]`, and `review-with`/`dev-with <template> …` to start from a session template; the new session inherits the last session's settings incl. permission mode, exactly like the dashboard quick start). Per session it is opt-in (`slackEnabled`; create-dialog checkbox, default from Settings → Slack); a child follows its parent; the system session never posts. Tool inputs are secret-masked unless `_VERBOSE`. |
+| `ARTUS_LINEAR_API_KEY` | — | Linear personal API key (a secret — env var only, never persisted); enables "Import ticket" in the create dialog (phase 19: with the key set, the ticket list comes straight from Linear's GraphQL API with no LLM turn and import inlines the issue + comments into a single no-tool Haiku turn — `LinearApiClient`, falling back to the MCP system-turn path with a WARN on any API failure; OAuth mode always uses the MCP path). When configured (or the OAuth toggle is on), the Linear MCP server is also layered by default into every regular session's `mcpConfig` (`SessionService.linearMcpServer()`/`withDefaultLinearMcp()`), restricted to the **Linear allowed tools** list (Settings dialog → "Linear integration", `linear.allowed-tools`, default `get_issue,list_issues,list_comments,get_attachment,extract_images,save_comment`; snapshotted into each session at creation, so edits apply to new sessions only) — unless the session's own `mcpConfig` already declares its own `linear` entry, which wins and is unrestricted. The list is carried as our own `enabledTools` key on the entry: the Claude sidecar strips it and enforces it with a `PreToolUse` hook (the SDK has no allow-only control for MCP tools; the hook fires in every permission mode, bypass included), the Codex sidecar maps it to Codex's per-server `enabled_tools`. The system session's Linear entry is unrestricted. Regular sessions go through the normal permission-approval flow for its tools (the system session always gets it and pre-approves them instead, since backend-initiated turns have nobody to answer a prompt). |
 
 **Per-session limits** (create dialog / template / `PATCH /api/sessions/{id}`, not env):
 `costBudgetUsd` (turns are refused once cumulative cost reaches it; in-flight turns
@@ -378,7 +378,7 @@ effect on the next use with no backend restart.
 - **Ecosystem root** (Settings dialog → "Sessions") — default read-only context folder
   + service discovery root (parent of all sibling services); empty = no default wider
   context. Overridable per session in the create dialog (`ecosystemPath`, `null` = no
-  wider context for that session). Replaces the old `AGENTIC_UI_ECOSYSTEM_ROOT` env var.
+  wider context for that session). Replaces the old `ARTUS_ECOSYSTEM_ROOT` env var.
   Workspace-manifest detection (one git repo whose `packages/*`/`services/*`/`apps/*`/
   `libs/*`-style folders are the real services, via each folder's own workspace
   manifest — `ecosystem.monorepo-service-globs` next to it a glob-only fallback) is
@@ -397,7 +397,7 @@ effect on the next use with no backend restart.
   startup** (`AuthTokenService`), so a change applies on the next restart; the dialog compares the
   stored choice with `GET /api/auth/status` (what the running process enforces). With the token
   off, `LocalClientFilter` (REST, the WS handshake, non-health actuator) accepts only
-  `agentic-ui.auth.trusted-cidrs` clients (env/yaml, default loopback) with a `Host` in
+  `artus.auth.trusted-cidrs` clients (env/yaml, default loopback) with a `Host` in
   `allowed-hosts` and, when sent, an `Origin` on an allowed host or in `allowed-origins`;
   `Sec-Fetch-Site: cross-site` is refused. These lists are security boundaries and are
   deliberately not editable from the dashboard.
@@ -496,11 +496,11 @@ effect on the next use with no backend restart.
   masking are env-only (see the env table). A child session follows its parent's choice; the system session
   never posts. Decisions are first-wins between the dashboard and Slack (`PendingPermissions`).
 - **OAuth toggle** (Settings dialog → "Linear integration") — alternative to
-  `AGENTIC_UI_LINEAR_API_KEY` for SSO-gated Linear accounts (e.g. Google identity): omits
+  `ARTUS_LINEAR_API_KEY` for SSO-gated Linear accounts (e.g. Google identity): omits
   the Authorization header, relying on the ambient `claude` CLI's own cached OAuth
   credential for `mcp.linear.app` — run
   `claude mcp add --transport http linear https://mcp.linear.app/mcp` once,
-  interactively, on the backend host first. Ignored if `AGENTIC_UI_LINEAR_API_KEY` is set.
+  interactively, on the backend host first. Ignored if `ARTUS_LINEAR_API_KEY` is set.
 - **Branch-naming guidance** (Settings dialog → "Linear integration") — free text
   appended to the Haiku prompt that generates a ticket import's `branchName`/`prompt`,
   e.g. "keep the ticket number uppercase" or "format as feat(TICKET)-description /
@@ -518,7 +518,7 @@ effect on the next use with no backend restart.
 - **Skill library** (Settings dialog → "Skill library"; feature docs:
   `docs/plan/phase-6-skill-library.md`, `docs/ARCHITECTURE.md` §3a) —
   `library.skills-root` / `library.agents-root` (managed import destinations;
-  skills root defaults to `AGENTIC_UI_SKILLS_ROOT`), `library.vectorize` (default
+  skills root defaults to `ARTUS_SKILLS_ROOT`), `library.vectorize` (default
   off; needs the Voyage key), `library.sync-enabled` (default on) and
   `library.sync-interval-minutes` (default 60, floor 5) for the background source
   sync (`LibrarySyncService`, ticks every 60s, interval as cutoff — PR-checks
@@ -528,7 +528,7 @@ effect on the next use with no backend restart.
   new upstream files as badge + desktop notification.
 - **Long-term memory** (Settings dialog → "Memory"; feature docs:
   `docs/plan/phase-5.3-memory-reflection.md`, `docs/ARCHITECTURE.md` §3b) —
-  `memory.root` (managed vault; defaults to `AGENTIC_UI_MEMORY_ROOT`), `memory.enabled`
+  `memory.root` (managed vault; defaults to `ARTUS_MEMORY_ROOT`), `memory.enabled`
   (default on — injects the memory MCP tools + episodic window into every session),
   `memory.reflection-default` (default off — per-session `reflectionEnabled` always
   overrides), `memory.reflection-model` (a tier — `cheap`/`standard`/`premium`, default

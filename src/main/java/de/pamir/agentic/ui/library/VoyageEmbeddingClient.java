@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * Voyage AI embeddings over plain REST. The API key is a secret and therefore env-only
- * (AGENTIC_UI_VOYAGE_API_KEY), mirroring the Linear key; without it the client reports
+ * (ARTUS_VOYAGE_API_KEY), mirroring the Linear key; without it the client reports
  * unconfigured and the vectorize/search features stay disabled.
  */
 @Service
@@ -36,7 +36,7 @@ public class VoyageEmbeddingClient implements EmbeddingClient {
 	@Override
 	public float[] embed(String text, boolean query) {
 		if (!configured()) {
-			throw new IllegalStateException("embeddings not configured (set AGENTIC_UI_VOYAGE_API_KEY)");
+			throw new IllegalStateException("embeddings not configured (set ARTUS_VOYAGE_API_KEY)");
 		}
 		String input = text == null ? "" : text;
 		if (input.length() > MAX_INPUT_CHARS) {
@@ -55,7 +55,7 @@ public class VoyageEmbeddingClient implements EmbeddingClient {
 			// so it's diagnosable from the one log line tryEmbed() already logs.
 			if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
 				throw new IllegalStateException(
-						"Voyage API key rejected (" + e.getStatusCode().value() + ") — check AGENTIC_UI_VOYAGE_API_KEY", e);
+						"Voyage API key rejected (" + e.getStatusCode().value() + ") — check ARTUS_VOYAGE_API_KEY", e);
 			}
 			throw new IllegalStateException("Voyage embeddings request failed (" + e.getStatusCode().value() + ")", e);
 		}

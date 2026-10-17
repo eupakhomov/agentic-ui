@@ -37,8 +37,8 @@ public class StartupGuard implements InitializingBean {
 			return;
 		}
 		if (settings.current().authTokenRequired() && !auth.tokenConfigured()) {
-			log.warn("auth: 'Require access token' is on but no token is configured (agentic-ui.auth-token / "
-					+ "AGENTIC_UI_TOKEN) — running with the token off");
+			log.warn("auth: 'Require access token' is on but no token is configured (artus.auth-token / "
+					+ "ARTUS_TOKEN) — running with the token off");
 		}
 		log.warn("auth: token OFF — only clients in {} are accepted (Host in {}) on {}", authProps.trustedCidrs(),
 				authProps.allowedHosts(), bindAddress);

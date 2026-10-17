@@ -590,9 +590,9 @@ class SessionStateMachineTest {
 		assertThat(exclude).contains("packages/foo/.claude/skills/")
 				.contains("packages/foo/.claude/agents/")
 				.contains("packages/foo/.serena/")
-				.contains(".agentic-ui.pid");
+				.contains(".artus.pid");
 		// the pid line is never prefixed — the pid file always lives at the worktree root
-		assertThat(exclude).doesNotContain("packages/foo/.agentic-ui.pid");
+		assertThat(exclude).doesNotContain("packages/foo/.artus.pid");
 	}
 
 	// ------------------------------------------------------------------ create (sessionType, phase 15)
