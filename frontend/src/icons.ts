@@ -43,6 +43,7 @@ export {
   Minimize2 as Restore,
   Minus as MinimizeToDock,
   GitBranch as GitPanelIcon,
+  FileDiff as ChangesIcon,
   Info as InfoTag,
   Copy as Duplicate,
   Download as DownloadIcon,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/rest';
 import { getFontSize, getTheme, setFontSize, setTheme, type FontSize, type Theme } from '../prefs';
-import type { CodeIntel, ProviderView, Settings } from '../protocol';
+import type { AuthStatus, CodeIntel, ProviderView, Settings } from '../protocol';
 import { useBackdropDismiss } from '../hooks/useBackdropDismiss';
 
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
@@ -29,6 +29,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [mcpGraphifyRootDraft, setMcpGraphifyRootDraft] = useState('');
   const [mcpCodegraphRootDraft, setMcpCodegraphRootDraft] = useState('');
   const [mcpSerenaError, setMcpSerenaError] = useState('');
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   /** the graphify root save doubles as its first `uv` env sync (up to 180 s) — pulse the input meanwhile */
   const [mcpGraphifySaving, setMcpGraphifySaving] = useState(false);
 
@@ -55,6 +56,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setMcpCodegraphRootDraft(s.mcpCodegraphRoot);
     }).catch(() => setSettings(null));
     api.listProviders().then(setProviders).catch(() => setProviders([]));
+    api.authStatus().then(setAuthStatus).catch(() => setAuthStatus(null));
   }, []);
 
   const toggleOAuth = () => {
@@ -62,6 +64,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     const next = { ...settings, linearOAuthEnabled: !settings.linearOAuthEnabled };
     setSettings(next);
     void api.updateSettings({ linearOAuthEnabled: next.linearOAuthEnabled }).catch(() => setSettings(settings));
+  };
+
+  const toggleAuthRequired = () => {
+    if (!settings) return;
+    const next = { ...settings, authTokenRequired: !settings.authTokenRequired };
+    setSettings(next);
+    void api.updateSettings({ authTokenRequired: next.authTokenRequired }).catch(() => setSettings(settings));
   };
 
   const togglePrChecks = () => {
@@ -628,6 +637,28 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 <option value="standard">standard (higher quality)</option>
                 <option value="premium">premium</option>
               </select>
+            </div>
+
+            <h3 style={{ margin: '18px 0 10px' }}>Access</h3>
+            <div className="form-grid">
+              <label>Access token</label>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+                  <input type="checkbox" checked={settings.authTokenRequired} onChange={toggleAuthRequired} />
+                  require the access token (applies on next restart)
+                </label>
+                <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>
+                  {authStatus === null
+                    ? 'running state unknown'
+                    : !authStatus.tokenConfigured
+                      ? 'No token is configured (AGENTIC_UI_TOKEN), so the token is off whatever this says.'
+                      : authStatus.required === settings.authTokenRequired
+                        ? `Running with the token ${authStatus.required ? 'required' : 'off'}.`
+                        : `Currently running with the token ${authStatus.required ? 'required' : 'off'} — restart to apply.`}
+                  {' '}With the token off, only local clients are accepted (agentic-ui.auth.trusted-cidrs, allowed-hosts);
+                  for remote access use an SSH tunnel, Tailscale, or an authenticating reverse proxy.
+                </span>
+              </span>
             </div>
 
             <h3 style={{ margin: '18px 0 10px' }}>PR checks</h3>

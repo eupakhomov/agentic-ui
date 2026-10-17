@@ -9,6 +9,7 @@ import type { PermissionResponse } from '../components/PermissionCard';
 export interface WidgetActions {
   focusComposer: () => void;
   toggleGit: () => void;
+  toggleChanges: () => void;
   respondPermission: (requestId: string, response: PermissionResponse) => void;
 }
 

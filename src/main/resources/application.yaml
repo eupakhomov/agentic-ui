@@ -17,7 +17,7 @@ spring:
           mcp-endpoint: /api/mcp/memory
 
 server:
-  address: 127.0.0.1   # LAN use: set a real address AND agentic-ui.auth-token (enforced at startup)
+  address: 127.0.0.1   # LAN use: set a real address; with the token off, agentic-ui.auth.trusted-cidrs decides who may connect
   port: 8080
 
 management:
@@ -43,6 +43,13 @@ agentic-ui:
   journal-payload-cap-bytes: ${AGENTIC_UI_JOURNAL_PAYLOAD_CAP:${CLAUDE_UI_JOURNAL_PAYLOAD_CAP:65536}}
   ws-send-buffer-bytes: ${AGENTIC_UI_WS_BUFFER_LIMIT:${CLAUDE_UI_WS_BUFFER_LIMIT:1048576}}
   auth-token: ${AGENTIC_UI_TOKEN:${CLAUDE_UI_TOKEN:}}
+  # Applies only while the token is NOT enforced (Settings → Access → "Require access token", read at startup).
+  # Defaults are loopback-only; WSL needs the vEthernet range added to trusted-cidrs, and a reverse
+  # proxy's external hostname belongs in allowed-hosts. Docs: docs/plan/phase-17-*.md section B.
+  # auth:
+  #   trusted-cidrs: ["127.0.0.0/8", "::1/128"]
+  #   allowed-hosts: ["localhost", "127.0.0.1", "[::1]"]
+  #   allowed-origins: []
   linear-api-key: ${AGENTIC_UI_LINEAR_API_KEY:${CLAUDE_UI_LINEAR_API_KEY:}}
   voyage-api-key: ${AGENTIC_UI_VOYAGE_API_KEY:${CLAUDE_UI_VOYAGE_API_KEY:}}
   providers:

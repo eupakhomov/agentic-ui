@@ -18,6 +18,19 @@
   --perm-bg: #2b2618;
   --plan-bg: #241f2e;
   --ask-bg: #1a2436;
+  --syn-keyword: #c49cf0;
+  --syn-string: #8fcf9a;
+  --syn-number: #e5b567;
+  --syn-comment: #7d8390;
+  --syn-type: #6cc3d9;
+  --syn-fn: #7eaaf5;
+  --syn-prop: #b9c4de;
+  --syn-meta: #d6a76f;
+  --sel-bg: rgba(108, 159, 255, 0.35);
+  --diff-add-bg: rgba(76, 195, 138, 0.14);
+  --diff-del-bg: rgba(229, 114, 108, 0.16);
+  --diff-add-strong: rgba(76, 195, 138, 0.32);
+  --diff-del-strong: rgba(229, 114, 108, 0.34);
   font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
   /* font size: "medium" is the default (~8% bigger than the old fixed sizes) */
   --font-scale: 1.08;
@@ -43,6 +56,19 @@
     --perm-bg: #fdf1da;
     --plan-bg: #ede4fa;
     --ask-bg: #e4ecfb;
+    --syn-keyword: #8256b8;
+    --syn-string: #1f7a4d;
+    --syn-number: #a5730c;
+    --syn-comment: #7a808a;
+    --syn-type: #0f7c93;
+    --syn-fn: #2d5fc4;
+    --syn-prop: #3d4a66;
+    --syn-meta: #8a5a10;
+    --sel-bg: rgba(59, 111, 224, 0.25);
+    --diff-add-bg: rgba(31, 157, 104, 0.13);
+    --diff-del-bg: rgba(214, 69, 69, 0.13);
+    --diff-add-strong: rgba(31, 157, 104, 0.28);
+    --diff-del-strong: rgba(214, 69, 69, 0.28);
   }
 }
 
@@ -65,6 +91,19 @@
   --perm-bg: #fdf1da;
   --plan-bg: #ede4fa;
   --ask-bg: #e4ecfb;
+  --syn-keyword: #8256b8;
+  --syn-string: #1f7a4d;
+  --syn-number: #a5730c;
+  --syn-comment: #7a808a;
+  --syn-type: #0f7c93;
+  --syn-fn: #2d5fc4;
+  --syn-prop: #3d4a66;
+  --syn-meta: #8a5a10;
+  --sel-bg: rgba(59, 111, 224, 0.25);
+  --diff-add-bg: rgba(31, 157, 104, 0.13);
+  --diff-del-bg: rgba(214, 69, 69, 0.13);
+  --diff-add-strong: rgba(31, 157, 104, 0.28);
+  --diff-del-strong: rgba(214, 69, 69, 0.28);
 }
 
 :root[data-font-size="small"] { --font-scale: 0.93; }
@@ -427,3 +466,44 @@ code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(
 .cheatsheet-table td:first-child { width: 170px; white-space: nowrap; }
 .cheatsheet-table td:last-child { color: var(--muted); }
 kbd { display: inline-block; background: var(--panel2); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 7px; font-family: "JetBrains Mono", Consolas, monospace; font-size: calc(12px * var(--font-scale)); }
+
+/* ---- phase 17 C: changes panel (read-only diff beside the session) ---- */
+.widget-content { display: flex; flex: 1; min-height: 0; position: relative; }
+.widget-content > .widget-body { flex: 1; min-width: 0; }
+.changes-panel { position: relative; display: flex; flex-direction: column; flex-shrink: 0; min-width: 0; background: var(--panel); border-left: 1px solid var(--border); font-size: calc(12.5px * var(--font-scale)); }
+.changes-panel.overlay { position: absolute; inset: 0; z-index: 5; width: auto; border-left: none; }
+.changes-resize { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 6; }
+.changes-resize:hover { background: var(--accent); opacity: 0.35; }
+.changes-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel2); flex-wrap: wrap; }
+.changes-sum { color: var(--muted); font-size: calc(11.5px * var(--font-scale)); }
+.changes-mode { font-size: calc(11px * var(--font-scale)); }
+.changes-panel .add { color: var(--green); }
+.changes-panel .del { color: var(--red); }
+.changes-empty { padding: 14px 12px; color: var(--muted); }
+.changes-list { list-style: none; margin: 0; padding: 0; max-height: 34%; overflow-y: auto; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.changes-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 10px; background: transparent; border: none; border-radius: 0; text-align: left; color: var(--text); font: inherit; cursor: pointer; }
+.changes-row:hover { background: var(--panel2); }
+.changes-row.selected { background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
+.changes-status { flex: 0 0 auto; width: 1.4em; text-align: center; font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 600; }
+.changes-status.added { color: var(--green); }
+.changes-status.modified { color: var(--amber); }
+.changes-status.deleted { color: var(--red); }
+.changes-status.renamed { color: var(--purple); }
+.changes-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "JetBrains Mono", ui-monospace, monospace; }
+.changes-path .dir { color: var(--muted); }
+.changes-where { flex: 0 0 auto; color: var(--muted); font-size: calc(11px * var(--font-scale)); }
+.changes-counts { flex: 0 0 auto; display: flex; gap: 6px; min-width: 5.5em; justify-content: flex-end; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: calc(11.5px * var(--font-scale)); }
+.changes-viewhead { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--border); min-height: 34px; }
+.changes-viewpath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: "JetBrains Mono", ui-monospace, monospace; direction: rtl; text-align: left; }
+.changes-banner { display: flex; align-items: center; gap: 10px; margin: 0; border-radius: 0; }
+.changes-diff { flex: 1; min-height: 0; overflow: auto; }
+.changes-diff-host .cm-editor { background: var(--panel); }
+.changes-diff-host .cm-mergeView { background: var(--panel); }
+.changes-diff-host .cm-changedLine, .changes-diff-host .cm-insertedLine, .changes-diff-host .cm-inlineChangedLine { background: var(--diff-add-bg) !important; }
+.changes-diff-host .cm-deletedChunk, .changes-diff-host .cm-deletedLine, .changes-diff-host .cm-deletedLine.cm-line { background: var(--diff-del-bg) !important; }
+.changes-diff-host .cm-changedText, .changes-diff-host ins { background: var(--diff-add-strong) !important; text-decoration: none; }
+.changes-diff-host del { background: var(--diff-del-strong) !important; text-decoration: none; }
+.changes-diff-host .cm-changedLineGutter { background: var(--green) !important; }
+.changes-diff-host .cm-deletedLineGutter { background: var(--red) !important; }
+.changes-diff-host .cm-merge-a .cm-changedLine, .changes-diff-host .cm-merge-a .cm-line.cm-changedLine { background: var(--diff-del-bg) !important; }
+.changes-diff-host .cm-merge-a .cm-changedText { background: var(--diff-del-strong) !important; }

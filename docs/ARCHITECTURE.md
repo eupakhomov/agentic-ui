@@ -18,7 +18,7 @@ decision log in `docs/plan/README.md` remains the authority on *why*; this file 
 │  Session sidebar: live state · time in state · PR · inline allow/deny       │
 │  SessionWidget ×N: transcript ⟵ zustand reducer ⟵ WS envelopes              │
 │    permission/plan cards · git panel · queued chips · mode toggle · budget   │
-│  TokenGate (bearer in localStorage) · desktop Notifications (unfocused tab)  │
+│  TokenGate (bearer, only on 401)    · desktop Notifications (unfocused tab)  │
 └───────┬──────────────────────────────────────────────────────────────────────┘
         │ REST /api/** (Authorization: Bearer)          WS /ws/sessions/{id}
         │                                               (token via Sec-WebSocket-Protocol,
@@ -508,5 +508,6 @@ diff-compare grid; a "fan out" checkbox in the create dialog + naming convention
 
 Limits/caps and env vars: see CLAUDE.md "Limits & caps". Logs: `logs/agentic-ui.log`,
 `logs/error.log`, `logs/sidecar/<sessionId>.log`. Auth: bearer token everywhere
-(REST header, WS subprotocol), startup guard refuses tokenless non-loopback binds.
+(REST header, WS subprotocol) unless switched off in Settings (read at startup); with it off,
+`LocalClientFilter` accepts only trusted client addresses / allowed Host / Origin (phase 17 B).
 Metrics: `claudeui.sessions.active|parked` via `/actuator/metrics` (token-gated).

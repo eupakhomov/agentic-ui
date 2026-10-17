@@ -85,6 +85,7 @@ public class SettingsService {
 	private static final String MCP_GRAPHIFY_ROOT_KEY = "mcp.graphify-root";
 	private static final String MCP_CODEGRAPH_ROOT_KEY = "mcp.codegraph-root";
 	private static final String CODE_INTEL_KEY = "mcp.code-intel";
+	private static final String AUTH_TOKEN_REQUIRED_KEY = "auth.token-required";
 	public static final String CODE_INTEL_NONE = "none";
 	public static final String CODE_INTEL_SERENA = "serena";
 	public static final String CODE_INTEL_GRAPHIFY = "graphify";
@@ -155,6 +156,8 @@ public class SettingsService {
 			SettingsPatch::defaultProvider);
 	private final Field<String> systemProviderField = strField(SYSTEM_PROVIDER_KEY, () -> "", SettingsPatch::systemProvider);
 	private final Field<String> memoryRoot;
+	/** Phase 17 B. Default tracks whether a token is configured, so existing installs behave unchanged. */
+	private final Field<Boolean> authTokenRequired;
 	private final Field<Boolean> memoryEnabled = boolField(MEMORY_ENABLED_KEY, true, SettingsPatch::memoryEnabled);
 	private final Field<Boolean> memoryReflectionDefault =
 			boolField(MEMORY_REFLECTION_DEFAULT_KEY, false, SettingsPatch::memoryReflectionDefault);
@@ -201,6 +204,9 @@ public class SettingsService {
 		this.mapper = mapper;
 		this.librarySkillsRoot = strField(LIBRARY_SKILLS_ROOT_KEY, () -> props == null ? "" : props.skillsRoot(),
 				SettingsPatch::librarySkillsRoot);
+		this.authTokenRequired = new Field<>(AUTH_TOKEN_REQUIRED_KEY,
+				() -> props != null && props.authToken() != null && !props.authToken().isBlank(),
+				Boolean::parseBoolean, Object::toString, UnaryOperator.identity(), SettingsPatch::authTokenRequired);
 		this.memoryRoot = strField(MEMORY_ROOT_KEY, () -> props == null ? "" : props.memoryRoot(), SettingsPatch::memoryRoot);
 		this.fields = List.of(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs,
 				monorepoDetectionEnabled, prChecksEnabled,
@@ -209,7 +215,7 @@ public class SettingsService {
 				memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes, memoryRetentionDays,
 				memoryReflectionApprovalRequired, serviceDiscoveryEnabled, serviceDiscoveryStalenessDays,
 				serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath, mcpGraphifyRoot,
-				mcpCodegraphRoot, codeIntelField, linearAllowedTools);
+				mcpCodegraphRoot, codeIntelField, linearAllowedTools, authTokenRequired);
 	}
 
 	/** One snapshot of every setting in {@link #fields}, cached until the next {@link #apply}. */
@@ -252,7 +258,8 @@ public class SettingsService {
 				mcpGraphifyRoot.resolve(raw),
 				mcpCodegraphRoot.resolve(raw),
 				storedCodeIntel.isBlank() ? defaultCodeIntel(serenaRoot) : storedCodeIntel,
-				linearAllowedTools.resolve(raw));
+				linearAllowedTools.resolve(raw),
+				authTokenRequired.resolve(raw));
 		cache = built;
 		return built;
 	}

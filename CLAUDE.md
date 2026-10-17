@@ -135,8 +135,9 @@ echo "UI: http://localhost:8080  token: $(cat /tmp/agentic-ui.token)"
 
 - **WSL gotcha**: bind `0.0.0.0`, not `127.0.0.1` — the Windows→WSL localhost relay
   only forwards wildcard binds, so a loopback-bound server is invisible to the
-  Windows browser (ERR_CONNECTION_REFUSED). The startup guard therefore requires a
-  token (`AGENTIC_UI_TOKEN`); tokenless is only allowed on `127.0.0.1`.
+  Windows browser (ERR_CONNECTION_REFUSED). With the token off the backend therefore checks the
+  client, not the bind: only addresses in `agentic-ui.auth.trusted-cidrs` (default loopback) with an
+  allowed `Host`/`Origin` are served — on WSL add the vEthernet range there (phase 17 B).
 - Logs: `tail -f /tmp/agentic-ui.log` for raw stdout; structured logs land in `logs/`
   (override dir with env `AGENTIC_UI_LOG_DIR`):
   - `logs/agentic-ui.log` — everything INFO+, rolled daily/10MB, 14 days kept
@@ -320,7 +321,7 @@ the backend's environment):
 | `AGENTIC_UI_JOURNAL_PAYLOAD_CAP` | `65536` | Max bytes for one journal event payload; larger payloads stored as a truncated preview |
 | `AGENTIC_UI_WS_BUFFER_LIMIT` | `1048576` | Per-client WS outbound buffer; a slow consumer overflowing it is disconnected (reconnects + replays losslessly) |
 | `AGENTIC_UI_LOG_DIR` | `logs` | Log directory (backend rolling logs + per-session sidecar stderr) |
-| `AGENTIC_UI_TOKEN` | — | Dashboard/API auth token (required for non-loopback binds). Pre-export a fixed value to keep the same token across restarts — `start.sh` reuses it instead of generating a random one; leave unset to keep the old behavior (a fresh random token printed on every start) |
+| `AGENTIC_UI_TOKEN` | — | Dashboard/API auth token. Enforced when set, unless Settings → Access → "Require access token" is switched off (read at startup, applies on restart); with the token off only trusted local clients are served (`agentic-ui.auth.*`, see DEPLOY.md). Pre-export a fixed value to keep the same token across restarts — `start.sh` reuses it instead of generating a random one; leave unset to keep the old behavior (a fresh random token printed on every start) |
 | `AGENTIC_UI_REPO` | `/mnt/d/projects/agentic-ui` | Default service repo (per-session selectable in the UI) |
 | `AGENTIC_UI_WORKTREE_ROOT` | `~/agentic-worktrees` | Where session worktrees live |
 | `AGENTIC_UI_SKILLS_ROOT` | `~/agentic-skills` | *Default* for the managed skills root, which is now a persisted setting (`library.skills-root`) — the create-dialog picker, provisioning's repo cache, and library imports all read the setting |
@@ -382,6 +383,21 @@ effect on the next use with no backend restart.
   worktree itself (not the original checkout) as its context — see
   `docs/plan/phase-11-monorepo.md`. Polyrepo (a folder of separate repos, or detection
   left off) is unchanged.
+- **Access** (Settings dialog → "Access", `auth.token-required`; phase 17 B) — whether the bearer
+  token is enforced. Default: on when a token is configured, off otherwise. **Read once at backend
+  startup** (`AuthTokenService`), so a change applies on the next restart; the dialog compares the
+  stored choice with `GET /api/auth/status` (what the running process enforces). With the token
+  off, `LocalClientFilter` (REST, the WS handshake, non-health actuator) accepts only
+  `agentic-ui.auth.trusted-cidrs` clients (env/yaml, default loopback) with a `Host` in
+  `allowed-hosts` and, when sent, an `Origin` on an allowed host or in `allowed-origins`;
+  `Sec-Fetch-Site: cross-site` is refused. These lists are security boundaries and are
+  deliberately not editable from the dashboard.
+- **Changes panel** (phase 17 C; widget header button or `c`) — read-only CodeMirror 6 diff of what the
+  branch would carry into a PR (working tree vs merge-base with `baseBranch`; one list with
+  `committed`/`staged`/`unstaged`/`untracked` badges). No editing: select lines and "Ask about these
+  lines" drops path, line range and the code into the composer. Backend `ChangesService`
+  (`GET /api/sessions/{id}/changes[/file?path=]`): only paths in the current change list are
+  readable (404 otherwise), never through symlinks or into `.git`, 1 MB cap, UTF-8 only.
 - **MCP servers / code intelligence** (Settings dialog → "MCP servers"; feature docs:
   `docs/plan/phase-12-linear-cache-serena-context.md` Track B for Serena,
   `docs/plan/phase-13-graphify.md` for graphify, `docs/plan/phase-14-codegraph.md` for

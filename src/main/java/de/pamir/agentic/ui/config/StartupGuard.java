@@ -1,35 +1,46 @@
 package de.pamir.agentic.ui.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.Set;
-
 /**
- * Fail fast rather than run an unauthenticated command-execution service on the LAN:
- * an empty auth token is only allowed when bound to loopback.
+ * Reports the effective auth posture at startup. Before phase 17 this refused to start with no
+ * token on a non-loopback bind; that rule moved to a per-request check ({@link LocalClientFilter}),
+ * which enforces "only trusted clients" wherever the socket is bound — the WSL setup has to bind
+ * {@code 0.0.0.0}, and a loopback reverse proxy is a loopback client.
  */
 @Component
 public class StartupGuard implements InitializingBean {
 
-	private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "::1");
+	private static final Logger log = LoggerFactory.getLogger(StartupGuard.class);
 
-	private final AppProperties props;
+	private final AuthTokenService auth;
+	private final AuthProperties authProps;
+	private final SettingsService settings;
 	private final String bindAddress;
 
-	public StartupGuard(AppProperties props, @Value("${server.address:127.0.0.1}") String bindAddress) {
-		this.props = props;
+	public StartupGuard(AuthTokenService auth, AuthProperties authProps, SettingsService settings,
+						@Value("${server.address:127.0.0.1}") String bindAddress) {
+		this.auth = auth;
+		this.authProps = authProps;
+		this.settings = settings;
 		this.bindAddress = bindAddress;
 	}
 
 	@Override
 	public void afterPropertiesSet() {
-		boolean tokenMissing = props.authToken() == null || props.authToken().isBlank();
-		if (tokenMissing && !LOOPBACK.contains(bindAddress)) {
-			throw new IllegalStateException(
-					"refusing to bind to " + bindAddress + " without an auth token; "
-							+ "set agentic-ui.auth-token (AGENTIC_UI_TOKEN) or bind to 127.0.0.1");
+		if (auth.required()) {
+			log.info("auth: bearer token required");
+			return;
 		}
+		if (settings.current().authTokenRequired() && !auth.tokenConfigured()) {
+			log.warn("auth: 'Require access token' is on but no token is configured (agentic-ui.auth-token / "
+					+ "AGENTIC_UI_TOKEN) — running with the token off");
+		}
+		log.warn("auth: token OFF — only clients in {} are accepted (Host in {}) on {}", authProps.trustedCidrs(),
+				authProps.allowedHosts(), bindAddress);
 	}
 }

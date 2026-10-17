@@ -1,4 +1,4 @@
-import type { AssetKind, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, PrInfo, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketList, TurnUsage } from '../protocol';
+import type { AssetKind, AuthStatus, ChangeList, ChangedFileView, FilledMeta, ImportItemResult, LibraryAsset, LibraryAssetContent, LibrarySearchHit, LibrarySource, MemoryDoc, MemoryDocDetail, MemoryEpisode, MemoryProposal, MemoryProposedOp, MemorySearchHit, PrInfo, ProviderView, ScanResult, ServiceProfileView, ServicesResponse, SessionDetail, SessionEntity, SessionSummary, Settings, StaleSession, Template, TicketList, TurnUsage } from '../protocol';
 
 let authToken: string | null = localStorage.getItem('agentic-ui.token');
 
@@ -98,6 +98,10 @@ export const api = {
   listRecentTickets: (refresh: boolean, signal?: AbortSignal) =>
     request<TicketList>('POST', `/api/tickets/recent?refresh=${refresh}`, undefined, signal),
   getSettings: () => request<Settings>('GET', '/api/settings'),
+  sessionChanges: (sessionId: string) => request<ChangeList>('GET', `/api/sessions/${sessionId}/changes`),
+  sessionChangedFile: (sessionId: string, path: string) =>
+    request<ChangedFileView>('GET', `/api/sessions/${sessionId}/changes/file?path=${encodeURIComponent(path)}`),
+  authStatus: () => request<AuthStatus>('GET', '/api/auth/status'),
   updateSettings: (patch: Partial<Pick<Settings, 'linearOAuthEnabled' | 'ticketImportSpec' | 'ecosystemRoot'
     | 'monorepoServiceGlobs' | 'monorepoDetectionEnabled'
     | 'prChecksEnabled' | 'prCheckPollIntervalSeconds' | 'librarySkillsRoot' | 'libraryAgentsRoot'
@@ -106,7 +110,7 @@ export const api = {
     | 'memoryReflectionModel' | 'memorySyncIntervalMinutes' | 'memoryRetentionDays'
     | 'memoryReflectionApprovalRequired' | 'serviceDiscoveryEnabled' | 'serviceDiscoveryStalenessDays'
     | 'serviceDiscoveryModel' | 'contextWarnPercent' | 'mcpSerenaRoot' | 'mcpUvPath' | 'mcpGraphifyRoot'
-    | 'mcpCodegraphRoot' | 'codeIntel' | 'linearAllowedTools'>>) =>
+    | 'mcpCodegraphRoot' | 'codeIntel' | 'linearAllowedTools' | 'authTokenRequired'>>) =>
     request<Settings>('PATCH', '/api/settings', patch),
   listProviders: () => request<ProviderView[]>('GET', '/api/providers'),
   libraryScan: (type: 'dir' | 'repo', ref: string, signal?: AbortSignal) =>

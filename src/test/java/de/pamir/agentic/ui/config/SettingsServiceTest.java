@@ -19,6 +19,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SettingsServiceTest {
 
 	private SettingsService newService() {
+		return newService(null);
+	}
+
+	private SettingsService newServiceWithToken(String token) {
+		return newService(new AppProperties(null, null, null, null, 0, token, "", "", "logs", 30, 65536, 1048576, null));
+	}
+
+	private SettingsService newService(AppProperties props) {
 		Map<String, String> store = new HashMap<>();
 		SettingsRepository repo = new SettingsRepository(null) {
 			@Override
@@ -36,7 +44,20 @@ class SettingsServiceTest {
 				return new HashMap<>(store);
 			}
 		};
-		return new SettingsService(repo, null, null);
+		return new SettingsService(repo, props, null);
+	}
+
+	@Test
+	void authTokenRequiredDefaultsToOffWithoutAConfiguredToken() {
+		assertThat(newService().current().authTokenRequired()).isFalse();
+	}
+
+	@Test
+	void authTokenRequiredDefaultsToOnWhenATokenIsConfigured() {
+		SettingsService settings = newServiceWithToken("secret");
+		assertThat(settings.current().authTokenRequired()).isTrue();
+		settings.apply(SettingsPatch.builder().authTokenRequired(false).build());
+		assertThat(settings.current().authTokenRequired()).isFalse();
 	}
 
 	@Test

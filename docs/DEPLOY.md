@@ -126,9 +126,21 @@ will ask once whether `java` may accept incoming connections — allow it. For a
 beyond a trusted home network put TLS in front (e.g. Tailscale, or a Caddy reverse proxy
 in front of a loopback-only backend).
 
-**Local-only, no token**: run the jar directly instead of via the scripts —
-`java -jar target/agentic.ui-*.jar` binds `127.0.0.1` and allows tokenless login
-there (and only there).
+**Token on or off** (Settings → Access → "Require access token"): the choice is stored in the
+database but **read once at startup, so it applies on the next restart** (the dialog shows
+what the running process actually enforces). The default is on when `AGENTIC_UI_TOKEN` is
+set, off otherwise. With the token **off**, the backend accepts only trusted local clients:
+the client address must be in `agentic-ui.auth.trusted-cidrs` (default: loopback), the `Host`
+header in `agentic-ui.auth.allowed-hosts` (default: `localhost`, `127.0.0.1`, `[::1]`; any
+port), and a browser `Origin` must belong to an allowed host or be listed in
+`agentic-ui.auth.allowed-origins`. Anything else gets a 403, which also stops a web page you
+visit from driving the backend on localhost. This works whatever address the socket is bound to:
+- **WSL**: the backend must bind `0.0.0.0` for the Windows browser to reach it, so add the WSL
+  virtual-network range to `trusted-cidrs` (or use mirrored networking, where Windows clients
+  arrive from loopback).
+- **Remote access with the token off**: an SSH tunnel (`ssh -L 8080:localhost:8080`), Tailscale, or
+  an authenticating reverse proxy (Caddy, oauth2-proxy) on loopback with its public hostname added
+  to `allowed-hosts`. The proxy is a loopback client, so `trusted-cidrs` needs no change.
 
 ### Start at login (optional)
 
@@ -278,7 +290,7 @@ kill "$(cat /tmp/agentic-ui.pid)"   # a live JVM holds the jar; install.sh refus
 
 | Symptom | Cause / fix |
 |---|---|
-| Startup: "refusing to bind … without an auth token" | The backend was started on a non-loopback address without `AGENTIC_UI_TOKEN`. Use `./start.sh` (it always passes a token) or export `AGENTIC_UI_TOKEN` (§3) |
+| 403 "auth disabled; only trusted local clients are accepted (…)" | The token is off and the request failed the local-client check; the parenthesis names which one (client address, Host, Origin, cross-site). Add the client's range to `agentic-ui.auth.trusted-cidrs` or the hostname to `allowed-hosts`, or turn the token on (Settings → Access, then restart) |
 | Session stuck in STARTING, then CRASHED | `node` not on the backend's `PATH`, sidecar not built (§5), or `claude` never logged in — check `logs/sidecar/<id>.log` |
 | Same, only for `provider: codex` sessions | `sidecar-codex` not built (§5), or `codex login` never done — check `logs/sidecar/<id>.log` |
 | Sidecar build fails with a `TS1010`/syntax error inside `node_modules/@types/...` | A truncated/corrupt `node_modules` (interrupted install, bad npm cache, synced folder) — `rm -rf node_modules && npm cache verify && npm ci` in that package |

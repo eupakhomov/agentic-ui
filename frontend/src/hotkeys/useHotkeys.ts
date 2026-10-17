@@ -17,7 +17,7 @@ export interface HotkeyActions {
   toggleMaximizeFocused: () => void;
   toggleMinimizeFocused: () => void;
   openExpose: () => void;
-  /** phase 16: sidebar expanded → rail → hidden */
+  /** phase 16: sidebar expanded ↔ rail */
   cycleSidebar: () => void;
   /** phase 16: grid ↔ focus layout */
   toggleLayoutMode: () => void;
@@ -132,6 +132,9 @@ export function useHotkeys(actions: HotkeyActions): void {
           return;
         case 'g':
           if (focused) getWidget(focused)?.toggleGit();
+          return;
+        case 'c':
+          if (focused) getWidget(focused)?.toggleChanges();
           return;
         case 'f':
           if (focused) a.toggleMaximizeFocused();

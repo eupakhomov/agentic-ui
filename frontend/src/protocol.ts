@@ -237,6 +237,50 @@ export interface Settings {
   linearAllowedTools: string;
   /** which code-intelligence tool sessions may opt into — one per install (phase 13 decision 1); always resolved */
   codeIntel: CodeIntel;
+  /** phase 17: stored "require the access token" choice — read once at backend startup, so it applies on restart */
+  authTokenRequired: boolean;
+}
+
+/** phase 17 C: one row of the changes panel (working tree vs merge-base, plus untracked) */
+export interface ChangedFile {
+  path: string;
+  /** set for a rename */
+  oldPath: string | null;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
+  /** which git states the change is in; a file can be several (committed then edited again) */
+  where: Array<'committed' | 'staged' | 'unstaged' | 'untracked'>;
+  additions: number;
+  deletions: number;
+  /** working-tree mtime (epoch ms), 0 if absent — only compared for equality */
+  mtime: number;
+}
+
+export interface ChangeList {
+  baseBranch: string;
+  /** merge-base commit, null when the base branch can't be resolved */
+  mergeBase: string | null;
+  baseKnown: boolean;
+  files: ChangedFile[];
+}
+
+export interface ChangedFileView {
+  path: string;
+  oldPath: string | null;
+  status: ChangedFile['status'];
+  /** null for a deleted or binary file */
+  content: string | null;
+  /** null for an added or binary file */
+  baseContent: string | null;
+  binary: boolean;
+  /** over 1 MB: the first 1 MB is shown */
+  truncated: boolean;
+  size: number;
+}
+
+/** `GET /api/auth/status` — what the running backend actually enforces (always open) */
+export interface AuthStatus {
+  required: boolean;
+  tokenConfigured: boolean;
 }
 
 /** phase 13/14: the global one-of code-intelligence selector; `none` hides the create-dialog checkbox */

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useStore, type SessionView } from './store/store';
-import { buildSidebarModel, shortAge } from './sidebarModel';
+import { buildSidebarModel, normalizeFold, shortAge } from './sidebarModel';
 
 // views are built through the store's own seed(), so they start from the real emptyView()
 function view(id: string, patch: Partial<SessionView>): void {
@@ -77,5 +77,20 @@ describe('shortAge', () => {
     expect(shortAge('2026-10-01T10:00:00Z', now)).toBe('2h');
     expect(shortAge('2026-09-28T12:00:00Z', now)).toBe('3d');
     expect(shortAge(null, now)).toBe('');
+  });
+});
+
+describe('normalizeFold', () => {
+  it('keeps the two valid states', () => {
+    expect(normalizeFold('expanded', 500)).toBe('expanded');
+    expect(normalizeFold('rail', 2000)).toBe('rail');
+  });
+  it('migrates the removed hidden state to rail', () => {
+    expect(normalizeFold('hidden', 2000)).toBe('rail');
+  });
+  it('defaults by window width when nothing valid is stored', () => {
+    expect(normalizeFold(null, 1000)).toBe('rail');
+    expect(normalizeFold(null, 1400)).toBe('expanded');
+    expect(normalizeFold('garbage', 1400)).toBe('expanded');
   });
 });

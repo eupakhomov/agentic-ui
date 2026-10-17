@@ -49,7 +49,7 @@ sidebar shows is already in the Zustand store or in WS envelopes:
 
 ### P1 — Sidebar shape
 
-- **Three fold states**, cycled by a hotkey and a topbar button, and persisted
+- **Three fold states** (*superseded in phase 17: `hidden` was removed, only `expanded` and `rail` remain; a stored `hidden` migrates to `rail`*), cycled by a hotkey and a topbar button, and persisted
   (`agentic-ui.sidebar`):
   - `expanded`: about 260px wide, full rows.
   - `rail`: about 44px wide. It shows a state dot per session (in sidebar order) and a

@@ -30,6 +30,9 @@ public class WebSocketConfig implements WebSocketConfigurer {
 	public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
 		registry.addHandler(handler, "/ws/sessions/*")
 				.addInterceptors(authInterceptor())
+				// Origin policy is not Spring's job here: with the token on, any origin may connect (the
+				// token is the gate); with it off, LocalClientFilter sees the handshake as a plain HTTP
+				// request first and enforces Host/Origin/client address (phase 17 B).
 				.setAllowedOrigins("*");
 	}
 

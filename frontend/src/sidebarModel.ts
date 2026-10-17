@@ -104,3 +104,13 @@ export function shortAge(iso: string | null, now: number): string {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
 }
+
+/**
+ * Stored sidebar fold → a valid one. Phase 17 dropped the `hidden` state; an old stored
+ * `hidden` (or anything unknown/absent) falls back to the width-based default or `rail`.
+ */
+export function normalizeFold(stored: string | null, windowWidth: number): 'expanded' | 'rail' {
+  if (stored === 'expanded' || stored === 'rail') return stored;
+  if (stored === 'hidden') return 'rail';
+  return windowWidth < 1100 ? 'rail' : 'expanded';
+}

@@ -34,10 +34,12 @@ async function gitApi<T>(id: string, path: string, method = 'GET', body?: unknow
   return api.raw<T>(method, `/api/sessions/${id}/git/${path}`, body);
 }
 
-export default function GitPanel({ sessionId, sessionType, onClose, prUrl, prCheckStatus, onPrCreated }: {
+export default function GitPanel({ sessionId, sessionType, onClose, onOpenChanges, prUrl, prCheckStatus, onPrCreated }: {
   sessionId: string;
   sessionType: SessionType;
   onClose: () => void;
+  /** opens the changes panel (syntax-highlighted diff vs the base branch, ask the agent about lines) */
+  onOpenChanges: () => void;
   prUrl: string | null;
   prCheckStatus: PrCheckStatus | null;
   onPrCreated: (url: string) => void;
@@ -103,6 +105,7 @@ export default function GitPanel({ sessionId, sessionType, onClose, prUrl, prChe
         {status && status.dirty.length > 0 ? (
           <>
             <pre className="git-files">{status.dirty.join('\n')}</pre>
+            <button onClick={onOpenChanges} title="syntax-highlighted diff against the base branch (c)">Review changes</button>{' '}
             <button onClick={() => void run('diff', async () => setDiff(diff === null ? (await gitApi<{ diff: string }>(sessionId, 'diff')).diff : null))}>
               {diff === null ? 'Show diff' : 'Hide diff'}
             </button>

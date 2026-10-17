@@ -14,7 +14,7 @@ import ServiceDiscoveryDialog from './ServiceDiscoveryDialog';
 import HotkeyCheatsheet from './HotkeyCheatsheet';
 import ExposeOverlay from './ExposeOverlay';
 import Sidebar, { type SidebarFold } from './Sidebar';
-import { buildSidebarModel } from '../sidebarModel';
+import { buildSidebarModel, normalizeFold } from '../sidebarModel';
 import { useStore } from '../store/store';
 import { notificationsEnabled, notify, toggleNotifications } from '../notify';
 import { useHotkeys } from '../hotkeys/useHotkeys';
@@ -28,14 +28,14 @@ const MINIMIZED_KEY = 'agentic-ui.minimized';
 const SIDEBAR_KEY = 'agentic-ui.sidebar';
 const LAYOUT_MODE_KEY = 'agentic-ui.layoutMode';
 const COLS = 12;
-const FOLD_CYCLE: SidebarFold[] = ['expanded', 'rail', 'hidden'];
+const FOLD_CYCLE: SidebarFold[] = ['expanded', 'rail'];
 
 type LayoutMode = 'grid' | 'focus';
 
 function loadFold(): SidebarFold {
-  const stored = localStorage.getItem(SIDEBAR_KEY) as SidebarFold | null;
-  if (stored && FOLD_CYCLE.includes(stored)) return stored;
-  return window.innerWidth < 1100 ? 'rail' : 'expanded';
+  const fold = normalizeFold(localStorage.getItem(SIDEBAR_KEY), window.innerWidth);
+  localStorage.setItem(SIDEBAR_KEY, fold);
+  return fold;
 }
 
 function loadLayoutMode(): LayoutMode {
@@ -390,8 +390,8 @@ export default function Dashboard({ initialSessions }: { initialSessions: Sessio
     <>
       <div className="topbar" ref={topbarRef}>
         <button
-          className={`icon-btn${fold !== 'hidden' ? ' active' : ''}`}
-          title={`Sidebar: ${fold} — click to cycle (b)`}
+          className={`icon-btn${fold === 'expanded' ? ' active' : ''}`}
+          title={`Sidebar: ${fold} — click to toggle (b)`}
           onClick={cycleFold}
         ><SidebarToggle /></button>
         <h1>agentic-ui</h1>

@@ -51,5 +51,31 @@ public record Settings(
 		 */
 		String codeIntel,
 		/** Comma-separated Linear MCP tool names sessions may call; blank = {@link SettingsService#DEFAULT_LINEAR_ALLOWED_TOOLS}. Baked into each new session. */
-		String linearAllowedTools) {
+		String linearAllowedTools,
+		/**
+		 * Whether the bearer token is enforced (phase 17 B). Read once at startup by {@link
+		 * AuthTokenService}, so a change applies on the next restart. Default: on when a token is
+		 * configured, off otherwise.
+		 */
+		boolean authTokenRequired) {
+
+	/** Pre-phase-17 arity (no {@code authTokenRequired}); keeps fixed-settings test fixtures compiling. */
+	public Settings(boolean linearOAuthEnabled, String ticketImportSpec, String ecosystemRoot,
+					String monorepoServiceGlobs, boolean monorepoDetectionEnabled, boolean prChecksEnabled,
+					int prCheckPollIntervalSeconds, String librarySkillsRoot, String libraryAgentsRoot,
+					boolean libraryVectorize, boolean librarySyncEnabled, int librarySyncIntervalMinutes,
+					String defaultProvider, String systemProvider, String memoryRoot, boolean memoryEnabled,
+					boolean memoryReflectionDefault, String memoryReflectionModel, int memorySyncIntervalMinutes,
+					int memoryRetentionDays, boolean memoryReflectionApprovalRequired,
+					boolean serviceDiscoveryEnabled, int serviceDiscoveryStalenessDays,
+					String serviceDiscoveryModel, int contextWarnPercent, String mcpSerenaRoot, String mcpUvPath,
+					String mcpGraphifyRoot, String mcpCodegraphRoot, String codeIntel, String linearAllowedTools) {
+		this(linearOAuthEnabled, ticketImportSpec, ecosystemRoot, monorepoServiceGlobs, monorepoDetectionEnabled,
+				prChecksEnabled, prCheckPollIntervalSeconds, librarySkillsRoot, libraryAgentsRoot, libraryVectorize,
+				librarySyncEnabled, librarySyncIntervalMinutes, defaultProvider, systemProvider, memoryRoot,
+				memoryEnabled, memoryReflectionDefault, memoryReflectionModel, memorySyncIntervalMinutes,
+				memoryRetentionDays, memoryReflectionApprovalRequired, serviceDiscoveryEnabled,
+				serviceDiscoveryStalenessDays, serviceDiscoveryModel, contextWarnPercent, mcpSerenaRoot, mcpUvPath,
+				mcpGraphifyRoot, mcpCodegraphRoot, codeIntel, linearAllowedTools, false);
+	}
 }

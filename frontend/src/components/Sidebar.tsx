@@ -6,7 +6,7 @@ import { shortAge, type NeedsYouItem, type SidebarModel, type SidebarRow } from 
 import { MinimizeToDock, NeedsYou, PullRequest } from '../icons';
 import { PR_STATUS_LABEL } from './SessionWidget';
 
-export type SidebarFold = 'expanded' | 'rail' | 'hidden';
+export type SidebarFold = 'expanded' | 'rail';
 
 /** a response the backend never acknowledges (e.g. sent into a dropped WS) re-enables the buttons after this */
 const IN_FLIGHT_TIMEOUT_MS = 10_000;
@@ -43,7 +43,6 @@ export default function Sidebar({
     return () => clearInterval(timer);
   }, []);
 
-  if (fold === 'hidden') return null;
 
   const respond = (item: NeedsYouItem, decision: 'allow' | 'deny') => {
     const response = permissionResponseFor(item.toolName, item.isPlan, decision);

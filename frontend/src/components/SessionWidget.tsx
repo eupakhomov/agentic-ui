@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../api/rest';
 import { WsSession } from '../api/ws';
 import { contextUsageTitle } from '../protocol';
-import type { Envelope, PermissionMode, PrCheckStatus, SessionEntity } from '../protocol';
+import type { ChangeList, Envelope, PermissionMode, PrCheckStatus, SessionEntity } from '../protocol';
 import { type CodeIntelStatus, useStore } from '../store/store';
 import { notify, notificationForEvent } from '../notify';
 import { registerWidget, unregisterWidget } from '../hotkeys/widgetRegistry';
 import {
   ChildOf, Close, ContinuedFrom, DownloadIcon, Duplicate, EcosystemContext, GitPanelIcon,
-  InfoTag, Interrupt, LinkedTicket, Maximize, Memory, MinimizeToDock, PullRequest, Restore, SystemSession,
+  ChangesIcon, InfoTag, Interrupt, LinkedTicket, Maximize, Memory, MinimizeToDock, PullRequest, Restore, SystemSession,
 } from '../icons';
 import Transcript from './Transcript';
 import CloseDialog from './CloseDialog';
 import DuplicateDialog from './DuplicateDialog';
 import GitPanel from './GitPanel';
+import { appendToComposer } from '../changes/selection';
+const ChangesPanel = lazy(() => import('./ChangesPanel'));
 import ContextSuggestionCard from './ContextSuggestionCard';
 
 export const MODE_CYCLE: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
@@ -73,6 +75,13 @@ export default function SessionWidget({
   const [closing, setClosing] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [showGit, setShowGit] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
+  const [changes, setChanges] = useState<ChangeList | null>(null);
+  const [changesLoading, setChangesLoading] = useState(false);
+  const [changesError, setChangesError] = useState('');
+  const [widgetW, setWidgetW] = useState(0);
+  const widgetRef = useRef<HTMLDivElement>(null);
+  const changesSeq = useRef(0);
   const [actionError, setActionError] = useState('');
   const [reflecting, setReflecting] = useState(false);
   const [compacting, setCompacting] = useState(false);
@@ -164,6 +173,7 @@ export default function SessionWidget({
     registerWidget(sessionId, {
       focusComposer: () => composerRef.current?.focus(),
       toggleGit: () => setShowGit((v) => !v),
+      toggleChanges: () => setShowChanges((v) => !v),
       respondPermission: (requestId, response) => send({ type: 'permission_response', requestId, ...response }),
     });
     return () => unregisterWidget(sessionId);
@@ -246,10 +256,59 @@ export default function SessionWidget({
     return cls;
   }, [state, focusedId, sessionId]);
 
+  const refreshChanges = useCallback(async () => {
+    const seq = ++changesSeq.current;
+    setChangesLoading(true);
+    try {
+      const list = await api.sessionChanges(sessionId);
+      if (seq === changesSeq.current) {
+        setChanges(list);
+        setChangesError('');
+      }
+    } catch (e) {
+      if (seq === changesSeq.current) setChangesError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      if (seq === changesSeq.current) setChangesLoading(false);
+    }
+  }, [sessionId]);
+
+  // the header badge and the open panel follow the branch: re-list whenever a turn is over (not
+  // while it runs — the agent is mid-edit), and every few seconds while the panel is open
+  const isSystem = entity?.kind === 'system';
+  const settled = state === 'IDLE' || state === 'PARKED' || state === 'WAITING_INPUT';
+  useEffect(() => {
+    if (isSystem || !entity || !settled) return;
+    void refreshChanges();
+  }, [isSystem, entity, settled, refreshChanges]);
+  useEffect(() => {
+    if (!showChanges) return;
+    void refreshChanges();
+    const t = setInterval(() => void refreshChanges(), 8000);
+    return () => clearInterval(t);
+  }, [showChanges, refreshChanges]);
+  useEffect(() => {
+    const el = widgetRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidgetW(el.getBoundingClientRect().width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [view === undefined]);
+  const changesOverlay = widgetW < 900;
+  const askAgent = useCallback((text: string) => {
+    setInput((cur) => appendToComposer(cur, text));
+    if (changesOverlay) setShowChanges(false); // the composer is under the overlay; show it
+    requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [changesOverlay]);
+
   if (!view) return <div className="widget"><div className="overlay">loading…</div></div>;
 
   return (
-    <div className={widgetClass} onClick={() => setFocused(sessionId)}>
+    <div className={widgetClass} ref={widgetRef} onClick={() => setFocused(sessionId)}>
       <div
         className="widget-header"
         onDoubleClick={(e) => {
@@ -402,6 +461,17 @@ export default function SessionWidget({
         )}
         {entity?.kind !== 'system' && (
           <button
+            className={`icon-btn with-badge${showChanges ? ' active' : ''}`}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setShowChanges((v) => !v)}
+            title={changes && changes.files.length > 0 ? `changes — ${changes.files.length} file(s) vs ${changes.baseBranch} (c)` : 'changes (c)'}
+          >
+            <ChangesIcon />
+            {changes && changes.files.length > 0 && <span className="count-badge">{changes.files.length}</span>}
+          </button>
+        )}
+        {entity?.kind !== 'system' && (
+          <button
             className="icon-btn"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setDuplicating(true)}
@@ -436,6 +506,7 @@ export default function SessionWidget({
           title="close session"
         ><Close /></button>
       </div>
+      <div className="widget-content">
       <div className="widget-body">
         {view.wsStatus !== 'open' && state !== 'CLOSED' && (
           <div className="overlay">disconnected — reconnecting…</div>
@@ -445,6 +516,7 @@ export default function SessionWidget({
             sessionId={sessionId}
             sessionType={entity?.sessionType ?? 'development'}
             onClose={() => setShowGit(false)}
+            onOpenChanges={() => setShowChanges(true)}
             prUrl={view.prUrl}
             prCheckStatus={view.prCheckStatus}
             onPrCreated={(url) => seed(sessionId, (v) => ({ ...v, prUrl: url, prCheckStatus: 'PENDING' }))}
@@ -500,6 +572,21 @@ export default function SessionWidget({
             <button className="primary" onClick={submit} disabled={state === 'CRASHED' || state === 'FAILED'}>Send</button>
           </div>
         </div>
+      </div>
+      {showChanges && entity?.kind !== 'system' && (
+        <Suspense fallback={<div className={`changes-panel${changesOverlay ? ' overlay' : ''}`}><div className="changes-empty">loading…</div></div>}>
+          <ChangesPanel
+            sessionId={sessionId}
+            changes={changes}
+            loading={changesLoading}
+            error={changesError}
+            onRefresh={() => void refreshChanges()}
+            onClose={() => setShowChanges(false)}
+            onAsk={askAgent}
+            overlay={changesOverlay}
+          />
+        </Suspense>
+      )}
       </div>
       {closing && (
         <CloseDialog
