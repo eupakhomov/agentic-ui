@@ -1,6 +1,4 @@
-<p align="center"><img src="docs/images/artus-logo.svg" alt="Artus" width="128"></p>
-
-# Artus
+<h1><img src="docs/images/artus-logo.svg" alt="" width="40" height="40"> Artus</h1>
 
 **Multi-session manager for Claude Code and Codex.**
 
