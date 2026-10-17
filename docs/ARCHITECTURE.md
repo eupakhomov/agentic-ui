@@ -27,7 +27,7 @@ decision log in `docs/plan/README.md` remains the authority on *why*; this file 
 │ Controllers: sessions · templates · git ops · meta (services/branches/skills)│
 │              maintenance (orphans) · SPA fallback                            │
 │ SessionService ── state machine, FIFO queue, budgets (create/close/sidecar   │
-│   events); SystemSessionService (singleton system session + runSystemTurn),  │
+│   events); SystemSessionService (per-lane system sessions + runSystemTurn),  │
 │   SessionConfigFactory (create-config/MCP defaults), AutoTitleService,       │
 │   SessionHousekeeping (parking/orphan sweep) split out — Phase 9 Run E       │
 │   │        │                                                                 │
@@ -137,7 +137,7 @@ Full design + decisions: `docs/plan/phase-5.3-memory-reflection.md`.
   `SystemSessionService.runSystemTurn(prompt, model, lane, timeout)` gained a
   model-override overload so reflection can run on a different model than the
   system session's default haiku (the `lane` param is Phase 9 Run E's S2 — reflection
-  runs on the BACKGROUND lane so it never blocks an interactive system-session caller). The model's JSON response (`episode` + up to 10 `semantic` ops)
+  runs on the BACKGROUND lane so it never blocks an interactive system-session caller — since phase 19 each lane has its own system session, so that holds structurally, and every session is recycled to an empty conversation after each turn). The model's JSON response (`episode` + up to 10 `semantic` ops)
   is, **by default, held for human approval rather than applied** (`memory.
   reflection-approval-required`, default true): a `memory_proposal` row
   (V10, `PENDING`/`APPROVED`/`DISCARDED`, partial unique index enforcing at most

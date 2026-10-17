@@ -1,6 +1,6 @@
 # Phase 19 — System session refactor: per-lane stateless workers
 
-Status: **proposed (2026-10-17)**. Nothing is implemented. Backend-heavy, one small frontend
+Status: **landed (2026-10-17)**, all five steps; live manual script pending. Backend-heavy, one small frontend
 touch (queue copy in the ticket dialogs); no schema migration.
 
 ## Background
@@ -235,4 +235,48 @@ mentions the direct-API fast path), `ARCHITECTURE.md`, decision log, phases tabl
 
 ## Implementation log
 
-_Not started._
+### 2026-10-17 — Steps 1–2 (per-lane workers + recycling)
+
+- `SystemSessionService`: private `SystemWorker` per lane (lock, pending-turn fields, name
+  `system-interactive` / `system-background`); `workerFor(sessionId)` routes sidecar events;
+  `warmUp()`/`isWarm()` target the interactive worker. `SessionRepository.findSystemSession(name)`
+  + `findLiveSystemSessions()`.
+- Recycle runs in the turn body's `finally`, before the lock is released
+  (`SessionService.recycleSystemSession`): **terminate first, outside the session lock**, then under
+  it clear `provider_session_id` and PARK — so nothing from the dying sidecar can land after the
+  clear (deviation from the spec's literal order, which cleared before terminating).
+- **Deviation:** only the interactive worker re-warms after a recycle; the background worker stays
+  parked until used (spec said "that worker", which would spawn an idle sidecar after every
+  reflection/auto-title).
+- **Addition:** `SessionHousekeeping.parkIdleSessions` no longer requires a provider session id for
+  `kind='system'` — a re-warmed session has none until its first turn (`system_init`), so it would
+  otherwise never idle-park.
+- `SessionHousekeeping.retireLegacySystemSessions` (startup): live system rows with neither lane name
+  are killed (orphan pid) and closed via the normal system-session close path.
+- Tests: `SystemSessionServiceRunTurnTest` — background doesn't block interactive, event routing,
+  recycled background row PARKED with null provider id and no handle, failed turn recycles +
+  interactive re-warms, legacy row retired. Existing lock test now drives a `ready` event after the
+  recycle. Full `mvn verify` tests: 629 run, 0 failures (jar repackage hit a clash with a concurrent
+  Maven run; `package -DskipTests` is clean). Live manual script (items 1, 4, 5, 9) **not yet run**.
+
+### 2026-10-17 — Steps 3–5 (queue UX, direct Linear API, docs)
+
+- **Queue UX:** `INTERACTIVE_LOCK_WAIT` 20 s; `SystemSessionService.busy()`; `EnabledResponse.busy`;
+  new `frontend/src/ticketCopy.ts` (`ticketWaitCopy(warm, busy)`, unit-tested) drives the
+  "finishing another assistant task, then fetching from Linear…" wording in both create dialogs and
+  `TicketPickerDialog` (its `warm` prop became `waitCopy`); `useTicketImport` safety nets 50 s → 100 s.
+  **Deviation:** `busy` reports a *real turn* in flight (a `turnRunning` flag on the worker), not
+  `availablePermits() == 0` — the lock is also held by the fire-and-forget warm-up that this very
+  endpoint triggers, which would have shown "finishing another task" for a plain wake. No controller
+  test (no ticket-controller test harness exists); the service-level `busyReportsAnInteractiveTurnInFlightOnly`
+  covers the accessor.
+- **Linear API:** new `integration/LinearApiClient` (JDK `HttpClient`, `Authorization: <key>`, 10 s,
+  injectable `Transport`; `LinearApiException` with an `isAuth()` flag for 401/403). `listMyTickets`
+  uses it when a key is set (same cache/`cached` flag); `fetchTicketImport` inlines issue + comments
+  (cap 20 000 chars, `…truncated`) into a no-MCP prompt and sets the canonical `ticketRef` from the
+  fetched identifier itself. Any `LinearApiException` → one WARN and today's system-turn path;
+  no client / no key → byte-identical to before. "API-key mode" means the key is set, matching
+  `SessionConfigFactory.linearMcpServer()` ("explicit key wins even if OAuth is also enabled").
+- **Docs:** `CLAUDE.md` (provider paragraph + Linear env-var row), `docs/ARCHITECTURE.md` box line.
+- Suites: backend `mvn test` 640 run / 0 failures; frontend vitest 80 + `tsc --noEmit` + `npm run build`
+  green; sidecars untouched (not re-run). Live manual script (1–9) still to be run by the user.

@@ -44,10 +44,15 @@ final class FakeSessionRepository extends SessionRepository {
 	}
 
 	@Override
-	public Optional<SessionEntity> findSystemSession() {
+	public Optional<SessionEntity> findSystemSession(String name) {
+		return findLiveSystemSessions().stream().filter(e -> name.equals(e.name())).findFirst();
+	}
+
+	@Override
+	public List<SessionEntity> findLiveSystemSessions() {
 		return byId.values().stream()
 				.filter(e -> "system".equals(e.kind()) && e.state() != SessionState.CLOSED && e.state() != SessionState.FAILED)
-				.findFirst();
+				.toList();
 	}
 
 	@Override

@@ -823,6 +823,26 @@ public class SessionService {
 		journal.release(id);
 	}
 
+	/**
+	 * Package-private: called by {@link SystemSessionService} after each completed system turn
+	 * (phase 19 — fresh conversation per task). Terminates outside {@link #lock} (the dying
+	 * sidecar's final events need it), then clears the provider session id and parks under it —
+	 * nothing from the old process can land after the clear. Skips a session that is closing or
+	 * already finished.
+	 */
+	void recycleSystemSession(SessionEntity session) {
+		UUID id = session.id();
+		sidecars.terminate(id);
+		synchronized (lock(id)) {
+			SessionState state = sessions.get(id).state();
+			if (state == SessionState.CLOSING || state == SessionState.CLOSED || state == SessionState.FAILED) {
+				return;
+			}
+			sessions.updateProviderSessionId(id, null);
+			transition(id, SessionState.PARKED);
+		}
+	}
+
 	/** Package-private: test-only visibility into R4's lock-release bookkeeping. */
 	boolean hasLock(UUID id) {
 		return locks.containsKey(id);

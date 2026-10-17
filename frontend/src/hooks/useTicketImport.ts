@@ -33,11 +33,10 @@ export function useTicketImport(validModelIds: string[]) {
     setImportBusy(true);
     const controller = new AbortController();
     importAbortRef.current = controller;
-    // backend already bounds the underlying system-session turn to 45s (see
-    // SessionService.runSystemTurn / TicketImportService) and always resolves with a real error
-    // by then; this is a client-side safety net so the button can never get stuck forever even if
-    // that assumption turns out wrong in some environment
-    const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
+    // backend always resolves by lock-wait (20s) + turn timeout (45s) + revival budget (30s) at the
+    // latest; this is a client-side safety net against a hung connection, not a UX timer, so it
+    // sits above that worst case instead of firing before the backend's own deadlines
+    const safetyNet = setTimeout(() => controller.abort('timeout'), 100_000);
     if (import.meta.env.DEV) console.log('[agentic-ui] ticket import: fetching', ref);
     const started = performance.now();
     try {
@@ -54,7 +53,7 @@ export function useTicketImport(validModelIds: string[]) {
       const elapsed = Math.round(performance.now() - started);
       if (controller.signal.aborted) {
         console.error('[agentic-ui] ticket import: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
-        setImportError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (50s)');
+        setImportError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (100s)');
       } else {
         console.error('[agentic-ui] ticket import: failed after', elapsed, 'ms', e);
         setImportError(e instanceof ApiError ? e.message : String(e));
@@ -72,7 +71,7 @@ export function useTicketImport(validModelIds: string[]) {
     setShowTicketPicker(true);
     const controller = new AbortController();
     pickerAbortRef.current = controller;
-    const safetyNet = setTimeout(() => controller.abort('timeout'), 50_000);
+    const safetyNet = setTimeout(() => controller.abort('timeout'), 100_000);
     if (import.meta.env.DEV) console.log('[agentic-ui] ticket browse: fetching recent tickets, refresh =', refresh);
     const started = performance.now();
     try {
@@ -83,7 +82,7 @@ export function useTicketImport(validModelIds: string[]) {
       const elapsed = Math.round(performance.now() - started);
       if (controller.signal.aborted) {
         console.error('[agentic-ui] ticket browse: aborted after', elapsed, 'ms, reason:', controller.signal.reason);
-        setPickerError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (50s)');
+        setPickerError(controller.signal.reason === 'user' ? 'cancelled' : 'timed out waiting for a response (100s)');
       } else {
         console.error('[agentic-ui] ticket browse: failed after', elapsed, 'ms', e);
         setPickerError(e instanceof ApiError ? e.message : String(e));

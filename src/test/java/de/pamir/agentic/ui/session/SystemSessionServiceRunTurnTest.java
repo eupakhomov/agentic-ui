@@ -1,6 +1,7 @@
 package de.pamir.agentic.ui.session;
 
 import de.pamir.agentic.ui.config.AppProperties;
+import de.pamir.agentic.ui.config.Settings;
 import de.pamir.agentic.ui.config.SettingsService;
 import de.pamir.agentic.ui.journal.JournalPublisher;
 import de.pamir.agentic.ui.journal.SessionEventBus;
@@ -40,6 +41,9 @@ class SystemSessionServiceRunTurnTest {
 	private FakeSessionRepository sessions;
 	private FakeSidecarManager sidecars;
 	private SystemSessionService systemSessionService;
+	private SessionService sessionService;
+	private AppProperties props;
+	private JournalPublisher journalPublisher;
 	private UUID systemId;
 
 	@TempDir
@@ -47,31 +51,44 @@ class SystemSessionServiceRunTurnTest {
 
 	@BeforeEach
 	void setUp() throws ReflectiveOperationException {
-		AppProperties props = new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills",
+		props = new AppProperties(worktreeRoot.toString(), worktreeRoot.toString(), "/skills",
 				"/memory", 4, "authtoken", "", "", "logs", 30, 65536, 1048576, Map.of());
-		SettingsService settings = new SettingsService(null, null, null);
+		Settings fixed = new Settings(false, "", "", "", true, true, 180, "", "", false, true, 60, "claude", "", "",
+				false, false, "cheap", 5, 0, true, false, 14, "cheap", 70, "", "uv", "", "", "none", "");
+		SettingsService settings = new SettingsService(null, null, null) {
+			@Override
+			public Settings current() {
+				return fixed;
+			}
+		};
 		sessions = new FakeSessionRepository();
 		sidecars = new FakeSidecarManager();
-		JournalPublisher journalPublisher = new JournalPublisher(new FakeEventJournal(props), new SessionEventBus());
+		journalPublisher = new JournalPublisher(new FakeEventJournal(props), new SessionEventBus());
 		SessionConfigFactory configFactory = new SessionConfigFactory(props, settings, null, mapper, null, 8080, null, null, null, null, null);
 		systemSessionService = new SystemSessionService(props, settings, sessions, configFactory, journalPublisher,
 				mapper, null);
-		SessionService sessionService = new SessionService(props, settings, sessions, null, null, null, sidecars,
+		sessionService = new SessionService(props, settings, sessions, null, null, null, sidecars,
 				new FakeEventJournal(props), journalPublisher, mapper, event -> {
 		}, configFactory, systemSessionService, null, null, null, null);
 		bindLazySessionService(systemSessionService, sessionService);
 
-		systemId = UUID.randomUUID();
+		systemId = seedSystemSession(SystemSessionService.INTERACTIVE_NAME);
+	}
+
+	/** Seeds a live, resumed-looking (provider id set) system session with a running fake sidecar. */
+	private UUID seedSystemSession(String name) {
+		UUID id = UUID.randomUUID();
 		SessionEntity system = SessionEntity.builder()
-				.id(systemId).name("system").provider("claude").repoPath("(system)")
+				.id(id).name(name).provider("claude").repoPath("(system)")
 				.branch("(system)").baseBranch("(system)").worktreePath(worktreeRoot.toString())
 				.contextDirs(List.of()).permissionMode("default").allowedTools(List.of()).disallowedTools(List.of())
-				.model("original-model").state(SessionState.IDLE).kind("system")
+				.model("original-model").state(SessionState.IDLE).kind("system").providerSessionId("prov-" + name)
 				.build();
 		sessions.seed(system);
 		sidecars.spawn(system, null, false, null, e -> {
 		}, (h, c) -> {
 		});
+		return id;
 	}
 
 	/** Mirrors what Spring's {@code @Lazy} proxy resolves automatically in production. */
@@ -104,6 +121,7 @@ class SystemSessionServiceRunTurnTest {
 
 	@Test
 	void runSystemTurnThrowsAfterItsOwnTimeoutElapses() {
+		seedSystemSession(SystemSessionService.BACKGROUND_NAME);
 		assertThatThrownBy(() -> systemSessionService.runSystemTurn("prompt", SystemTurnLane.BACKGROUND, java.time.Duration.ofSeconds(1)))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("timed out");
@@ -172,6 +190,110 @@ class SystemSessionServiceRunTurnTest {
 		systemSessionService.completeTurn(systemId);
 		second.join(2000);
 		assertThat(secondResult.get()).isEqualTo("second answer");
+	}
+
+	@Test
+	void aBackgroundTurnInFlightDoesNotBlockAnInteractiveTurn() throws InterruptedException {
+		UUID backgroundId = seedSystemSession(SystemSessionService.BACKGROUND_NAME);
+		Thread background = Thread.ofVirtual().start(() ->
+				systemSessionService.runSystemTurn("slow", SystemTurnLane.BACKGROUND, java.time.Duration.ofSeconds(5)));
+		awaitPendingTurn();
+
+		AtomicReference<String> result = new AtomicReference<>();
+		Thread interactive = Thread.ofVirtual().start(() -> result.set(
+				systemSessionService.runSystemTurn("quick", SystemTurnLane.INTERACTIVE, java.time.Duration.ofSeconds(2))));
+		awaitPendingTurn();
+		systemSessionService.onAssistantMessage(systemId, textContent("interactive answer"));
+		systemSessionService.completeTurn(systemId);
+		interactive.join(2000);
+
+		assertThat(result.get()).isEqualTo("interactive answer");
+		// the background turn is still pending and untouched
+		assertThat(sidecars.sentTo(backgroundId)).anyMatch(line -> line.contains("slow"));
+		systemSessionService.completeTurn(backgroundId);
+		background.join(2000);
+	}
+
+	@Test
+	void eventsRouteToTheWorkerWhoseTurnMatchesTheSessionId() throws InterruptedException {
+		UUID backgroundId = seedSystemSession(SystemSessionService.BACKGROUND_NAME);
+		AtomicReference<String> backgroundResult = new AtomicReference<>();
+		Thread background = Thread.ofVirtual().start(() -> backgroundResult.set(
+				systemSessionService.runSystemTurn("bg", SystemTurnLane.BACKGROUND, java.time.Duration.ofSeconds(5))));
+		awaitPendingTurn();
+
+		systemSessionService.onAssistantMessage(systemId, textContent("not for background")); // no interactive turn pending
+		systemSessionService.onAssistantMessage(backgroundId, textContent("bg answer"));
+		systemSessionService.completeTurn(backgroundId);
+		background.join(2000);
+
+		assertThat(backgroundResult.get()).isEqualTo("bg answer");
+	}
+
+	@Test
+	void aCompletedBackgroundTurnRecyclesToParkedWithNoProviderSessionId() throws InterruptedException {
+		UUID backgroundId = seedSystemSession(SystemSessionService.BACKGROUND_NAME);
+		Thread background = Thread.ofVirtual().start(() ->
+				systemSessionService.runSystemTurn("bg", SystemTurnLane.BACKGROUND, java.time.Duration.ofSeconds(5)));
+		awaitPendingTurn();
+		systemSessionService.completeTurn(backgroundId);
+		background.join(2000);
+		awaitPendingTurn();
+
+		SessionEntity after = sessions.get(backgroundId);
+		assertThat(after.state()).as("background does not re-warm").isEqualTo(SessionState.PARKED);
+		assertThat(after.providerSessionId()).isNull();
+		assertThat(sidecars.hasLiveHandle(backgroundId)).isFalse();
+	}
+
+	@Test
+	void aFailedTurnStillRecyclesAndTheInteractiveWorkerRewarms() throws InterruptedException {
+		Thread caller = Thread.ofVirtual().start(() -> {
+			try {
+				systemSessionService.runSystemTurn("prompt", SystemTurnLane.INTERACTIVE, java.time.Duration.ofSeconds(2));
+			} catch (RuntimeException expected) {
+				// failure path
+			}
+		});
+		awaitPendingTurn();
+		systemSessionService.failTurn(systemId, new IllegalStateException("boom"));
+		caller.join(2000);
+		awaitPendingTurn();
+
+		SessionEntity after = sessions.get(systemId);
+		assertThat(after.providerSessionId()).isNull();
+		// re-warm woke the parked row again (fake sidecar never reports ready, so STARTING)
+		assertThat(after.state()).isIn(SessionState.PARKED, SessionState.STARTING);
+		assertThat(sidecars.hasLiveHandle(systemId)).isEqualTo(after.state() == SessionState.STARTING);
+	}
+
+	@Test
+	void startupSweepRetiresALegacySystemRowButKeepsTheNamedLaneSessions() {
+		UUID legacy = seedSystemSession("system");
+		UUID background = seedSystemSession(SystemSessionService.BACKGROUND_NAME);
+		SessionHousekeeping housekeeping = new SessionHousekeeping(props, sessions, sidecars, journalPublisher,
+				mapper, sessionService);
+
+		housekeeping.retireLegacySystemSessions();
+
+		assertThat(sessions.get(legacy).state()).isEqualTo(SessionState.CLOSED);
+		assertThat(sidecars.hasLiveHandle(legacy)).isFalse();
+		assertThat(sessions.get(systemId).state()).isEqualTo(SessionState.IDLE);
+		assertThat(sessions.get(background).state()).isEqualTo(SessionState.IDLE);
+	}
+
+	@Test
+	void busyReportsAnInteractiveTurnInFlightOnly() throws InterruptedException {
+		assertThat(systemSessionService.busy()).isFalse();
+		Thread caller = Thread.ofVirtual().start(() ->
+				systemSessionService.runSystemTurn("p", SystemTurnLane.INTERACTIVE, java.time.Duration.ofSeconds(2)));
+		awaitPendingTurn();
+		assertThat(systemSessionService.busy()).isTrue();
+
+		systemSessionService.completeTurn(systemId);
+		caller.join(2000);
+		awaitPendingTurn();
+		assertThat(systemSessionService.busy()).as("the re-warm is not a task").isFalse();
 	}
 
 	/** No hook to await the pendingSystemTurn assignment directly (it's a private field, by design) —

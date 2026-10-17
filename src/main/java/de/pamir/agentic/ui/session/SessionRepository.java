@@ -56,11 +56,19 @@ public class SessionRepository {
 		return jdbc.sql("SELECT * FROM session WHERE id = ?").params(id).query(rowMapper).optional();
 	}
 
-	/** The one live (not CLOSED/FAILED) system session, if any — see SessionService.getOrCreateSystemSession. */
-	public Optional<SessionEntity> findSystemSession() {
+	/** The live (not CLOSED/FAILED) system session with this {@code name} — one per
+	 * {@link SystemTurnLane}, see SystemSessionService. */
+	public Optional<SessionEntity> findSystemSession(String name) {
+		return jdbc.sql("SELECT * FROM session WHERE kind = 'system' AND name = ? "
+						+ "AND state NOT IN ('CLOSED', 'FAILED') ORDER BY created_at DESC LIMIT 1")
+				.param(name).query(rowMapper).optional();
+	}
+
+	/** Every live (not CLOSED/FAILED) system session, whatever its name — startup legacy retirement. */
+	public List<SessionEntity> findLiveSystemSessions() {
 		return jdbc.sql("SELECT * FROM session WHERE kind = 'system' AND state NOT IN ('CLOSED', 'FAILED') "
-						+ "ORDER BY created_at DESC LIMIT 1")
-				.query(rowMapper).optional();
+						+ "ORDER BY created_at")
+				.query(rowMapper).list();
 	}
 
 	public SessionEntity get(UUID id) {

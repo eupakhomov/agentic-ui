@@ -91,7 +91,7 @@ export const api = {
   createTemplate: (body: unknown) => request<Template>('POST', '/api/templates', body),
   updateTemplate: (id: string, body: unknown) => request<Template>('PUT', `/api/templates/${id}`, body),
   deleteTemplate: (id: string) => request<null>('DELETE', `/api/templates/${id}`),
-  ticketImportEnabled: () => request<{ enabled: boolean; warm: boolean }>('GET', '/api/tickets/import/enabled'),
+  ticketImportEnabled: () => request<{ enabled: boolean; warm: boolean; busy: boolean }>('GET', '/api/tickets/import/enabled'),
   importTicket: (ticketRef: string, signal?: AbortSignal) =>
     request<{ branchName: string; prompt: string; recommendedModel: string | null; ticketRef: string | null }>(
       'POST', '/api/tickets/import', { ticketRef }, signal),

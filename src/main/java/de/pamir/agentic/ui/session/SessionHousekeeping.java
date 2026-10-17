@@ -57,7 +57,10 @@ public class SessionHousekeeping {
 		var cutoff = Instant.now().minus(Duration.ofMinutes(props.idleParkMinutes()));
 		for (SessionEntity session : sessions.findByStates(List.of(SessionState.IDLE))) {
 			if (session.updatedAt() != null && session.updatedAt().isBefore(cutoff)
-					&& session.providerSessionId() != null && sidecars.hasLiveHandle(session.id())) {
+					// a recycled, re-warmed system session has no conversation (null provider id) but
+					// still holds a live sidecar worth parking
+					&& (session.providerSessionId() != null || "system".equals(session.kind()))
+					&& sidecars.hasLiveHandle(session.id())) {
 				synchronized (sessionService.lock(session.id())) {
 					if (sessions.get(session.id()).state() != SessionState.IDLE) {
 						continue;
@@ -80,6 +83,30 @@ public class SessionHousekeeping {
 			journalPublisher.record(session.id(), "error", mapper.createObjectNode()
 					.put("message", "backend restarted while session was live").put("fatal", true));
 			sessionService.transition(session.id(), SessionState.CRASHED);
+		}
+	}
+
+	/**
+	 * Phase 19: the singleton system session (named {@code system}) was replaced by two per-lane
+	 * sessions. Retire any leftover live system row that carries neither new name — orphan sidecar
+	 * killed, then the normal system-session close (scratch dir removed, CLOSED). The new rows are
+	 * created on demand. No-op once nothing legacy remains.
+	 */
+	@EventListener(ApplicationReadyEvent.class)
+	void retireLegacySystemSessions() {
+		for (SessionEntity session : sessions.findLiveSystemSessions()) {
+			if (SystemSessionService.INTERACTIVE_NAME.equals(session.name())
+					|| SystemSessionService.BACKGROUND_NAME.equals(session.name())) {
+				continue;
+			}
+			log.info("startup sweep: retiring legacy system session {} ('{}', {})",
+					session.id(), session.name(), session.state());
+			killOrphanSidecar(session);
+			try {
+				sessionService.close(session.id(), "fail", null);
+			} catch (RuntimeException e) {
+				log.warn("startup sweep: retiring legacy system session {} failed: {}", session.id(), e.getMessage());
+			}
 		}
 	}
 

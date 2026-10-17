@@ -22,7 +22,7 @@ public class TicketImportController {
 	public record ImportRequest(String ticketRef) {
 	}
 
-	public record EnabledResponse(boolean enabled, boolean warm) {
+	public record EnabledResponse(boolean enabled, boolean warm, boolean busy) {
 	}
 
 	private final TicketImportService service;
@@ -43,12 +43,14 @@ public class TicketImportController {
 	@GetMapping("/import/enabled")
 	public EnabledResponse enabled() {
 		boolean enabled = service.enabled();
+		// sampled before warmUp(): its own tryAcquire would otherwise report this call as busy
+		boolean busy = enabled && systemSessionService.busy();
 		if (enabled) {
 			systemSessionService.warmUp();
 			FireAndForget.run("ticket-list-prefetch", log, "ticket list prefetch failed",
 					() -> service.listMyTickets(false));
 		}
-		return new EnabledResponse(enabled, systemSessionService.isWarm());
+		return new EnabledResponse(enabled, systemSessionService.isWarm(), busy);
 	}
 
 	@PostMapping("/import")

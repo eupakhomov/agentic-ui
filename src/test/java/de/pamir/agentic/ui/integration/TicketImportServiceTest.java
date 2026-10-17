@@ -112,6 +112,8 @@ class TicketImportServiceTest {
 	private MutableClock clock;
 	private FakeSystemTurnClient turnClient;
 	private TicketImportService cachingSvc;
+	private SettingsService testSettings;
+	private AppProperties testProps;
 
 	private void setUp() {
 		clock = new MutableClock();
@@ -136,6 +138,8 @@ class TicketImportServiceTest {
 		SettingsService settings = new SettingsService(repo, null, null);
 		AppProperties props = new AppProperties(null, null, null, null, 0, null, "test-linear-key", null, null,
 				0, 0, 0, null);
+		testSettings = settings;
+		testProps = props;
 		cachingSvc = new TicketImportService(turnClient, props, settings, clock);
 	}
 
@@ -232,6 +236,7 @@ class TicketImportServiceTest {
 	/** Real subclass (not a mock) overriding just the one method the service calls. */
 	private static final class FakeSystemTurnClient extends SystemTurnClient {
 		final AtomicInteger calls = new AtomicInteger();
+		volatile String lastPrompt;
 		final BlockingQueue<java.util.function.Supplier<JsonNode>> responses = new java.util.concurrent.LinkedBlockingQueue<>();
 		private final ObjectMapper mapper = new JsonMapper();
 
@@ -258,12 +263,87 @@ class TicketImportServiceTest {
 		@Override
 		public JsonNode json(String prompt, SystemTurnLane lane, Duration timeout) {
 			calls.incrementAndGet();
+			lastPrompt = prompt;
 			var next = responses.poll();
 			if (next == null) {
 				throw new IllegalStateException("no fake response queued");
 			}
 			return next.get();
 		}
+	}
+
+	// ------------------------------------------------------------------ Step 4: direct Linear API
+
+	private static LinearApiClient apiReturning(java.util.function.Function<String, LinearApiClient.Response> reply,
+												AtomicInteger calls) {
+		return new LinearApiClient((auth, body) -> {
+			calls.incrementAndGet();
+			return reply.apply(body);
+		}, "key", new JsonMapper());
+	}
+
+	private static final String API_LIST = "{\"data\":{\"viewer\":{\"assignedIssues\":{\"nodes\":["
+			+ "{\"identifier\":\"ENG-7\",\"title\":\"Seven\",\"state\":{\"name\":\"Todo\",\"type\":\"unstarted\"}}]}}}}";
+	private static final String API_ISSUE = "{\"data\":{\"issue\":{\"identifier\":\"ENG-7\",\"title\":\"Seven\","
+			+ "\"description\":\"do the seven\",\"state\":{\"name\":\"Todo\"},\"labels\":{\"nodes\":[]},"
+			+ "\"comments\":{\"nodes\":[{\"body\":\"also handle nulls\",\"createdAt\":\"2026-10-01T00:00:00Z\","
+			+ "\"user\":{\"name\":\"Al\"}}]}}}}";
+
+	@Test
+	void apiKeyModeServesTheListFromTheApiWithNoSystemTurn() {
+		setUp();
+		AtomicInteger apiCalls = new AtomicInteger();
+		var svc = new TicketImportService(turnClient, testProps, testSettings,
+				apiReturning(b -> new LinearApiClient.Response(200, API_LIST), apiCalls), clock);
+
+		var list = svc.listMyTickets(false);
+		var again = svc.listMyTickets(false);
+
+		assertThat(list.tickets()).containsExactly(new TicketImportService.TicketSummary("ENG-7", "Seven", "Todo"));
+		assertThat(again.cached()).isTrue();
+		assertThat(apiCalls.get()).isEqualTo(1);
+		assertThat(turnClient.calls.get()).isZero();
+	}
+
+	@Test
+	void aFailingApiFallsBackToTheSystemTurnList() {
+		setUp();
+		turnClient.enqueue(TICKETS_JSON);
+		var svc = new TicketImportService(turnClient, testProps, testSettings,
+				apiReturning(b -> new LinearApiClient.Response(401, "{}"), new AtomicInteger()), clock);
+
+		var list = svc.listMyTickets(false);
+
+		assertThat(list.tickets()).extracting(TicketImportService.TicketSummary::ref).containsExactly("ENG-1");
+		assertThat(turnClient.calls.get()).isEqualTo(1);
+	}
+
+	@Test
+	void apiKeyImportInlinesTheIssueAndSetsTheCanonicalRefWithoutMcpPreamble() {
+		setUp();
+		turnClient.enqueue("{\"branchName\":\"eng-7-seven\",\"prompt\":\"do it\"}");
+		var svc = new TicketImportService(turnClient, testProps, testSettings,
+				apiReturning(b -> new LinearApiClient.Response(200, API_ISSUE), new AtomicInteger()), clock);
+
+		var result = svc.importTicket("https://linear.app/acme/issue/eng-7/seven");
+
+		assertThat(result.ticketRef()).isEqualTo("ENG-7");
+		assertThat(turnClient.lastPrompt).contains("do the seven").contains("also handle nulls")
+				.doesNotContain("MCP tools");
+	}
+
+	@Test
+	void importFallsBackToTheMcpPromptWhenTheApiFailsOrThereIsNoClient() {
+		setUp();
+		turnClient.enqueue(IMPORT_JSON);
+		var failing = new TicketImportService(turnClient, testProps, testSettings,
+				apiReturning(b -> new LinearApiClient.Response(503, "down"), new AtomicInteger()), clock);
+		failing.importTicket("ENG-123");
+		assertThat(turnClient.lastPrompt).contains("You have access to Linear via MCP tools");
+
+		turnClient.enqueue(IMPORT_JSON);
+		cachingSvc.importTicket("ENG-124"); // no API client wired: today's path, unchanged
+		assertThat(turnClient.lastPrompt).contains("You have access to Linear via MCP tools");
 	}
 
 	/** A {@link Clock} whose {@link #instant()} only moves when {@link #advance} is called. */

@@ -14,7 +14,7 @@ export default function TicketPickerDialog({
   list,
   busy,
   error,
-  warm,
+  waitCopy,
   onRefresh,
   onPick,
   onClose,
@@ -22,7 +22,7 @@ export default function TicketPickerDialog({
   list: TicketList | null;
   busy: boolean;
   error: string;
-  warm: boolean;
+  waitCopy: string;
   onRefresh: () => void;
   onPick: (ref: string) => void;
   onClose: () => void;
@@ -58,9 +58,7 @@ export default function TicketPickerDialog({
         </div>
         {busy && !tickets && (
           <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>
-            {warm
-              ? 'fetching from Linear…'
-              : 'fetching from Linear — can take up to 45s on the first call (spinning up the system session)…'}
+            {waitCopy}
           </div>
         )}
         {error && <div className="error-text">{error}</div>}

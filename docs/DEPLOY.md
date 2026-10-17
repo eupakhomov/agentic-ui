@@ -182,6 +182,10 @@ initial prompt. Pick one auth mode:
 export AGENTIC_UI_LINEAR_API_KEY="lin_api_..."   # Linear → Settings → Security & Access
 ```
 
+With a key set, the ticket list is fetched straight from Linear's GraphQL API (about a second,
+no AI turn) and an import hands the ticket plus its comments to the model in one call. If the
+API call fails, a WARN is logged and the slower MCP-based path is used instead.
+
 **SSO-gated Linear account** (e.g. Google identity) — the API key path won't work, so
 authorize once interactively:
 

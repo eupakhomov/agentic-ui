@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ticketWaitCopy } from '../ticketCopy';
 import { api, ApiError } from '../api/rest';
 import { pickDefaultBranch, type PrInfo, type ProviderView, type ServicesResponse, type SessionType, type Template } from '../protocol';
 import { useTicketImport, type TicketImportOutcome } from '../hooks/useTicketImport';
@@ -27,6 +28,7 @@ export default function QuickSessionDialog({
   const [templateId, setTemplateId] = useState('');
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
   const [ticketImportWarm, setTicketImportWarm] = useState(false);
+  const [ticketImportQueued, setTicketImportQueued] = useState(false);
   // recommendedModel is generated against the *default* provider's catalog (TicketImportService
   // uses SettingsService.defaultProvider()), which is what a new session created here also gets
   // absent an explicit override in lastSessionConfig — see ModelCatalog (P3).
@@ -60,7 +62,7 @@ export default function QuickSessionDialog({
       setServicePath(info.defaultRepoPath);
     }).catch(() => setServicesInfo(null));
     api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
-    api.ticketImportEnabled().then((r) => { setTicketImportEnabled(r.enabled); setTicketImportWarm(r.warm); })
+    api.ticketImportEnabled().then((r) => { setTicketImportEnabled(r.enabled); setTicketImportWarm(r.warm); setTicketImportQueued(r.busy); })
       .catch(() => setTicketImportEnabled(false));
     Promise.all([api.getSettings(), api.listProviders()]).then(([settings, providers]) => {
       const models = providers.find((p: ProviderView) => p.id === settings.defaultProvider)?.capabilities.models ?? [];
@@ -238,9 +240,7 @@ export default function QuickSessionDialog({
               </div>
               {importBusy && (
                 <div className="full" style={{ gridColumn: '2 / -1', color: 'var(--muted)', fontSize: 12.5 }}>
-                  {ticketImportWarm
-                    ? 'fetching from Linear…'
-                    : 'fetching from Linear — can take up to 45s on the first call (spinning up the system session)…'}
+                  {ticketWaitCopy(ticketImportWarm, ticketImportQueued)}
                 </div>
               )}
               {importError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{importError}</div>}
@@ -313,7 +313,7 @@ export default function QuickSessionDialog({
         list={recentTickets}
         busy={pickerBusy}
         error={pickerError}
-        warm={ticketImportWarm}
+        waitCopy={ticketWaitCopy(ticketImportWarm, ticketImportQueued)}
         onRefresh={() => void ticketImport.browseRecentTickets(true)}
         onPick={pickTicket}
         onClose={() => { ticketImport.cancel(); setShowTicketPicker(false); }}

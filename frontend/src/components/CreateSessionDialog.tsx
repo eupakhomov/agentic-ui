@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ticketWaitCopy } from '../ticketCopy';
 import { api, ApiError } from '../api/rest';
 import { assetStub, pickDefaultBranch, placeholdersOf, type AssetKind, type LibraryAsset, type PermissionMode, type PrInfo, type ProviderView, type ServicesResponse, type SessionSummary, type SessionType, type Settings, type SlackStatus, type Template } from '../protocol';
 import AssetPickerDialog from './AssetPickerDialog';
@@ -83,6 +84,7 @@ export default function CreateSessionDialog({
   const [resolvedTicketRef, setResolvedTicketRef] = useState<string | null>(null);
   const [ticketImportEnabled, setTicketImportEnabled] = useState(false);
   const [ticketImportWarm, setTicketImportWarm] = useState(false);
+  const [ticketImportQueued, setTicketImportQueued] = useState(false);
   // ticket-derived prompts land unsent in the new session's compose box (reviewed & sent by
   // hand there) instead of auto-firing as a kickoff turn the moment the sidecar is ready
   const [promptFromTicket, setPromptFromTicket] = useState(false);
@@ -122,7 +124,7 @@ export default function CreateSessionDialog({
       setSlackEnabled(s.slackDefaultEnabled);
     }).catch(() => setSettings(null));
     api.slackStatus().then(setSlackStatus).catch(() => setSlackStatus(null));
-    api.ticketImportEnabled().then((r) => { setTicketImportEnabled(r.enabled); setTicketImportWarm(r.warm); })
+    api.ticketImportEnabled().then((r) => { setTicketImportEnabled(r.enabled); setTicketImportWarm(r.warm); setTicketImportQueued(r.busy); })
       .catch(() => setTicketImportEnabled(false));
   }, []);
 
@@ -439,9 +441,7 @@ export default function CreateSessionDialog({
               </div>
               {importBusy && (
                 <div className="full" style={{ gridColumn: '2 / -1', color: 'var(--muted)', fontSize: 12.5 }}>
-                  {ticketImportWarm
-                    ? 'fetching from Linear…'
-                    : 'fetching from Linear — can take up to 45s on the first call (spinning up the system session)…'}
+                  {ticketWaitCopy(ticketImportWarm, ticketImportQueued)}
                 </div>
               )}
               {importError && <div className="error-text full" style={{ gridColumn: '2 / -1' }}>{importError}</div>}
@@ -669,7 +669,7 @@ export default function CreateSessionDialog({
         list={recentTickets}
         busy={pickerBusy}
         error={pickerError}
-        warm={ticketImportWarm}
+        waitCopy={ticketWaitCopy(ticketImportWarm, ticketImportQueued)}
         onRefresh={() => void ticketImport.browseRecentTickets(true)}
         onPick={pickTicket}
         onClose={() => { ticketImport.cancel(); setShowTicketPicker(false); }}
