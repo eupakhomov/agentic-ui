@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { translateSdkMessage } from '../src/session.js';
+import { classifyStreamFailure, translateSdkMessage } from '../src/session.js';
 
 function state(currentModel = '') {
   return { currentModel };
@@ -264,5 +264,33 @@ describe('translateSdkMessage', () => {
     const { events, logs } = translateSdkMessage({ type: 'some_future_type' }, state());
     expect(events).toEqual([]);
     expect(logs).toEqual(['unhandled SDK message type: some_future_type']);
+  });
+});
+
+describe('classifyStreamFailure', () => {
+  const sdkText = new Error('Claude Code returned an error result: [ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null');
+
+  it('treats any stream error after a requested shutdown as an expected end, not a fatal error', () => {
+    const outcome = classifyStreamFailure(sdkText, 'shutdown');
+    expect(outcome).toMatchObject({ kind: 'expected', reason: 'shutdown' });
+    // the original text is kept for the stderr log, but only its first line
+    expect((outcome as { note: string }).note).toContain('returned an error result');
+    expect((outcome as { note: string }).note).not.toContain('\n');
+  });
+
+  it('does the same when the backend simply closed stdin', () => {
+    expect(classifyStreamFailure(new Error('boom'), 'stdin_closed')).toMatchObject({ kind: 'expected', reason: 'stdin_closed' });
+  });
+
+  it('is still fatal when nobody asked the sidecar to stop, keeping the stack', () => {
+    const outcome = classifyStreamFailure(sdkText, undefined);
+    expect(outcome.kind).toBe('fatal');
+    expect((outcome as { message: string }).message).toContain('returned an error result');
+    expect((outcome as { message: string }).message).toContain('Error:'); // the stack's first line survives
+  });
+
+  it('copes with a thrown non-Error', () => {
+    expect(classifyStreamFailure('plain string', undefined)).toEqual({ kind: 'fatal', message: 'plain string' });
+    expect(classifyStreamFailure({ code: 7 }, 'shutdown').kind).toBe('expected');
   });
 });

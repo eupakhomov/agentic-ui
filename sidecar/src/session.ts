@@ -359,6 +359,35 @@ export function translateSdkMessage(
   return { events, logs };
 }
 
+/**
+ * What an exception out of the SDK's message stream means for this process.
+ *
+ * Once the backend has asked us to stop (a `shutdown` command, or stdin closing) nothing the stream
+ * throws is news. In particular the SDK remembers the text of the last turn that ended in an *error
+ * result* (an interrupt is `error_during_execution`; hitting max turns is `error_max_turns`) and, when
+ * the agent process then exits at shutdown, replaces the exit error with that stale text
+ * ("Claude Code returned an error result: …"). Reporting that as a fatal error put a red note in the
+ * transcript of every session that was closed or idle-parked right after such a turn. A later normal
+ * turn clears the SDK's memory, which is why only the *last* turn matters.
+ *
+ * An exception while NOT shutting down is still fatal, unchanged.
+ */
+export type StreamFailureOutcome =
+  | { kind: 'expected'; reason: 'shutdown' | 'stdin_closed'; note: string }
+  | { kind: 'fatal'; message: string };
+
+export function classifyStreamFailure(
+  error: unknown,
+  exiting: 'shutdown' | 'stdin_closed' | undefined,
+): StreamFailureOutcome {
+  const message = String(error instanceof Error ? error.stack ?? error.message : error);
+  if (exiting) {
+    const first = message.split('\n')[0] ?? '';
+    return { kind: 'expected', reason: exiting, note: `SDK stream ended with an error during ${exiting} (ignored): ${first}` };
+  }
+  return { kind: 'fatal', message };
+}
+
 export async function runSession(config: SidecarConfig): Promise<never> {
   const bridge = new PermissionBridge();
   const inputQueue = new AsyncQueue<SDKUserMessage>();
@@ -563,7 +592,14 @@ export async function runSession(config: SidecarConfig): Promise<never> {
       if (compacted || completed) await emitContextUsage();
     }
   } catch (e) {
-    writeEvent({ type: 'error', message: String(e instanceof Error ? e.stack ?? e.message : e), fatal: true });
+    const outcome = classifyStreamFailure(e, exiting);
+    if (outcome.kind === 'expected') {
+      // stderr only: the backend asked us to stop, so this is not an event anyone needs to see
+      log(outcome.note);
+      writeEvent({ type: 'exiting', reason: outcome.reason });
+      process.exit(0);
+    }
+    writeEvent({ type: 'error', message: outcome.message, fatal: true });
     writeEvent({ type: 'exiting', reason: 'fatal' });
     process.exit(1);
   }
